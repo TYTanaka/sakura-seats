@@ -10,6 +10,7 @@ import {
   setPaid,
   toggleBlocked,
   totals,
+  updatePerformance,
   type AppData,
 } from './logic'
 
@@ -105,6 +106,48 @@ describe('支払いと集計', () => {
     expect(t2.salesTotal).toBe(6000)
     expect(t2.unpaidTotal).toBe(0)
     expect(t2.paidSeatCount).toBe(3)
+  })
+})
+
+describe('金額の記録と上書き（当日料金対応）', () => {
+  it('オンライン予約の金額は単価×席数で記録される', () => {
+    const { reservation } = reserveOnline(emptyData(), ['1F-5-12', '1F-5-13'])
+    expect(reservation.amount).toBe(4000)
+  })
+
+  it('当日販売では確定時に金額を上書きでき、集計は記録金額で計算される', () => {
+    // 単価2000円×2席 = 4000円のところを、当日料金として3500円で記録
+    const { data, reservation } = createReservation(emptyData(), {
+      seatIds: ['1F-6-10', '1F-6-11'],
+      name: '',
+      phone: '',
+      note: '',
+      source: 'door',
+      amount: 3500,
+    })
+    expect(reservation.amount).toBe(3500)
+    const t = totals(data, ALL_IDS)
+    expect(t.salesTotal).toBe(3500)
+    expect(t.paidSeatCount).toBe(2)
+  })
+
+  it('公演料金を後から変更しても、記録済みの金額は変わらない', () => {
+    const { data } = reserveOnline(emptyData(), ['1F-5-12', '1F-5-13']) // 4000円で記録
+    const repriced = updatePerformance(data, { ...data.performance, price: 3000 })
+    expect(totals(repriced, ALL_IDS).unpaidTotal).toBe(4000)
+  })
+
+  it('負の金額は記録できない', () => {
+    expect(() =>
+      createReservation(emptyData(), {
+        seatIds: ['1F-6-10'],
+        name: '',
+        phone: '',
+        note: '',
+        source: 'door',
+        amount: -100,
+      }),
+    ).toThrow()
   })
 })
 

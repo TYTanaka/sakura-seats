@@ -28,6 +28,8 @@ export interface Reservation {
   phone: string
   note: string
   source: ReservationSource
+  /** 実際に記録された金額（円）。オンライン予約は単価×席数、当日販売はスタッフが上書き可能 */
+  amount: number
   checkedIn: boolean
   paid: boolean
   cancelled: boolean
@@ -85,6 +87,8 @@ export interface NewReservationInput {
   phone: string
   note: string
   source: ReservationSource
+  /** 金額の上書き（当日販売用）。省略時は公演単価×席数 */
+  amount?: number
 }
 
 /**
@@ -109,6 +113,10 @@ export function createReservation(
   }
   const name = input.name.trim() || (input.source === 'door' ? '当日' : '')
   if (!name) throw new Error('お名前を入力してください')
+  const amount = input.amount ?? uniqueSeatIds.length * data.performance.price
+  if (!Number.isInteger(amount) || amount < 0) {
+    throw new Error('金額は0以上の整数で入力してください')
+  }
   const seq = data.seq + 1
   const reservation: Reservation = {
     id: `SK-${String(seq).padStart(4, '0')}`,
@@ -117,6 +125,7 @@ export function createReservation(
     phone: input.phone.trim(),
     note: input.note.trim(),
     source: input.source,
+    amount,
     checkedIn: false,
     paid: input.source === 'door',
     cancelled: false,
@@ -196,20 +205,19 @@ export interface Totals {
 }
 
 export function totals(data: AppData, allSeatIds: string[]): Totals {
-  const price = data.performance.price
   const active = activeReservations(data)
   let reservedSeatCount = 0
   let paidSeatCount = 0
   let salesTotal = 0
   let unpaidTotal = 0
   for (const res of active) {
-    const amount = res.seatIds.length * price
+    // 集計は「実際に記録された金額」で行う（当日販売の金額上書き・後の料金変更に影響されない）
     if (res.paid) {
       paidSeatCount += res.seatIds.length
-      salesTotal += amount
+      salesTotal += res.amount
     } else {
       reservedSeatCount += res.seatIds.length
-      unpaidTotal += amount
+      unpaidTotal += res.amount
     }
   }
   let availableSeatCount = 0
@@ -230,9 +238,9 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   }
 }
 
-/** 予約1件の合計金額 */
-export function reservationTotal(data: AppData, reservation: Reservation): number {
-  return reservation.seatIds.length * data.performance.price
+/** 予約1件の金額（記録された金額。当日販売で上書きされた場合はその金額） */
+export function reservationTotal(reservation: Reservation): number {
+  return reservation.amount
 }
 
 export function formatYen(amount: number): string {

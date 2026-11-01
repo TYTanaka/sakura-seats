@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -174,7 +174,7 @@ function Reception() {
                 {res.seatIds.map((id) => seatById(id).label).join('、')}
               </p>
               <p className="muted small">
-                電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(data, res))}
+                電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(res))}
                 {res.note && <> ／ 備考：{res.note}</>}
               </p>
             </div>
@@ -293,8 +293,17 @@ function DoorSales() {
   const [zoom, setZoom] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
   const [buyerName, setBuyerName] = useState('')
+  const [amountInput, setAmountInput] = useState('')
+  const [amountEdited, setAmountEdited] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+
+  // 金額欄はデフォルトで「単価×席数」に追随する。スタッフが手で変更したら、その値を保持する。
+  useEffect(() => {
+    if (!amountEdited) {
+      setAmountInput(selected.length > 0 ? String(selected.length * perf.price) : '')
+    }
+  }, [selected, perf.price, amountEdited])
 
   const stateOf = (seat: SeatDef): SeatVisualState => {
     if (selected.includes(seat.id)) return 'selected'
@@ -313,6 +322,14 @@ function DoorSales() {
   }
 
   const handleSell = () => {
+    const parsedAmount = amountInput.trim() === '' ? undefined : Number(amountInput)
+    if (
+      parsedAmount !== undefined &&
+      (!Number.isInteger(parsedAmount) || parsedAmount < 0)
+    ) {
+      setError('金額は0以上の整数で入力してください')
+      return
+    }
     try {
       const res = reserve({
         seatIds: selected,
@@ -320,12 +337,15 @@ function DoorSales() {
         phone: '',
         note: '',
         source: 'door',
+        amount: parsedAmount,
       })
       setMessage(
-        `販売を記録しました（${res.id}：${res.seatIds.map((id) => seatById(id).label).join('、')} ／ ${formatYen(res.seatIds.length * perf.price)}・支払済）`,
+        `販売を記録しました（${res.id}：${res.seatIds.map((id) => seatById(id).label).join('、')} ／ ${formatYen(res.amount)}・支払済）`,
       )
       setSelected([])
       setBuyerName('')
+      setAmountEdited(false)
+      setAmountInput('')
     } catch (e) {
       setError(e instanceof Error ? e.message : '販売の記録に失敗しました')
     }
@@ -347,6 +367,36 @@ function DoorSales() {
           placeholder="例：当日券・鈴木様"
         />
       </label>
+      <label className="field">
+        <span>金額（円）― 当日料金が前売りと違う場合はその場で変更できます</span>
+        <input
+          type="number"
+          min={0}
+          step={100}
+          data-door-amount
+          value={amountInput}
+          onChange={(e) => {
+            setAmountInput(e.target.value)
+            setAmountEdited(true)
+          }}
+          placeholder="単価×席数が自動で入ります"
+        />
+      </label>
+      {amountEdited && (
+        <p className="muted small">
+          金額は手入力の値で記録されます（単価計算では {formatYen(selected.length * perf.price)}）。
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            onClick={() => {
+              setAmountEdited(false)
+              setAmountInput(selected.length > 0 ? String(selected.length * perf.price) : '')
+            }}
+          >
+            単価×席数に戻す
+          </button>
+        </p>
+      )}
       <p className="selection-total">
         選択中：{selected.length}席 ／ 合計 {formatYen(selected.length * perf.price)}
       </p>
@@ -491,8 +541,9 @@ function Summary() {
         </div>
       </div>
       <p className="muted small">
-        チェックイン状況は「受付」タブで確認できます。金額は公演の単価{' '}
-        {formatYen(data.performance.price)} × 席数で計算しています。
+        チェックイン状況は「受付」タブで確認できます。金額は各予約に実際に記録された金額で集計しています
+        （当日販売で金額を上書きした場合はその金額。オンライン予約は単価{' '}
+        {formatYen(data.performance.price)} × 席数）。
       </p>
     </section>
   )

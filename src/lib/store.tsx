@@ -29,9 +29,18 @@ function loadData(): AppData {
     if (!raw) return emptyData()
     const parsed = JSON.parse(raw) as Partial<AppData>
     if (!parsed.performance || !Array.isArray(parsed.reservations)) return emptyData()
+    // 旧データ移行: 金額（amount）を持たない予約には 単価×席数 を補完する
+    const price = parsed.performance.price
+    const reservations = parsed.reservations.map((r) => ({
+      ...r,
+      amount:
+        typeof r.amount === 'number' && Number.isFinite(r.amount)
+          ? r.amount
+          : r.seatIds.length * price,
+    }))
     return {
       performance: parsed.performance,
-      reservations: parsed.reservations,
+      reservations,
       blocked: Array.isArray(parsed.blocked) ? parsed.blocked : [],
       seq: typeof parsed.seq === 'number' ? parsed.seq : parsed.reservations.length,
     }

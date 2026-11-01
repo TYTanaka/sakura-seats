@@ -105,7 +105,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           </div>
           <div>
             <dt>合計</dt>
-            <dd className="detail-total">{formatYen(completed.seatIds.length * perf.price)}</dd>
+            <dd className="detail-total">{formatYen(completed.amount)}</dd>
           </div>
         </dl>
         <div className="notice-box">
