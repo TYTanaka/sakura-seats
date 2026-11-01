@@ -3,6 +3,7 @@ import {
   cancelReservation,
   createReservation,
   emptyData,
+  normalizeAppData,
   setBlockedForSeats,
   setCheckedIn,
   setPaid,
@@ -27,23 +28,8 @@ function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return emptyData()
-    const parsed = JSON.parse(raw) as Partial<AppData>
-    if (!parsed.performance || !Array.isArray(parsed.reservations)) return emptyData()
-    // 旧データ移行: 金額（amount）を持たない予約には 単価×席数 を補完する
-    const price = parsed.performance.price
-    const reservations = parsed.reservations.map((r) => ({
-      ...r,
-      amount:
-        typeof r.amount === 'number' && Number.isFinite(r.amount)
-          ? r.amount
-          : r.seatIds.length * price,
-    }))
-    return {
-      performance: parsed.performance,
-      reservations,
-      blocked: Array.isArray(parsed.blocked) ? parsed.blocked : [],
-      seq: typeof parsed.seq === 'number' ? parsed.seq : parsed.reservations.length,
-    }
+    // 旧形式（単価のみ・明細なし予約）も normalizeAppData が現行形式へ移行する
+    return normalizeAppData(JSON.parse(raw)) ?? emptyData()
   } catch {
     return emptyData()
   }

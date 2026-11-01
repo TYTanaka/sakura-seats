@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react'
 import { ALL_SEATS, seatById, type Floor, type SeatDef } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
+  defaultTicketType,
+  findTicketType,
   formatPerformanceWhen,
+  formatTicketTypes,
   formatYen,
   seatStatus,
   type Performance,
@@ -10,6 +13,7 @@ import {
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
+import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 type Step = 'seats' | 'form' | 'confirm' | 'done'
 const ZOOMS = [1, 1.25, 1.5]
@@ -20,6 +24,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
+  /** 席ごとの券種指定（未指定はデフォルト券種） */
+  const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
@@ -27,8 +33,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [completed, setCompleted] = useState<Reservation | null>(null)
 
   const selectedSeats = useMemo(() => selected.map(seatById), [selected])
-  const total = selected.length * perf.price
+  const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
   const includesRestricted = selectedSeats.some((s) => s.restrictedView)
+  const typeNameOf = (seatId: string) =>
+    findTicketType(perf, typeBySeat[seatId] ?? defaultTicketType(perf).id)?.name ?? ''
 
   const stateOf = (seat: SeatDef): SeatVisualState => {
     if (selected.includes(seat.id)) return 'selected'
@@ -53,7 +61,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     setError('')
     try {
       const reservation = reserve({
-        seatIds: selected,
+        seats: selected.map((seatId) => ({
+          seatId,
+          typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
+        })),
         name,
         phone,
         note,
@@ -71,6 +82,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
   const resetFlow = () => {
     setSelected([])
+    setTypeBySeat({})
     setName('')
     setPhone('')
     setNote('')
@@ -101,7 +113,13 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           </div>
           <div>
             <dt>座席</dt>
-            <dd>{completed.seatIds.map((id) => seatById(id).label).join('、')}</dd>
+            <dd>
+              {completed.items.map((item) => (
+                <span key={item.seatId} className="detail-seat-line">
+                  {seatById(item.seatId).label}（{item.typeName} {formatYen(item.price)}）
+                </span>
+              ))}
+            </dd>
           </div>
           <div>
             <dt>合計</dt>
@@ -124,7 +142,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       <section className="card perf-summary">
         <h2>{perf.name}</h2>
         <p className="perf-when">{formatPerformanceWhen(perf)}</p>
-        <p className="perf-price">料金：1席 {formatYen(perf.price)}（当日現金払い）</p>
+        <p className="perf-price">料金：{formatTicketTypes(perf)}（当日現金払い）</p>
+        {perf.priceNote && <p className="muted small">※{perf.priceNote}</p>}
         {perf.note && <p className="muted">{perf.note}</p>}
       </section>
 
@@ -178,6 +197,9 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 <p className="selection-total">
                   {selected.length}席 ／ 合計 {formatYen(total)}
                 </p>
+                <p className="muted small selection-type-note">
+                  券種（{perf.ticketTypes.map((t) => t.name).join('・')}）は次の画面で席ごとに選べます
+                </p>
                 {includesRestricted && (
                   <p className="selection-warn">
                     ※見切れ席（舞台の一部が見えにくい席）が含まれています
@@ -201,8 +223,18 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       {step === 'form' && (
         <section className="card">
           <h3>お申し込み情報</h3>
-          <p className="muted">
-            選択中の席：{selectedSeats.map((s) => s.label).join('、')}（合計 {formatYen(total)}）
+          <h4 className="form-subhead">座席と券種</h4>
+          <TicketTypePicker
+            perf={perf}
+            seatIds={selected}
+            typeBySeat={typeBySeat}
+            onChange={(seatId, typeId) =>
+              setTypeBySeat((prev) => ({ ...prev, [seatId]: typeId }))
+            }
+          />
+          {perf.priceNote && <p className="muted small">※{perf.priceNote}</p>}
+          <p className="selection-total" data-form-total>
+            合計 {formatYen(total)}（当日現金払い）
           </p>
           <form
             onSubmit={(e) => {
@@ -279,7 +311,13 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </div>
             <div>
               <dt>座席</dt>
-              <dd>{selectedSeats.map((s) => s.label).join('、')}</dd>
+              <dd>
+                {selectedSeats.map((s) => (
+                  <span key={s.id} className="detail-seat-line">
+                    {s.label}（{typeNameOf(s.id)} {formatYen(priceOfSeat(perf, typeBySeat, s.id))}）
+                  </span>
+                ))}
+              </dd>
             </div>
             <div>
               <dt>お名前</dt>

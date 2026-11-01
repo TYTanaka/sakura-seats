@@ -261,6 +261,18 @@ textarea {
   gap: 10px;
 }
 
+.field-row-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6b5744;
+}
+
 .required {
   font-style: normal;
   font-size: 11px;
@@ -796,6 +808,134 @@ button.seat-available:hover {
   display: inline-flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* ---------- 券種セレクタ・券種別集計 ---------- */
+
+.form-subhead {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  color: var(--burgundy);
+}
+
+.seat-type-list {
+  margin-bottom: 10px;
+}
+
+.seat-type-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.seat-type-label {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.seg-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  background: #f1e7d0;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.seg-btn {
+  border: none;
+  background: transparent;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.seg-btn.active {
+  background: var(--burgundy);
+  color: #fff8ec;
+}
+
+.detail-seat-line {
+  display: block;
+}
+
+.selection-type-note {
+  margin: 0 0 8px;
+}
+
+.type-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.type-table th,
+.type-table td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.type-table th:first-child,
+.type-table td:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.type-table th {
+  background: #faf3e3;
+  color: var(--burgundy);
+  font-size: 13px;
+}
+
+.type-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.type-editor-row > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #d8c9ae;
+  border-radius: 10px;
+  font-size: 16px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.type-editor-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.type-editor-price input {
+  width: 96px;
+  padding: 11px 10px;
+  border: 1px solid #d8c9ae;
+  border-radius: 10px;
+  font-size: 16px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.yen-unit {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .summary-grid {

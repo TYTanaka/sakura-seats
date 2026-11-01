@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -12,14 +12,18 @@ import {
 } from '../data/seats'
 import {
   activeReservations,
+  defaultTicketType,
   formatYen,
   reservationTotal,
+  reservationTypeSummary,
   seatStatus,
   totals,
   type Performance,
+  type TicketType,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
+import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 const STAFF_PASSCODE = '1234'
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
@@ -174,7 +178,8 @@ function Reception() {
                 {res.seatIds.map((id) => seatById(id).label).join('、')}
               </p>
               <p className="muted small">
-                電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(res))}
+                <span data-type-breakdown>{reservationTypeSummary(res)}</span>
+                {' ／ '}電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(res))}
                 {res.note && <> ／ 備考：{res.note}</>}
               </p>
             </div>
@@ -292,9 +297,13 @@ function DoorSales() {
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
+  /** 席ごとの券種指定（未指定はデフォルト券種） */
+  const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
   const [buyerName, setBuyerName] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+
+  const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
 
   const stateOf = (seat: SeatDef): SeatVisualState => {
     if (selected.includes(seat.id)) return 'selected'
@@ -315,7 +324,10 @@ function DoorSales() {
   const handleSell = () => {
     try {
       const res = reserve({
-        seatIds: selected,
+        seats: selected.map((seatId) => ({
+          seatId,
+          typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
+        })),
         name: buyerName,
         phone: '',
         note: '',
@@ -325,6 +337,7 @@ function DoorSales() {
         `販売を記録しました（${res.id}：${res.seatIds.map((id) => seatById(id).label).join('、')} ／ ${formatYen(res.amount)}・支払済）`,
       )
       setSelected([])
+      setTypeBySeat({})
       setBuyerName('')
     } catch (e) {
       setError(e instanceof Error ? e.message : '販売の記録に失敗しました')
@@ -338,6 +351,19 @@ function DoorSales() {
       <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} />
       <SeatLegend />
       <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} />
+      {selected.length > 0 && (
+        <>
+          <h4 className="form-subhead">席ごとの券種</h4>
+          <TicketTypePicker
+            perf={perf}
+            seatIds={selected}
+            typeBySeat={typeBySeat}
+            onChange={(seatId, typeId) =>
+              setTypeBySeat((prev) => ({ ...prev, [seatId]: typeId }))
+            }
+          />
+        </>
+      )}
       <label className="field">
         <span>購入者名（任意・空欄なら「当日」）</span>
         <input
@@ -347,12 +373,9 @@ function DoorSales() {
           placeholder="例：当日券・鈴木様"
         />
       </label>
-      <p className="selection-total">
-        選択中：{selected.length}席 ／ 合計 {formatYen(selected.length * perf.price)}
+      <p className="selection-total" data-door-total>
+        選択中：{selected.length}席 ／ 合計 {formatYen(total)}
       </p>
-      {selected.length > 0 && (
-        <p className="muted small">{selected.map((id) => seatById(id).label).join('、')}</p>
-      )}
       {message && <p className="success-text">{message}</p>}
       {error && <p className="error-text">{error}</p>}
       <button
@@ -490,9 +513,31 @@ function Summary() {
           <span className="summary-label">販売しない席</span>
         </div>
       </div>
+      <h4>券種別内訳</h4>
+      <table className="type-table">
+        <thead>
+          <tr>
+            <th>券種</th>
+            <th>予約席数</th>
+            <th>支払済席数</th>
+            <th>売上</th>
+          </tr>
+        </thead>
+        <tbody>
+          {t.byType.map((row) => (
+            <tr key={row.typeName} data-type-row={row.typeName}>
+              <td>{row.typeName}</td>
+              <td data-type-cell="reserved">{row.reservedSeatCount}席</td>
+              <td data-type-cell="paid">{row.paidSeatCount}席</td>
+              <td data-type-cell="sales">{formatYen(row.salesTotal)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <p className="muted small">
-        チェックイン状況は「受付」タブで確認できます。金額は各予約に記録された金額（公演単価{' '}
-        {formatYen(data.performance.price)} × 席数）で集計しています。
+        チェックイン状況は「受付」タブで確認できます。金額は各予約に記録された金額
+        （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
+        変更しても、記録済みの売上は変わりません。「予約席数」は未払い（予約中）の席数です。
       </p>
     </section>
   )
@@ -500,50 +545,105 @@ function Summary() {
 
 /* ---------------- 公演設定 ---------------- */
 
+interface TypeDraft {
+  id: string
+  name: string
+  price: string
+}
+
 function PerformanceSettings() {
   const { data, updatePerformance, resetAll } = useStore()
   const perf = data.performance
   const [name, setName] = useState(perf.name)
   const [date, setDate] = useState(perf.date)
   const [time, setTime] = useState(perf.time)
-  const [price, setPrice] = useState(String(perf.price))
+  const [types, setTypes] = useState<TypeDraft[]>(
+    perf.ticketTypes.map((t) => ({ id: t.id, name: t.name, price: String(t.price) })),
+  )
+  const [priceNote, setPriceNote] = useState(perf.priceNote)
   const [note, setNote] = useState(perf.note)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState('')
   const [confirmingReset, setConfirmingReset] = useState(false)
+  const [confirmingTypeDelete, setConfirmingTypeDelete] = useState<string | null>(null)
+  const [typeSeq, setTypeSeq] = useState(0)
+
+  const touch = () => setSaved('')
+
+  const addType = () => {
+    const next = typeSeq + 1
+    setTypeSeq(next)
+    setTypes((prev) => [
+      ...prev,
+      { id: `type-${Date.now().toString(36)}-${next}`, name: '', price: '0' },
+    ])
+    touch()
+  }
+
+  const updateType = (id: string, patch: Partial<TypeDraft>) => {
+    setTypes((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
+    touch()
+  }
+
+  const deleteType = (id: string) => {
+    setTypes((prev) => prev.filter((t) => t.id !== id))
+    setConfirmingTypeDelete(null)
+    touch()
+  }
+
+  const handleSave = (e: FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) {
+      setError('公演名を入力してください')
+      return
+    }
+    if (!date || !time) {
+      setError('日付と開演時刻を入力してください')
+      return
+    }
+    if (types.length === 0) {
+      setError('券種は1つ以上必要です')
+      return
+    }
+    const names = types.map((t) => t.name.trim())
+    if (names.some((n) => !n)) {
+      setError('券種名を入力してください')
+      return
+    }
+    if (new Set(names).size !== names.length) {
+      setError('券種名が重複しています')
+      return
+    }
+    const ticketTypes: TicketType[] = []
+    for (const draft of types) {
+      const priceNum = Number(draft.price)
+      if (!Number.isInteger(priceNum) || priceNum < 0) {
+        setError('券種の料金は0以上の整数で入力してください')
+        return
+      }
+      ticketTypes.push({ id: draft.id, name: draft.name.trim(), price: priceNum })
+    }
+    const next: Performance = {
+      name: name.trim(),
+      date,
+      time,
+      ticketTypes,
+      priceNote: priceNote.trim(),
+      note: note.trim(),
+    }
+    updatePerformance(next)
+    setError('')
+    setSaved('公演設定を保存しました')
+  }
 
   return (
     <section className="card">
       <h3>公演設定</h3>
-      <p className="muted">公演は1回のみです。公演名・日時・料金・メモを編集できます。</p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          const priceNum = Number(price)
-          if (!name.trim()) {
-            setError('公演名を入力してください')
-            return
-          }
-          if (!date || !time) {
-            setError('日付と開演時刻を入力してください')
-            return
-          }
-          if (!Number.isInteger(priceNum) || priceNum < 0) {
-            setError('料金は0以上の整数で入力してください')
-            return
-          }
-          const next: Performance = {
-            name: name.trim(),
-            date,
-            time,
-            price: priceNum,
-            note: note.trim(),
-          }
-          updatePerformance(next)
-          setError('')
-          setSaved('公演設定を保存しました')
-        }}
-      >
+      <p className="muted">
+        公演は1回のみです。公演名・日時・券種（大人・子供などの料金種別）・メモを編集できます。
+        券種の変更は新しい予約から反映され、記録済みの予約の券種名・料金は変わりません。
+      </p>
+      <form onSubmit={handleSave}>
         <label className="field">
           <span>公演名</span>
           <input
@@ -551,11 +651,11 @@ function PerformanceSettings() {
             value={name}
             onChange={(e) => {
               setName(e.target.value)
-              setSaved('')
+              touch()
             }}
           />
         </label>
-        <div className="field-row">
+        <div className="field-row field-row-2">
           <label className="field">
             <span>日付</span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -564,17 +664,79 @@ function PerformanceSettings() {
             <span>開演時刻</span>
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </label>
-          <label className="field">
-            <span>料金（1席・円）</span>
-            <input
-              type="number"
-              min={0}
-              step={100}
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </label>
         </div>
+        <div className="field">
+          <span className="field-label">券種と料金（先頭がデフォルト券種）</span>
+          {types.map((draft) => (
+            <div key={draft.id} className="type-editor-row" data-type-editor-row={draft.id}>
+              <input
+                type="text"
+                aria-label="券種名"
+                placeholder="例：大人"
+                value={draft.name}
+                onChange={(e) => updateType(draft.id, { name: e.target.value })}
+              />
+              <span className="type-editor-price">
+                <input
+                  type="number"
+                  aria-label="料金（円）"
+                  min={0}
+                  step={100}
+                  value={draft.price}
+                  onChange={(e) => updateType(draft.id, { price: e.target.value })}
+                />
+                <span className="yen-unit">円</span>
+              </span>
+              {confirmingTypeDelete === draft.id ? (
+                <span className="cancel-confirm">
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-small"
+                    data-type-delete-confirm={draft.id}
+                    onClick={() => deleteType(draft.id)}
+                  >
+                    削除する
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => setConfirmingTypeDelete(null)}
+                  >
+                    やめる
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-type-delete={draft.id}
+                  disabled={types.length <= 1}
+                  onClick={() => setConfirmingTypeDelete(draft.id)}
+                >
+                  削除
+                </button>
+              )}
+            </div>
+          ))}
+          {confirmingTypeDelete && (
+            <p className="muted small">
+              ※券種を削除しても、すでに記録された予約の券種名・料金・合計はそのまま残ります
+              （新しい予約でこの券種が選べなくなるだけです）。
+            </p>
+          )}
+          <button type="button" className="btn btn-ghost btn-small" onClick={addType}>
+            ＋ 券種を追加
+          </button>
+        </div>
+        <label className="field">
+          <span>料金注記（お客様画面の券種選択付近に表示されます）</span>
+          <input
+            type="text"
+            value={priceNote}
+            onChange={(e) => setPriceNote(e.target.value)}
+            placeholder="例：子供料金は小学生以下が対象です"
+          />
+        </label>
         <label className="field">
           <span>メモ（お客様画面にも表示されます）</span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />

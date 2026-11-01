@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ALL_SEATS } from './data/seats'
 import {
   formatPerformanceWhen,
-  formatYen,
+  formatTicketTypes,
   seatStatus,
   type Performance,
 } from './lib/logic'
@@ -21,8 +21,9 @@ function TopHeader({ perf, onStaff }: { perf: Performance; onStaff: () => void }
       <h1 className="site-title">{perf.name}</h1>
       <p className="site-when">{formatPerformanceWhen(perf)}</p>
       <p className="site-meta">
-        料金：1席 {formatYen(perf.price)}（当日現金払い） ／ 空席 {available}席
+        料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席
       </p>
+      {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
       {perf.note && <p className="site-note">{perf.note}</p>}
       <button type="button" className="staff-link" onClick={onStaff}>
         スタッフ用
