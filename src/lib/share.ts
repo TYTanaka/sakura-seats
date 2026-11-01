@@ -8,7 +8,7 @@ import {
 
 /**
  * 予約完了後の「自分の控え」用リンク生成。
- * - Gmailで自分に送る: mailto リンク（宛先は空。お客様自身のアドレスを入れて送る）
+ * - Gmailで自分に送る: Gmail の作成画面URL（件名・本文をプリフィル。宛先はお客様自身で入力）
  * - カレンダーに追加: Google カレンダーのイベント作成テンプレートURL
  *   （公演の所要時間は仮に2時間として登録する）
  */
@@ -19,7 +19,7 @@ function seatLines(reservation: Reservation): string {
     .join('\n')
 }
 
-export function buildMailtoUrl(perf: Performance, reservation: Reservation): string {
+export function buildGmailUrl(perf: Performance, reservation: Reservation): string {
   const subject = `【予約控え】${perf.name} 予約番号 ${reservation.id}`
   const body = [
     `${perf.name} のご予約控えです。`,
@@ -35,7 +35,7 @@ export function buildMailtoUrl(perf: Performance, reservation: Reservation): str
     '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
     '変更・キャンセルは主催者までご連絡ください。',
   ].join('\n')
-  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  return `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 /** 'YYYY-MM-DD' + 'HH:mm' から Google カレンダー形式 (YYYYMMDDTHHmmss) を作る */

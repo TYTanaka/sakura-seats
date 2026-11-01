@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ALL_SEATS, seatById, type Floor, type SeatDef } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
@@ -6,7 +6,6 @@ import {
   defaultTicketType,
   findTicketType,
   formatPerformanceWhen,
-  formatTicketTypes,
   formatYen,
   isBookingClosed,
   seatStatus,
@@ -14,7 +13,9 @@ import {
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
-import { buildCalendarUrl, buildMailtoUrl } from '../lib/share'
+import { buildCalendarUrl, buildGmailUrl } from '../lib/share'
+import flyerUrl from '../assets/flyer.webp'
+import flyerJpgUrl from '../assets/flyer.jpg'
 import SeatMap, { SeatLegend, type SeatVisualState, type SeatZoom } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
@@ -35,6 +36,18 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  /** 画面下部固定の選択バーの高さ（本文側に同じ高さの余白を確保して隠れを防ぐ） */
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const [barHeight, setBarHeight] = useState(0)
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const update = () => setBarHeight(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [step])
 
   const closed = isBookingClosed(data)
   const remainingByFloor = availableCountByFloor(data)
@@ -144,7 +157,9 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           <a
             className="btn btn-ghost"
             data-share="mailto"
-            href={buildMailtoUrl(perf, completed)}
+            href={buildGmailUrl(perf, completed)}
+            target="_blank"
+            rel="noreferrer"
           >
             ✉ Gmailで自分に送る
           </a>
@@ -171,14 +186,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
   return (
     <div className="book-flow">
-      <section className="card perf-summary">
-        <h2>{perf.name}</h2>
-        <p className="perf-when">{formatPerformanceWhen(perf)}</p>
-        <p className="perf-price">料金：{formatTicketTypes(perf)}（当日現金払い）</p>
-        {perf.priceNote && <p className="muted small">※{perf.priceNote}</p>}
-        {perf.note && <p className="muted">{perf.note}</p>}
-      </section>
-
       {step === 'seats' && (
         <>
           <section className="card seat-picker">
@@ -225,6 +232,11 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 ))}
               </div>
             </div>
+            {zoom === 'fit' && (
+              <p className="fit-hint">
+                全体表示は俯瞰用です。細かく選ぶときは100%表示がおすすめです
+              </p>
+            )}
             <SeatLegend />
             <SeatMap
               floor={floor}
@@ -238,7 +250,27 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               {ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
           </section>
-          <div className="selection-bar">
+          <section className="card poster-card">
+            <h3>公演ポスター</h3>
+            <a
+              className="poster-link"
+              href={flyerUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="公演ポスターを大きく見る"
+            >
+              <picture>
+                <source srcSet={flyerUrl} type="image/webp" />
+                <img
+                  src={flyerJpgUrl}
+                  alt="劇団ツインリーブス 2027年5月公演 ポスター"
+                  loading="lazy"
+                />
+              </picture>
+            </a>
+            <p className="poster-caption">劇団ツインリーブス 2027年5月公演</p>
+          </section>
+          <div className="selection-bar" ref={barRef}>
             {selected.length === 0 ? (
               <p className="selection-empty">座席表から席を選んでください（最大{MAX_ONLINE_SEATS}席）</p>
             ) : (
@@ -274,6 +306,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               申込手続きへ進む
             </button>
           </div>
+          <div aria-hidden="true" style={{ height: barHeight + 12 }} />
         </>
       )}
 
@@ -343,7 +376,14 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </label>
             {error && <p className="error-text">{error}</p>}
             <div className="btn-row">
-              <button type="button" className="btn btn-ghost" onClick={() => setStep('seats')}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setError('')
+                  setStep('seats')
+                }}
+              >
                 席の選択に戻る
               </button>
               <button type="submit" className="btn btn-primary">

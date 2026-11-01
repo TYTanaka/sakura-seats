@@ -1,24 +1,24 @@
 :root {
-  /* さくらピンクのパステルテーマ */
-  --burgundy: #c2436f; /* 見出し・主要テキスト用ディープピンク */
-  --burgundy-deep: #93355a; /* ステージ幕用さらに深いピンク */
-  --burgundy-soft: #f472a0; /* プライマリピンク */
-  --pink: #f472a0;
-  --pink-soft: #f78fb3;
-  --pink-pale: #fdeef4;
-  --gold: #e5a83b; /* ソフトゴールド（見切れ・注意系アクセント） */
+  /* 星空×絵本テーマ（おとぎ話管理局の夜空と絵本のページ） */
+  --burgundy: #4a3a8c; /* 見出し・主要テキスト用ディープバイオレット */
+  --burgundy-deep: #241a4d; /* ステージ幕用ディープインディゴ */
+  --burgundy-soft: #7c5cbf; /* プライマリバイオレット */
+  --pink: #7c5cbf;
+  --pink-soft: #9a7fd4;
+  --pink-pale: #efeafd;
+  --gold: #e9b949; /* 星の金（おすすめ・差し色） */
   --mint: #5ec8a7;
   --mint-pale: #e2f6ee;
   --lavender: #8e7cc3;
   --lavender-pale: #f1ecfb;
-  --ivory: #fff9f3; /* クリーム背景 */
-  --paper: #fffefb;
-  --ink: #4a2e3a;
-  --muted: #a07c90;
-  --line: #f3d3df;
+  --ivory: #fbf6ee; /* 絵本のページのようなクリーム背景 */
+  --paper: #fffdf8;
+  --ink: #322a4a;
+  --muted: #857a9e;
+  --line: #ddd2ee;
   --error: #d6455b;
   --success: #2f9e66;
-  --shadow-pink: 0 4px 16px rgba(244, 114, 160, 0.14);
+  --shadow-pink: 0 4px 16px rgba(91, 75, 158, 0.14);
 }
 
 * {
@@ -62,45 +62,60 @@ textarea {
   position: relative;
   overflow: hidden;
   margin: 0 -12px 16px;
-  padding: 26px 18px 22px;
+  padding: 16px 18px 22px;
   text-align: center;
-  color: #fff5f8;
-  background: linear-gradient(160deg, #f78fb3 0%, #f472a0 55%, #e7548c 100%);
-  border-bottom: 4px solid #ffd9a8;
+  color: #ffffff;
+  background: linear-gradient(180deg, #1a1545 0%, #33256e 55%, #241a4d 100%);
+  border-bottom: 4px solid var(--gold);
   border-radius: 0 0 28px 28px;
-  box-shadow: 0 6px 20px rgba(244, 114, 160, 0.28);
+  box-shadow: 0 6px 20px rgba(36, 26, 77, 0.35);
 }
 
-.site-header::before,
-.site-header::after {
+/* ヒーロー背景：公演フライヤー全面＋夜空グラデーションのオーバーレイ */
+.hero-art {
   position: absolute;
-  top: 14px;
-  font-size: 20px;
-  color: rgba(255, 255, 255, 0.55);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 16%;
   pointer-events: none;
 }
 
-.site-header::before {
-  content: '♪';
-  left: 16px;
-  transform: rotate(-10deg);
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(24, 18, 64, 0.42) 0%,
+    rgba(32, 22, 82, 0.58) 48%,
+    rgba(26, 18, 66, 0.78) 100%
+  );
+  pointer-events: none;
 }
 
-.site-header::after {
-  content: '♫';
-  left: 44px;
-  top: 34px;
-  font-size: 15px;
-  transform: rotate(8deg);
+.hero-content {
+  position: relative;
+}
+
+/* ヘッダー最上段：会場名（左）とアクション（右）の flex 行 */
+.header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  text-align: left;
 }
 
 .venue-line {
-  margin: 0 0 6px;
-  padding: 0 84px;
+  margin: 2px 0 0;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: #ffe9f1;
+  line-height: 1.5;
+  color: #e8defc;
+  text-shadow: 0 1px 6px rgba(10, 6, 32, 0.65);
 }
 
 .site-title {
@@ -108,20 +123,22 @@ textarea {
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  text-shadow: 0 2px 0 rgba(147, 53, 90, 0.25);
+  text-shadow: 0 2px 10px rgba(10, 6, 32, 0.7);
 }
 
 .site-when {
   margin: 0 0 6px;
   font-size: 17px;
   font-weight: 800;
+  text-shadow: 0 1px 8px rgba(10, 6, 32, 0.7);
 }
 
 .site-meta {
   margin: 0;
   font-size: 13px;
   font-weight: 500;
-  color: #ffedf3;
+  color: #f2ecff;
+  text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
 }
 
 .site-note {
@@ -129,24 +146,24 @@ textarea {
   max-width: 560px;
   font-size: 12.5px;
   line-height: 1.6;
-  color: #ffe4ee;
+  color: #e9e2fb;
+  text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
 }
 
 .staff-link {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+  flex: none;
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 700;
-  color: #fff5f8;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1.5px solid rgba(255, 245, 248, 0.8);
+  color: #ffffff;
+  background: rgba(20, 14, 52, 0.38);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
   border-radius: 999px;
+  text-shadow: 0 1px 4px rgba(10, 6, 32, 0.6);
 }
 
 .staff-link:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* ---------- 共通 ---------- */
@@ -207,9 +224,9 @@ textarea {
 }
 
 .btn-primary {
-  background: linear-gradient(160deg, var(--pink-soft), var(--pink));
+  background: linear-gradient(160deg, #5b4b9e, var(--pink) 60%, #9a5fc0);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(244, 114, 160, 0.4);
+  box-shadow: 0 4px 12px rgba(91, 75, 158, 0.4);
 }
 
 .btn-primary:disabled {
@@ -221,7 +238,7 @@ textarea {
 .btn-ghost {
   background: #fff;
   color: var(--burgundy);
-  border-color: #f2b9cd;
+  border-color: #c9bce9;
 }
 
 .btn-danger {
@@ -276,7 +293,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #8a5a6e;
+  color: #6a5a94;
 }
 
 .field input,
@@ -284,7 +301,7 @@ textarea {
 .field textarea {
   width: 100%;
   padding: 11px 12px;
-  border: 1.5px solid #f0c4d4;
+  border: 1.5px solid #d5c9ef;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -296,7 +313,7 @@ textarea {
 .field textarea:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(247, 143, 179, 0.3);
+  box-shadow: 0 0 0 3px rgba(154, 127, 212, 0.3);
 }
 
 .field textarea {
@@ -318,7 +335,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #8a5a6e;
+  color: #6a5a94;
 }
 
 .required {
@@ -345,19 +362,30 @@ textarea {
   accent-color: var(--pink);
 }
 
-/* ---------- 公演サマリ ---------- */
+/* ---------- 公演ポスター ---------- */
 
-.perf-summary h2 {
-  font-size: 20px;
+.poster-card {
+  text-align: center;
 }
 
-.perf-when {
-  margin: 0 0 4px;
+.poster-link {
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(36, 26, 77, 0.3);
+}
+
+.poster-link img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.poster-caption {
+  margin: 10px 0 0;
+  font-size: 13px;
   font-weight: 700;
-}
-
-.perf-price {
-  margin: 0 0 4px;
+  color: var(--muted);
 }
 
 /* ---------- 座席表 ---------- */
@@ -391,7 +419,7 @@ textarea {
 .floor-tab.active {
   background: var(--pink);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(244, 114, 160, 0.4);
+  box-shadow: 0 2px 8px rgba(124, 92, 191, 0.4);
 }
 
 .zoom-controls {
@@ -400,7 +428,7 @@ textarea {
 }
 
 .zoom-btn {
-  border: 1.5px solid #f0c4d4;
+  border: 1.5px solid #d5c9ef;
   background: #fff;
   padding: 6px 10px;
   border-radius: 999px;
@@ -464,13 +492,14 @@ textarea {
   padding: 10px 0 12px;
   margin-bottom: 14px;
   border-radius: 12px 12px 40px 40px / 12px 12px 22px 22px;
-  background: linear-gradient(180deg, var(--burgundy-deep), #c2436f);
-  color: #ffd9e6;
+  border-bottom: 3px solid var(--gold);
+  background: linear-gradient(180deg, #171038, var(--burgundy-deep) 70%, #372a6e);
+  color: #f6e7bd;
   font-weight: 800;
   letter-spacing: 0.6em;
   text-indent: 0.6em;
   font-size: 14px;
-  box-shadow: 0 4px 12px rgba(147, 53, 90, 0.3);
+  box-shadow: 0 4px 12px rgba(36, 26, 77, 0.35);
 }
 
 .stage::before,
@@ -481,7 +510,7 @@ textarea {
   letter-spacing: 0;
   text-indent: 0;
   font-size: 13px;
-  color: rgba(255, 217, 230, 0.75);
+  color: rgba(233, 185, 73, 0.8);
 }
 
 .stage::before {
@@ -529,7 +558,7 @@ textarea {
 .aisle-note {
   text-align: center;
   font-size: 11px;
-  color: #cfa9b8;
+  color: #b3a6cc;
   margin: 6px 0;
   letter-spacing: 0.3em;
 }
@@ -570,7 +599,7 @@ textarea {
   border-radius: 35%;
   border: 1.5px solid var(--pink-soft);
   background: #fff;
-  color: #c2436f;
+  color: #5b4b9e;
   font-weight: 800;
   padding: 0;
   line-height: 1;
@@ -579,7 +608,7 @@ textarea {
 .seat-available {
   background: #fff;
   border: 1.5px solid var(--pink-soft);
-  box-shadow: 0 1px 3px rgba(244, 114, 160, 0.18);
+  box-shadow: 0 1px 3px rgba(124, 92, 191, 0.18);
 }
 
 button.seat-available:hover {
@@ -587,10 +616,10 @@ button.seat-available:hover {
 }
 
 .seat-selected {
-  background: linear-gradient(160deg, var(--pink-soft), var(--pink));
-  border-color: #e7548c;
+  background: linear-gradient(160deg, var(--pink) 20%, #d9578b);
+  border-color: #5b4b9e;
   color: #fff;
-  box-shadow: 0 3px 8px rgba(244, 114, 160, 0.5);
+  box-shadow: 0 3px 8px rgba(124, 92, 191, 0.55);
 }
 
 .seat-reserved {
@@ -633,16 +662,31 @@ button.seat-available:hover {
   font-weight: 800;
 }
 
-/* ---------- 選択バー ---------- */
+/* ---------- 選択バー（画面下部に固定。座席表や階タブには重ならない） ---------- */
 
 .selection-bar {
-  position: sticky;
-  bottom: 10px;
-  background: #fff7fa;
-  border: 2px dashed #f2a9c4;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(856px, calc(100% - 24px));
+  z-index: 40;
+  background: #fdfaff;
+  border: 2px dashed #b7a6e0;
   border-radius: 20px;
   padding: 12px 14px;
-  box-shadow: 0 8px 24px rgba(194, 67, 111, 0.18);
+  box-shadow: 0 8px 24px rgba(74, 58, 140, 0.22);
+}
+
+.fit-hint {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: #fdf6dd;
+  border: 1.5px dashed var(--gold);
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #7a5c10;
 }
 
 .selection-empty {
@@ -712,11 +756,11 @@ button.seat-available:hover {
   margin: 0 0 10px;
   padding: 7px 18px;
   border-radius: 999px;
-  background: linear-gradient(160deg, var(--pink-soft), var(--pink));
+  background: linear-gradient(160deg, #5b4b9e, var(--pink));
   color: #fff;
   font-weight: 800;
   font-size: 14px;
-  box-shadow: 0 3px 10px rgba(244, 114, 160, 0.4);
+  box-shadow: 0 3px 10px rgba(91, 75, 158, 0.4);
 }
 
 .done-lead {
@@ -776,7 +820,7 @@ button.seat-available:hover {
 }
 
 .staff-tab {
-  border: 1.5px solid #f0c4d4;
+  border: 1.5px solid #d5c9ef;
   background: #fff;
   color: var(--muted);
   padding: 9px 16px;
@@ -789,7 +833,7 @@ button.seat-available:hover {
   background: var(--pink);
   border-color: var(--pink);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(244, 114, 160, 0.35);
+  box-shadow: 0 2px 8px rgba(124, 92, 191, 0.35);
 }
 
 .reservation-list {
@@ -955,7 +999,7 @@ button.seat-available:hover {
 .seg-btn.active {
   background: var(--pink);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(244, 114, 160, 0.35);
+  box-shadow: 0 2px 6px rgba(124, 92, 191, 0.35);
 }
 
 .detail-seat-line {
@@ -1004,7 +1048,7 @@ button.seat-available:hover {
   flex: 1 1 auto;
   min-width: 0;
   padding: 11px 12px;
-  border: 1.5px solid #f0c4d4;
+  border: 1.5px solid #d5c9ef;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1021,7 +1065,7 @@ button.seat-available:hover {
 .type-editor-price input {
   width: 96px;
   padding: 11px 10px;
-  border: 1.5px solid #f0c4d4;
+  border: 1.5px solid #d5c9ef;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1032,7 +1076,7 @@ button.seat-available:hover {
 .type-editor-price input:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(247, 143, 179, 0.3);
+  box-shadow: 0 0 0 3px rgba(154, 127, 212, 0.3);
 }
 
 .yen-unit {
@@ -1074,8 +1118,9 @@ button.seat-available:hover {
 .header-actions {
   display: flex;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
+  flex: none;
 }
 
 /* おすすめ席: 空席のときだけ柔らかい金色ティント */

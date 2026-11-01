@@ -103,7 +103,7 @@ export function defaultPerformance(): Performance {
     time: '13:00',
     ticketTypes: defaultTicketTypes(),
     priceNote: '子供料金は小学生以下が対象です。',
-    note: '試作用のサンプル公演です。スタッフ用画面の「公演設定」から公演名・日時・券種・料金を変更できます。',
+    note: '劇団ツインリーブス 2027年5月公演。おとぎ話の世界でお待ちしています！',
   }
 }
 

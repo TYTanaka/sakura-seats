@@ -7,6 +7,7 @@ import {
   type Performance,
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
+import flyerUrl from './assets/flyer.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
 import Staff from './components/Staff'
@@ -26,21 +27,27 @@ function TopHeader({
   const available = ALL_SEATS.filter((s) => seatStatus(data, s.id) === 'available').length
   return (
     <header className="site-header">
-      <p className="venue-line">戸塚区民文化センター さくらプラザ・ホール</p>
-      <h1 className="site-title">{perf.name}</h1>
-      <p className="site-when">{formatPerformanceWhen(perf)}</p>
-      <p className="site-meta">
-        料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席
-      </p>
-      {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
-      {perf.note && <p className="site-note">{perf.note}</p>}
-      <div className="header-actions">
-        <button type="button" className="staff-link" onClick={onLookup}>
-          予約確認
-        </button>
-        <button type="button" className="staff-link" onClick={onStaff}>
-          スタッフ用
-        </button>
+      <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
+      <div className="hero-overlay" aria-hidden="true" />
+      <div className="hero-content">
+        <div className="header-top">
+          <p className="venue-line">戸塚区民文化センター さくらプラザ・ホール</p>
+          <div className="header-actions">
+            <button type="button" className="staff-link" onClick={onLookup}>
+              予約確認
+            </button>
+            <button type="button" className="staff-link" onClick={onStaff}>
+              スタッフ用
+            </button>
+          </div>
+        </div>
+        <h1 className="site-title">{perf.name}</h1>
+        <p className="site-when">{formatPerformanceWhen(perf)}</p>
+        <p className="site-meta">
+          料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席
+        </p>
+        {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
+        {perf.note && <p className="site-note">{perf.note}</p>}
       </div>
     </header>
   )
