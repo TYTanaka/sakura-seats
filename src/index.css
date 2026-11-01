@@ -1,0 +1,827 @@
+:root {
+  --burgundy: #6d1f2c;
+  --burgundy-deep: #47121d;
+  --burgundy-soft: #8c3a48;
+  --gold: #c19a3d;
+  --ivory: #faf6ee;
+  --paper: #fffdf9;
+  --ink: #33261f;
+  --muted: #7a6a58;
+  --line: #e7dbc2;
+  --error: #b3261e;
+  --success: #2e6b34;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--ivory);
+  color: var(--ink);
+  font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 12px 40px;
+}
+
+/* ---------- ヘッダー ---------- */
+
+.site-header {
+  position: relative;
+  margin: 0 -12px 16px;
+  padding: 26px 18px 22px;
+  text-align: center;
+  color: #fdf6e9;
+  background: linear-gradient(160deg, var(--burgundy) 0%, var(--burgundy-deep) 100%);
+  border-bottom: 3px solid var(--gold);
+  border-radius: 0 0 20px 20px;
+}
+
+.venue-line {
+  margin: 0 0 6px;
+  padding: 0 84px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: #e8cf9a;
+}
+
+.site-title {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.site-when {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.site-meta {
+  margin: 0;
+  font-size: 13px;
+  color: #f3e3c2;
+}
+
+.site-note {
+  margin: 10px auto 0;
+  max-width: 560px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #efe0bd;
+}
+
+.staff-link {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f3e3c2;
+  background: transparent;
+  border: 1px solid rgba(243, 227, 194, 0.65);
+  border-radius: 999px;
+}
+
+.staff-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- 共通 ---------- */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 10px rgba(71, 18, 29, 0.05);
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 10px;
+  color: var(--burgundy);
+}
+
+.card h4 {
+  margin: 16px 0 8px;
+  color: var(--burgundy);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 12.5px;
+}
+
+.error-text {
+  color: var(--error);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.success-text {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: linear-gradient(160deg, var(--burgundy-soft), var(--burgundy));
+  color: #fff8ec;
+  box-shadow: 0 3px 10px rgba(109, 31, 44, 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--burgundy);
+  border-color: #cdbb9a;
+}
+
+.btn-danger {
+  background: var(--error);
+  color: #fff;
+}
+
+.btn-small {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.back-btn {
+  margin-bottom: 10px;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+
+.site-footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 8px 4px 0;
+}
+
+/* ---------- フォーム ---------- */
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6b5744;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d8c9ae;
+  border-radius: 10px;
+  font-size: 16px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.required {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.check-line input {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- 公演サマリ ---------- */
+
+.perf-summary h2 {
+  font-size: 20px;
+}
+
+.perf-when {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.perf-price {
+  margin: 0 0 4px;
+}
+
+/* ---------- 座席表 ---------- */
+
+.seat-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.floor-tabs {
+  display: inline-flex;
+  background: #f1e7d0;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.floor-tab {
+  border: none;
+  background: transparent;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.floor-tab.active {
+  background: var(--burgundy);
+  color: #fff8ec;
+}
+
+.zoom-controls {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.zoom-btn {
+  border: 1px solid #d8c9ae;
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.zoom-btn.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #3a2a05;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px 4px 2px 2px;
+  display: inline-block;
+}
+
+.seatmap-scroll {
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.seatmap {
+  width: max-content;
+  margin: 0 auto;
+}
+
+.stage {
+  text-align: center;
+  padding: 8px 0;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #3d0f1a, #5c1a28);
+  color: #e8cf9a;
+  font-weight: 800;
+  letter-spacing: 0.6em;
+  text-indent: 0.6em;
+  font-size: 14px;
+}
+
+.seat-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.row-label {
+  flex: 0 0 44px;
+  text-align: right;
+  padding-right: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.seat-block {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.seat-block.block-center,
+.seat-block.block-right {
+  margin-left: 16px;
+}
+
+.special-note {
+  margin-left: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.aisle-note {
+  text-align: center;
+  font-size: 11px;
+  color: #b3a184;
+  margin: 6px 0;
+  letter-spacing: 0.3em;
+}
+
+.floor2-wrap {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.side-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.floor2-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 0 48px;
+}
+
+.seat {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px 6px 2px 2px;
+  border: 1px solid #b98a94;
+  background: #fffdf8;
+  color: #5a2330;
+  font-weight: 700;
+  padding: 0;
+  line-height: 1;
+}
+
+.seat-available {
+  background: #fffdf8;
+  border: 1px solid #b98a94;
+}
+
+button.seat-available:hover {
+  background: #f7e8ea;
+}
+
+.seat-selected {
+  background: linear-gradient(160deg, #ecc95c, var(--gold));
+  border-color: #a87e14;
+  color: #3a2a05;
+}
+
+.seat-reserved {
+  background: #a89a86;
+  border-color: #8d7d66;
+  color: #fff;
+}
+
+.seat-paid {
+  background: var(--burgundy);
+  border-color: var(--burgundy-deep);
+  color: #ffe9ec;
+}
+
+.seat-blocked {
+  background: repeating-linear-gradient(
+    45deg,
+    #e9e1cf,
+    #e9e1cf 4px,
+    #ddd1b8 4px,
+    #ddd1b8 8px
+  );
+  border-color: #c9ba97;
+  color: #a08d64;
+}
+
+.seat-star {
+  position: absolute;
+  top: -3px;
+  right: -1px;
+  font-size: 9px;
+  color: #c2571b;
+  font-weight: 800;
+}
+
+/* ---------- 選択バー ---------- */
+
+.selection-bar {
+  position: sticky;
+  bottom: 10px;
+  background: #fff8ea;
+  border: 1px solid var(--gold);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 20px rgba(71, 18, 29, 0.16);
+}
+
+.selection-empty {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.selection-seats {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.selection-total {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+.selection-warn {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #c2571b;
+}
+
+/* ---------- 詳細リスト・完了画面 ---------- */
+
+.detail-list {
+  margin: 0 0 14px;
+}
+
+.detail-list > div {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.detail-list dt {
+  flex: 0 0 76px;
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.detail-list dd {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.detail-total {
+  font-weight: 800;
+  color: var(--burgundy);
+  font-size: 17px;
+}
+
+.done-card {
+  text-align: center;
+}
+
+.done-badge {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--burgundy);
+  color: #fff8ec;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.done-lead {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.reservation-code {
+  margin: 6px 0 16px;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--burgundy);
+}
+
+.done-card .detail-list {
+  text-align: left;
+}
+
+.notice-box {
+  background: #fdf3d7;
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  text-align: left;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.notice-box p {
+  margin: 0;
+}
+
+/* ---------- スタッフ ---------- */
+
+.prototype-note {
+  margin: 0;
+  padding: 8px 12px;
+  background: #fdf3d7;
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #6d5518;
+}
+
+.staff-head {
+  margin-bottom: 12px;
+}
+
+.staff-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.staff-tab {
+  border: 1px solid #d8c9ae;
+  background: #fff;
+  color: var(--muted);
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.staff-tab.active {
+  background: var(--burgundy);
+  border-color: var(--burgundy);
+  color: #fff8ec;
+}
+
+.reservation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reservation-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.reservation-item.is-cancelled {
+  opacity: 0.55;
+}
+
+.reservation-title {
+  margin: 0 0 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.reservation-code-small {
+  font-weight: 800;
+  color: var(--burgundy);
+  letter-spacing: 0.04em;
+}
+
+.reservation-name {
+  font-weight: 700;
+}
+
+.source-badge {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: #eef2e4;
+  color: #47631f;
+  border: 1px solid #c4d2a4;
+}
+
+.source-badge.source-door {
+  background: #fdeeda;
+  color: #8a5a12;
+  border-color: #ecca8f;
+}
+
+.source-badge.source-cancelled {
+  background: #eee;
+  color: #666;
+  border-color: #ccc;
+}
+
+.reservation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.toggle-btn {
+  min-height: 38px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--burgundy-soft);
+  background: #fff;
+  color: var(--burgundy);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.toggle-btn.on {
+  background: var(--burgundy);
+  color: #fff8ec;
+}
+
+.cancel-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--error);
+}
+
+.row-toggle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row-toggle-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.row-toggle-btns {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.summary-item {
+  background: #faf3e3;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--muted);
+}

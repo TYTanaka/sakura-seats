@@ -1,0 +1,1 @@
+{"compilerOptions":{"allowImportingTsExtensions":true,"forceConsistentCasingInFileNames":true,"lib":["ES2023"],"module":"ESNext","moduleDetection":"force","moduleResolution":"bundler","noEmit":true,"skipLibCheck":true,"strict":true,"target":"ES2022","verbatimModuleSyntax":true},"include":["vite.config.ts"]}
