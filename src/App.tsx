@@ -14,8 +14,8 @@ import { StoreProvider, useStore } from './lib/store'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
 import {
-  clearLastReservation,
-  loadLastReservation,
+  loadLastReservations,
+  removeLastReservation,
   LAST_RESERVATION_EVENT,
   type LastReservationSnapshot,
 } from './lib/lastReservation'
@@ -27,8 +27,19 @@ import Staff from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
 
-/** 会場名（ヒーローと本日開演カードで共用） */
-const VENUE_NAME = '戸塚区民文化センター さくらプラザ・ホール'
+/**
+ * 会場名はフレーズ単位でのみ改行させる（R6）: 機種幅によって
+ * 「さくら / プラザ」のような文節の途中で割れないよう、2つのフレーズを
+ * nowrap の inline-block で並べ、割れるならフレーズの境目だけにする。
+ */
+function VenueName() {
+  return (
+    <>
+      <span className="venue-phrase">戸塚区民文化センター</span>{' '}
+      <span className="venue-phrase">さくらプラザ・ホール</span>
+    </>
+  )
+}
 
 /**
  * 劇団ツインリーブスの双葉マーク（ポスターのロゴにある2枚の葉）。
@@ -95,7 +106,9 @@ function TopHeader({
       <HeroSparkles />
       <div className="hero-content">
         <div className="header-top">
-          <p className="venue-line">{VENUE_NAME}</p>
+          <p className="venue-line">
+            <VenueName />
+          </p>
           <div className="header-actions">
             <button type="button" className="staff-link" onClick={onLookup}>
               予約確認
@@ -149,7 +162,9 @@ function TodayCard({ perf }: { perf: Performance }) {
       </div>
       <p className="today-times">
         開場 {perf.doorsOpen} ／ 開演 {perf.time}
-        <span className="today-venue">（{VENUE_NAME}）</span>
+        <span className="today-venue">
+          （<VenueName />）
+        </span>
       </p>
       <button
         type="button"
@@ -164,28 +179,28 @@ function TodayCard({ perf }: { perf: Performance }) {
 }
 
 /**
- * 「直前の予約」カード（R4・F3）: この端末で直近に完了した予約の控え。
- * 完了画面がリロードで消えても、ここから予約番号・座席・QRを再表示できる。
- * 最新の状態（支払い・キャンセル等）はスナップショットでは分からないため、
- * 予約確認への導線を併記する。
- * 通常は QR を小さなサムネイルで出すコンパクト表示にし（R5-3: 当日の
- * カード積み重なりで座席表が遠くならないように）、タップでその場に
- * 大きな QR を展開する。完了画面の QR は従来どおり大きいまま。
+ * 控え1件分（R6）: QR サムネイル＋要約＋小さな「控えを消す」。
+ * 消去は誤操作防止のため2段階にする: 小さなテキストボタンを押すと
+ * その場が確認表示（本当に消しますか？／消す／やめる）に切り替わり、
+ * 約4秒放置か他の場所のタップで自動的に元へ戻る。1回のタップでは消えない。
  */
-function LastReservationCard({ onLookup }: { onLookup: () => void }) {
-  const [snapshot, setSnapshot] = useState<LastReservationSnapshot | null>(loadLastReservation)
+function SavedReservationItem({
+  snapshot,
+  confirming,
+  onArmRemove,
+  onCancelRemove,
+  onConfirmRemove,
+}: {
+  snapshot: LastReservationSnapshot
+  confirming: boolean
+  onArmRemove: () => void
+  onCancelRemove: () => void
+  onConfirmRemove: () => void
+}) {
   const [qrExpanded, setQrExpanded] = useState(false)
-  const qrUrl = useReservationQrUrl(snapshot?.code ?? '')
-  // 予約完了（保存）・消去のたびに読み直す
-  useEffect(() => {
-    const update = () => setSnapshot(loadLastReservation())
-    window.addEventListener(LAST_RESERVATION_EVENT, update)
-    return () => window.removeEventListener(LAST_RESERVATION_EVENT, update)
-  }, [])
-  if (!snapshot) return null
+  const qrUrl = useReservationQrUrl(snapshot.code)
   return (
-    <section className="card last-reservation-card" data-last-reservation>
-      <h3>直前の予約（この端末の控え）</h3>
+    <article className="last-res-item" data-last-reservation-item={snapshot.code}>
       <div className="last-res-main">
         <button
           type="button"
@@ -207,7 +222,38 @@ function LastReservationCard({ onLookup }: { onLookup: () => void }) {
           <span className="last-res-qr-hint">{qrExpanded ? 'QRを閉じる' : 'QRを拡大'}</span>
         </button>
         <div className="last-res-summary">
-          <p className="last-res-code">{snapshot.code}</p>
+          <div className="last-res-head">
+            <p className="last-res-code">{snapshot.code}</p>
+            {confirming ? (
+              <span className="last-res-confirm" data-last-reservation-remove-area>
+                <span className="last-res-confirm-text">本当に消しますか？</span>
+                <button
+                  type="button"
+                  className="last-res-confirm-btn is-danger"
+                  data-last-reservation-remove-confirm
+                  onClick={onConfirmRemove}
+                >
+                  消す
+                </button>
+                <button
+                  type="button"
+                  className="last-res-confirm-btn"
+                  onClick={onCancelRemove}
+                >
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="last-res-remove"
+                data-last-reservation-remove
+                onClick={onArmRemove}
+              >
+                控えを消す
+              </button>
+            )}
+          </div>
           <p className="last-res-line">
             {snapshot.performanceName} ／ {snapshot.whenText}
           </p>
@@ -216,23 +262,73 @@ function LastReservationCard({ onLookup }: { onLookup: () => void }) {
         </div>
       </div>
       {qrExpanded && <ReservationQr code={snapshot.code} />}
+    </article>
+  )
+}
+
+/**
+ * 「この端末で予約した控え」一覧（R4・F3 のリスト化 / R6）: この端末で
+ * 完了した予約の控えを新しい順に並べる。完了画面がリロードで消えても、
+ * ここから予約番号・座席・QRを再表示できる。1人で2回以上買っても
+ * 前の控えは消えない（保持上限つき）。
+ * 最新の状態（支払い・キャンセル等）はスナップショットでは分からないため、
+ * 予約確認への導線を併記する。
+ * 各カードは QR を小さなサムネイルで出すコンパクト表示にし（R5-3: 当日の
+ * カード積み重なりで座席表が遠くならないように）、タップでその場に
+ * 大きな QR を展開する。完了画面の QR は従来どおり大きいまま。
+ */
+function SavedReservations({ onLookup }: { onLookup: () => void }) {
+  const [items, setItems] = useState<LastReservationSnapshot[]>(loadLastReservations)
+  const [confirmingCode, setConfirmingCode] = useState<string | null>(null)
+  // 予約完了（保存）・削除のたびに読み直す
+  useEffect(() => {
+    const update = () => setItems(loadLastReservations())
+    window.addEventListener(LAST_RESERVATION_EVENT, update)
+    return () => window.removeEventListener(LAST_RESERVATION_EVENT, update)
+  }, [])
+  // 消去の確認表示は約4秒で自動的に戻す＋他の場所をタップしても戻す
+  useEffect(() => {
+    if (!confirmingCode) return
+    const timer = window.setTimeout(() => setConfirmingCode(null), 4000)
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null
+      if (
+        target?.closest('[data-last-reservation-remove-area]') ||
+        target?.closest('[data-last-reservation-remove]')
+      ) {
+        return
+      }
+      setConfirmingCode(null)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [confirmingCode])
+  if (items.length === 0) return null
+  return (
+    <section className="card last-reservation-card" data-last-reservation>
+      <h3>この端末で予約した控え</h3>
+      {items.map((snapshot) => (
+        <SavedReservationItem
+          key={snapshot.code}
+          snapshot={snapshot}
+          confirming={confirmingCode === snapshot.code}
+          onArmRemove={() => setConfirmingCode(snapshot.code)}
+          onCancelRemove={() => setConfirmingCode(null)}
+          onConfirmRemove={() => {
+            removeLastReservation(snapshot.code)
+            setConfirmingCode(null)
+          }}
+        />
+      ))}
       <p className="muted small">
         最新の状態（お支払い・キャンセルの反映）は「予約確認」でご確認ください。
       </p>
       <div className="btn-row">
         <button type="button" className="btn btn-primary" onClick={onLookup}>
           予約確認で見る
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          data-last-reservation-clear
-          onClick={() => {
-            clearLastReservation()
-            setSnapshot(null)
-          }}
-        >
-          この表示を消す
         </button>
       </div>
     </section>
@@ -293,7 +389,7 @@ function Shell() {
           </p>
         )}
         {view === 'book' && perf.date === localDateString() && <TodayCard perf={perf} />}
-        {view === 'book' && <LastReservationCard onLookup={() => setView('lookup')} />}
+        {view === 'book' && <SavedReservations onLookup={() => setView('lookup')} />}
         {view === 'book' && <AudienceBook perf={perf} />}
         {view === 'lookup' && <Lookup onBack={() => setView('book')} />}
         {view === 'staff' && <Staff onExit={() => setView('book')} />}

@@ -16,7 +16,7 @@ import {
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import { useNow } from '../lib/useNow'
-import { saveLastReservation } from '../lib/lastReservation'
+import { addLastReservation } from '../lib/lastReservation'
 import {
   buildCalendarUrl,
   buildGmailUrl,
@@ -237,7 +237,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       })
       clearDraft()
       // 完了画面がリロードで消えても再表示できるよう、端末に控えを残す（R4・F3）
-      saveLastReservation({
+      // 2回目以降の予約でも前の控えは消さず、一覧へ追加する（R6）
+      addLastReservation({
         code: reservation.id,
         performanceName: perf.name,
         whenText: formatPerformanceWhen(perf),

@@ -100,7 +100,7 @@ textarea {
   position: relative;
   overflow: hidden;
   margin: 0 -12px 16px;
-  padding: 16px 18px 22px;
+  padding: 16px 18px 30px;
   text-align: center;
   color: #ffffff;
   background: linear-gradient(180deg, #0d0730 0%, #38197c 55%, #170b3d 100%);
@@ -180,45 +180,48 @@ textarea {
     0 0 2px rgba(255, 255, 255, 0.9);
 }
 
+/* 星の配置（R6）: 以前はヒーロー全面に散らしていたが、会場名やタイトルの
+   文字に重なって見えたため、全てヒーロー下端の余白帯（本文テキストより
+   下・金の縁取りの上）に沿わせる。本文には重ならない。 */
 .sparkle.sp-1 {
-  top: 12%;
-  left: 6%;
-  font-size: 15px;
+  bottom: 7px;
+  left: 5%;
+  font-size: 13px;
 }
 .sparkle.sp-2 {
-  top: 30%;
-  left: 16%;
-  font-size: 10px;
+  bottom: 15px;
+  left: 21%;
+  font-size: 9px;
   animation-delay: 0.7s;
 }
 .sparkle.sp-3 {
-  top: 10%;
-  right: 22%;
-  font-size: 12px;
+  bottom: 5px;
+  left: 38%;
+  font-size: 11px;
   animation-delay: 1.3s;
 }
 .sparkle.sp-4 {
-  top: 42%;
-  right: 7%;
-  font-size: 16px;
+  bottom: 13px;
+  right: 24%;
+  font-size: 9px;
   animation-delay: 0.4s;
 }
 .sparkle.sp-5 {
-  top: 62%;
-  left: 4%;
-  font-size: 11px;
+  bottom: 6px;
+  right: 12%;
+  font-size: 12px;
   animation-delay: 1.8s;
 }
 .sparkle.sp-6 {
-  top: 70%;
-  right: 16%;
+  bottom: 16px;
+  right: 5%;
   font-size: 10px;
   animation-delay: 2.2s;
 }
 .sparkle.sp-7 {
-  top: 24%;
-  left: 46%;
-  font-size: 9px;
+  bottom: 10px;
+  left: 56%;
+  font-size: 8px;
   animation-delay: 2.6s;
 }
 
@@ -260,6 +263,16 @@ textarea {
   text-align: left;
 }
 
+/* 極端に狭い幅（〜349px）だけ、アクション側を次の行に回して
+   会場名のフレーズが収まる場所を確保する（途中では割らない） */
+@media (max-width: 349px) {
+  .header-top {
+    flex-wrap: wrap;
+  }
+}
+
+
+
 .venue-line {
   margin: 2px 0 0;
   font-size: 12px;
@@ -268,6 +281,23 @@ textarea {
   line-height: 1.5;
   color: #e8defc;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.65);
+  /* 改行はフレーズの境目だけに許可（収まりきらない場合のみ文字単位も許す） */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 会場名のフレーズ単位（境目以外では絶対に割らない） */
+.venue-phrase {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* 狭幅では会場名の字間を少し詰め、実機フォントでもフレーズが
+   専有幅に収まる余裕を確保する */
+@media (max-width: 480px) {
+  .venue-line {
+    letter-spacing: 0.1em;
+  }
 }
 
 .site-title {
@@ -275,6 +305,8 @@ textarea {
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 0.04em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   text-shadow:
     0 2px 10px rgba(10, 6, 32, 0.7),
     0 0 24px rgba(245, 196, 81, 0.35);
@@ -284,6 +316,8 @@ textarea {
   margin: 0 0 6px;
   font-size: 17px;
   font-weight: 800;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   text-shadow: 0 1px 8px rgba(10, 6, 32, 0.7);
 }
 
@@ -2144,12 +2178,72 @@ button.seat-available:hover {
   min-width: 0;
 }
 
+/* 控え同士の区切り（2件目以降） */
+.last-res-item + .last-res-item {
+  margin-top: 14px;
+  border-top: 2px dashed var(--pink-soft);
+  padding-top: 14px;
+}
+
+/* 予約番号と「控えを消す」を同じ行に置き、縦の高さを増やさない */
+.last-res-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .last-res-code {
   margin: 0 0 4px;
   font-size: 24px;
   font-weight: 800;
   letter-spacing: 0.08em;
   color: var(--burgundy);
+}
+
+/* 「控えを消す」は誤操作されにくい小さなテキストボタン（R6） */
+.last-res-remove {
+  flex: none;
+  margin-top: 6px;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* 消去の確認表示（その場に小さく出す。2段階目で初めて消える） */
+.last-res-confirm {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+.last-res-confirm-btn {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--burgundy-soft);
+  cursor: pointer;
+}
+
+.last-res-confirm-btn.is-danger {
+  border-color: #d64570;
+  background: #d64570;
+  color: #fff;
 }
 
 .last-res-line {
