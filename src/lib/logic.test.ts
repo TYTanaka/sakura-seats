@@ -109,25 +109,24 @@ describe('支払いと集計', () => {
   })
 })
 
-describe('金額の記録と上書き（当日料金対応）', () => {
+describe('金額の記録（前売り・当日とも同一料金）', () => {
   it('オンライン予約の金額は単価×席数で記録される', () => {
     const { reservation } = reserveOnline(emptyData(), ['1F-5-12', '1F-5-13'])
     expect(reservation.amount).toBe(4000)
   })
 
-  it('当日販売では確定時に金額を上書きでき、集計は記録金額で計算される', () => {
-    // 単価2000円×2席 = 4000円のところを、当日料金として3500円で記録
+  it('当日販売の金額も単価×席数で記録され、集計は記録金額で計算される', () => {
+    // 当日販売でも金額は単価2000円×2席 = 4000円で固定（前売りと同額）
     const { data, reservation } = createReservation(emptyData(), {
       seatIds: ['1F-6-10', '1F-6-11'],
       name: '',
       phone: '',
       note: '',
       source: 'door',
-      amount: 3500,
     })
-    expect(reservation.amount).toBe(3500)
+    expect(reservation.amount).toBe(4000)
     const t = totals(data, ALL_IDS)
-    expect(t.salesTotal).toBe(3500)
+    expect(t.salesTotal).toBe(4000)
     expect(t.paidSeatCount).toBe(2)
   })
 

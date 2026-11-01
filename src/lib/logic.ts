@@ -28,7 +28,7 @@ export interface Reservation {
   phone: string
   note: string
   source: ReservationSource
-  /** 実際に記録された金額（円）。オンライン予約は単価×席数、当日販売はスタッフが上書き可能 */
+  /** 記録された金額（円）。常に公演単価×席数（前売り・当日とも同一料金） */
   amount: number
   checkedIn: boolean
   paid: boolean
@@ -87,7 +87,7 @@ export interface NewReservationInput {
   phone: string
   note: string
   source: ReservationSource
-  /** 金額の上書き（当日販売用）。省略時は公演単価×席数 */
+  /** 金額の明示指定。通常は省略し、公演単価×席数で記録される */
   amount?: number
 }
 
@@ -211,7 +211,7 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   let salesTotal = 0
   let unpaidTotal = 0
   for (const res of active) {
-    // 集計は「実際に記録された金額」で行う（当日販売の金額上書き・後の料金変更に影響されない）
+    // 集計は「記録された金額」で行う（後の料金変更に影響されない）
     if (res.paid) {
       paidSeatCount += res.seatIds.length
       salesTotal += res.amount
@@ -238,7 +238,7 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   }
 }
 
-/** 予約1件の金額（記録された金額。当日販売で上書きされた場合はその金額） */
+/** 予約1件の金額（記録された金額） */
 export function reservationTotal(reservation: Reservation): number {
   return reservation.amount
 }
