@@ -1,4 +1,4 @@
-import { SEAT_BY_ID } from '../data/seats'
+import { ALL_SEATS, SEAT_BY_ID, type Floor } from '../data/seats'
 
 /**
  * 予約・販売ロジック（純粋関数群）。
@@ -47,6 +47,8 @@ export interface ReservationItem {
 export interface Reservation {
   /** 予約番号 SK-0001 形式 */
   id: string
+  /** クラウドモード時の Supabase 行 UUID（ローカルモードでは未設定） */
+  cloudId?: string
   seatIds: string[]
   /** 席ごとの券種明細。seatIds と同じ順序・同じ席集合 */
   items: ReservationItem[]
@@ -69,6 +71,17 @@ export interface AppData {
   blocked: string[]
   /** 予約番号の採番カウンタ */
   seq: number
+  /**
+   * 予約締切（datetime-local 形式 'YYYY-MM-DDTHH:mm' または ISO文字列）。
+   * null は締切なし。過ぎたらオンライン予約は受け付けない（当日販売は影響なし）。
+   */
+  bookingDeadline: string | null
+  /**
+   * クラウドモード専用: サーバから取得した座席の占有状態。
+   * 設定されている場合は reservations よりこちらを優先して席状態を決める
+   * （お客様画面では他人の予約明細を持たないため）。
+   */
+  seatStates?: Record<string, 'reserved' | 'sold'>
 }
 
 export type SeatStatus = 'available' | 'reserved' | 'paid' | 'blocked'
@@ -95,7 +108,13 @@ export function defaultPerformance(): Performance {
 }
 
 export function emptyData(): AppData {
-  return { performance: defaultPerformance(), reservations: [], blocked: [], seq: 0 }
+  return {
+    performance: defaultPerformance(),
+    reservations: [],
+    blocked: [],
+    seq: 0,
+    bookingDeadline: null,
+  }
 }
 
 /** 券種IDから現在の設定を引く（削除済みなら undefined） */
@@ -263,6 +282,8 @@ export function normalizeAppData(raw: unknown): AppData | null {
       ? rec.blocked.filter((s): s is string => typeof s === 'string')
       : [],
     seq: typeof rec.seq === 'number' && Number.isFinite(rec.seq) ? rec.seq : reservations.length,
+    bookingDeadline:
+      typeof rec.bookingDeadline === 'string' && rec.bookingDeadline ? rec.bookingDeadline : null,
   }
 }
 
@@ -279,10 +300,55 @@ export function reservationForSeat(data: AppData, seatId: string): Reservation |
 
 /** 席の状態を導出する。予約があれば blocked 設定より予約が優先される。 */
 export function seatStatus(data: AppData, seatId: string): SeatStatus {
+  // クラウドモードではサーバの占有状態が正（お客様は他人の予約明細を持たない）
+  if (data.seatStates) {
+    const st = data.seatStates[seatId]
+    if (st === 'sold') return 'paid'
+    if (st === 'reserved') return 'reserved'
+    if (data.blocked.includes(seatId)) return 'blocked'
+    return 'available'
+  }
   const res = reservationForSeat(data, seatId)
   if (res) return res.paid ? 'paid' : 'reserved'
   if (data.blocked.includes(seatId)) return 'blocked'
   return 'available'
+}
+
+/** 予約締切を過ぎているか（締切未設定なら false）。当日販売には使わない */
+export function isBookingClosed(data: AppData, now: Date = new Date()): boolean {
+  if (!data.bookingDeadline) return false
+  const deadline = new Date(data.bookingDeadline)
+  if (Number.isNaN(deadline.getTime())) return false
+  return now.getTime() > deadline.getTime()
+}
+
+/**
+ * 予約確認（ローカル）: 予約番号と電話番号で自分の予約を探す。
+ * 予約番号は大小文字を区別せず、電話番号はハイフン・空白を除いて比較する。
+ */
+export function findReservationByCodePhone(
+  data: AppData,
+  code: string,
+  phone: string,
+): Reservation | null {
+  const normalizedCode = code.trim().toUpperCase()
+  const digits = (v: string) => v.replace(/[\s-]/g, '')
+  const normalizedPhone = digits(phone)
+  if (!normalizedCode || !normalizedPhone) return null
+  return (
+    data.reservations.find(
+      (r) => !r.cancelled && r.id.toUpperCase() === normalizedCode && digits(r.phone) === normalizedPhone,
+    ) ?? null
+  )
+}
+
+/** 階ごとの残席数（販売中で空いている席の数） */
+export function availableCountByFloor(data: AppData): Record<Floor, number> {
+  const counts: Record<Floor, number> = { 1: 0, 2: 0 }
+  for (const seat of ALL_SEATS) {
+    if (seatStatus(data, seat.id) === 'available') counts[seat.floor]++
+  }
+  return counts
 }
 
 export interface NewReservationSeat {
@@ -329,6 +395,9 @@ export function createReservation(
   }
   if (input.source === 'online' && seats.length > MAX_ONLINE_SEATS) {
     throw new Error(`一度に申し込めるのは${MAX_ONLINE_SEATS}席までです`)
+  }
+  if (input.source === 'online' && isBookingClosed(data)) {
+    throw new Error('予約受付は終了しました。当日券は会場受付でお求めください')
   }
   const name = input.name.trim() || (input.source === 'door' ? '当日' : '')
   if (!name) throw new Error('お名前を入力してください')

@@ -5,6 +5,7 @@ import {
   SIDE_L_SEATS,
   SIDE_R_SEATS,
   WHEELCHAIR_SEATS,
+  isRecommendedSeat,
   type Floor,
   type SeatDef,
 } from '../data/seats'
@@ -17,6 +18,8 @@ export interface SeatMapProps {
   zoom: number
   stateOf: (seat: SeatDef) => SeatVisualState
   onSeatTap: (seat: SeatDef) => void
+  /** おすすめ席の金色ティントを表示するか（お客様用マップのみ） */
+  showRecommended?: boolean
 }
 
 function SeatButton({
@@ -24,25 +27,29 @@ function SeatButton({
   state,
   size,
   onSeatTap,
+  recommended,
 }: {
   seat: SeatDef
   state: SeatVisualState
   size: number
   onSeatTap: (seat: SeatDef) => void
+  recommended?: boolean
 }) {
   return (
     <button
       type="button"
       data-seat-id={seat.id}
       data-seat-state={state}
-      className={`seat seat-${state}${seat.restrictedView ? ' seat-restricted' : ''}`}
+      data-recommended={recommended || undefined}
+      className={`seat seat-${state}${seat.restrictedView ? ' seat-restricted' : ''}${recommended ? ' seat-recommended' : ''}`}
       style={{ width: size, height: size, fontSize: Math.max(10, Math.round(11 * (size / 30))) }}
       onClick={() => onSeatTap(seat)}
-      aria-label={`${seat.label}（${stateLabel(state)}${seat.restrictedView ? '・見切れ席' : ''}）`}
+      aria-label={`${seat.label}（${stateLabel(state)}${seat.restrictedView ? '・見切れ席' : ''}${recommended ? '・おすすめ' : ''}）`}
       title={seat.label}
     >
       {seat.shortLabel}
       {seat.restrictedView && <span className="seat-star">※</span>}
+      {recommended && !seat.restrictedView && <span className="seat-star seat-star-rec">★</span>}
     </button>
   )
 }
@@ -78,21 +85,28 @@ export function SeatLegend() {
         <span className="legend-swatch seat-blocked" /> 販売しない
       </span>
       <span className="legend-item">※印は見切れ席（舞台の一部が見えにくい席）</span>
+      <span className="legend-item">
+        <span className="legend-swatch seat-recommended-swatch" /> ★おすすめ席（1階中央 5〜10列）
+      </span>
     </div>
   )
 }
 
-export default function SeatMap({ floor, zoom, stateOf, onSeatTap }: SeatMapProps) {
+export default function SeatMap({ floor, zoom, stateOf, onSeatTap, showRecommended }: SeatMapProps) {
   const size = Math.round(30 * zoom)
-  const renderSeat = (seat: SeatDef) => (
-    <SeatButton
-      key={seat.id}
-      seat={seat}
-      state={stateOf(seat)}
-      size={size}
-      onSeatTap={onSeatTap}
-    />
-  )
+  const renderSeat = (seat: SeatDef) => {
+    const state = stateOf(seat)
+    return (
+      <SeatButton
+        key={seat.id}
+        seat={seat}
+        state={state}
+        size={size}
+        onSeatTap={onSeatTap}
+        recommended={Boolean(showRecommended && state === 'available' && isRecommendedSeat(seat.id))}
+      />
+    )
+  }
 
   return (
     <div className="seatmap-scroll">

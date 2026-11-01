@@ -1058,3 +1058,117 @@ button.seat-available:hover {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ---------------- Phase 2: おすすめ席・残席・締切・共有・印刷 ---------------- */
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* おすすめ席: 空席のときだけ柔らかい金色ティント */
+.seat-available.seat-recommended {
+  background: #fdf3d0;
+  border-color: #dfae3e;
+  box-shadow: 0 1px 4px rgba(223, 174, 62, 0.45);
+}
+
+.seat-star-rec {
+  color: #c98f12;
+  font-size: 8px;
+  vertical-align: top;
+}
+
+.legend-swatch.seat-recommended-swatch {
+  background: #fdf3d0;
+  border: 1.5px solid #dfae3e;
+}
+
+.low-seats-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e0492f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.closed-notice {
+  background: #fdeceb;
+  border: 1.5px dashed #e0492f;
+  color: #a02c1a;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.share-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 4px;
+}
+
+.share-actions .btn {
+  flex: 1 1 160px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.loading-note {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.lookup-result {
+  margin-top: 16px;
+  border-top: 2px dashed var(--pink-soft);
+  padding-top: 16px;
+}
+
+/* 印刷用シートは画面では隠し、印刷時のみ全面表示する */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 16px;
+    color: #000;
+    background: #fff;
+    font-size: 12px;
+  }
+  .print-sheet h2 {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+  .print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .print-sheet th,
+  .print-sheet td {
+    border: 1px solid #999;
+    padding: 4px 6px;
+    text-align: left;
+  }
+}

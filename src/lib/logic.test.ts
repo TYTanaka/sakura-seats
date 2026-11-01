@@ -415,3 +415,95 @@ describe('販売設定（ブロック席）', () => {
     expect(reservation.seatIds).toEqual(['1F-5-12'])
   })
 })
+
+describe('予約締切（Phase 2）', () => {
+  const past = new Date(Date.now() - 60_000).toISOString().slice(0, 16)
+  const future = new Date(Date.now() + 60_000).toISOString().slice(0, 16)
+
+  it('締切未設定なら閉じていない', async () => {
+    const { isBookingClosed } = await import('./logic')
+    expect(isBookingClosed(emptyData())).toBe(false)
+  })
+
+  it('締切を過ぎたらオンライン予約は例外、当日販売は可能', async () => {
+    const { isBookingClosed } = await import('./logic')
+    const data = { ...emptyData(), bookingDeadline: past }
+    expect(isBookingClosed(data)).toBe(true)
+    expect(() =>
+      createReservation(data, {
+        seats: seatsOf(['1F-5-6']),
+        name: '山田',
+        phone: '090',
+        note: '',
+        source: 'online',
+      }),
+    ).toThrow('予約受付は終了しました')
+    const door = createReservation(data, {
+      seats: seatsOf(['1F-5-6']),
+      name: '',
+      phone: '',
+      note: '',
+      source: 'door',
+    })
+    expect(door.reservation.paid).toBe(true)
+  })
+
+  it('締切が未来なら閉じていない', async () => {
+    const { isBookingClosed } = await import('./logic')
+    expect(isBookingClosed({ ...emptyData(), bookingDeadline: future })).toBe(false)
+  })
+
+  it('normalizeAppData は bookingDeadline を読み取る', () => {
+    const data = normalizeAppData({
+      performance: emptyData().performance,
+      reservations: [],
+      blocked: [],
+      seq: 0,
+      bookingDeadline: '2026-12-19T09:00',
+    })
+    expect(data?.bookingDeadline).toBe('2026-12-19T09:00')
+  })
+})
+
+describe('予約確認（ローカル照合・Phase 2）', () => {
+  it('予約番号（大小文字不問）と電話番号（ハイフン不問）で一致する', async () => {
+    const { findReservationByCodePhone } = await import('./logic')
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-6'])
+    expect(findReservationByCodePhone(data, 'sk-0001', '09000000000')?.id).toBe(reservation.id)
+    expect(findReservationByCodePhone(data, 'SK-0001', '090-0000-0000')?.id).toBe(reservation.id)
+    expect(findReservationByCodePhone(data, 'SK-0001', '080-0000-0000')).toBeNull()
+    expect(findReservationByCodePhone(data, 'SK-9999', '090-0000-0000')).toBeNull()
+  })
+
+  it('キャンセル済みはヒットしない', async () => {
+    const { findReservationByCodePhone } = await import('./logic')
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-6'])
+    const cancelled = cancelReservation(data, reservation.id)
+    expect(findReservationByCodePhone(cancelled, 'SK-0001', '090-0000-0000')).toBeNull()
+  })
+})
+
+describe('階ごとの残席数と seatStates（Phase 2）', () => {
+  it('空の状態では全席が残席', async () => {
+    const { availableCountByFloor } = await import('./logic')
+    const counts = availableCountByFloor(emptyData())
+    expect(counts[1] + counts[2]).toBe(ALL_IDS.length)
+  })
+
+  it('予約すると残席が減る', async () => {
+    const { availableCountByFloor } = await import('./logic')
+    const { data } = reserveOnline(emptyData(), ['2F-21-7'])
+    const counts = availableCountByFloor(data)
+    expect(counts[2]).toBe(ALL_SEATS.filter((s) => s.floor === 2).length - 1)
+  })
+
+  it('seatStates がある場合は reservations より優先される', () => {
+    const data: AppData = {
+      ...emptyData(),
+      seatStates: { '1F-5-6': 'reserved', '1F-5-7': 'sold' },
+    }
+    expect(seatStatus(data, '1F-5-6')).toBe('reserved')
+    expect(seatStatus(data, '1F-5-7')).toBe('paid')
+    expect(seatStatus(data, '1F-5-8')).toBe('available')
+  })
+})

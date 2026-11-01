@@ -2,16 +2,19 @@ import { useMemo, useState } from 'react'
 import { ALL_SEATS, seatById, type Floor, type SeatDef } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
+  availableCountByFloor,
   defaultTicketType,
   findTicketType,
   formatPerformanceWhen,
   formatTicketTypes,
   formatYen,
+  isBookingClosed,
   seatStatus,
   type Performance,
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
+import { buildCalendarUrl, buildMailtoUrl } from '../lib/share'
 import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
@@ -31,6 +34,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const closed = isBookingClosed(data)
+  const remainingByFloor = availableCountByFloor(data)
 
   const selectedSeats = useMemo(() => selected.map(seatById), [selected])
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
@@ -57,10 +64,11 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     setSelected([...selected, seat.id])
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError('')
+    setSubmitting(true)
     try {
-      const reservation = reserve({
+      const reservation = await reserve({
         seats: selected.map((seatId) => ({
           seatId,
           typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
@@ -77,6 +85,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       // 取れなかった席を選択から外して座席選択に戻す
       setSelected((prev) => prev.filter((id) => seatStatus(data, id) === 'available'))
       setStep('seats')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -130,6 +140,28 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           <p>当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。</p>
           <p>変更・キャンセルは主催者までご連絡ください。</p>
         </div>
+        <div className="share-actions">
+          <a
+            className="btn btn-ghost"
+            data-share="mailto"
+            href={buildMailtoUrl(perf, completed)}
+          >
+            ✉ Gmailで自分に送る
+          </a>
+          <a
+            className="btn btn-ghost"
+            data-share="calendar"
+            href={buildCalendarUrl(perf, completed)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            📅 カレンダーに追加
+          </a>
+        </div>
+        <p className="muted small">
+          控えをメールで送っておくと、後から予約番号を確認できて安心です。
+          予約の確認はトップページの「予約確認」からもできます。
+        </p>
         <button type="button" className="btn btn-primary btn-block" onClick={resetFlow}>
           座席の選択に戻る
         </button>
@@ -162,7 +194,12 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                     className={`floor-tab${floor === f ? ' active' : ''}`}
                     onClick={() => setFloor(f)}
                   >
-                    {f}階席
+                    {f}階席（残り{remainingByFloor[f]}席）
+                    {remainingByFloor[f] < 20 && (
+                      <span className="low-seats-badge" data-low-seats={f}>
+                        残りわずか
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -181,7 +218,13 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               </div>
             </div>
             <SeatLegend />
-            <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleSeatTap} />
+            <SeatMap
+              floor={floor}
+              zoom={zoom}
+              stateOf={stateOf}
+              onSeatTap={handleSeatTap}
+              showRecommended
+            />
             <p className="muted small">
               座席表は左右にスクロールできます。全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
@@ -208,10 +251,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               </>
             )}
             {error && <p className="error-text">{error}</p>}
+            {closed && (
+              <p className="closed-notice" data-booking-closed>
+                予約受付は終了しました。当日券は会場受付でお求めください。
+              </p>
+            )}
             <button
               type="button"
               className="btn btn-primary btn-block"
-              disabled={selected.length === 0}
+              disabled={selected.length === 0 || closed}
               onClick={() => setStep('form')}
             >
               申込手続きへ進む
@@ -348,8 +396,13 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             <button type="button" className="btn btn-ghost" onClick={() => setStep('form')}>
               入力に戻る
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleSubmit}>
-              この内容で予約する
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? '予約処理中…' : 'この内容で予約する'}
             </button>
           </div>
         </section>

@@ -1,8 +1,17 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import {
   cancelReservation,
   createReservation,
   emptyData,
+  findReservationByCodePhone,
   normalizeAppData,
   setBlockedForSeats,
   setCheckedIn,
@@ -14,15 +23,52 @@ import {
   type Performance,
   type Reservation,
 } from './logic'
+import { cloudEnabled } from './config'
 
 /**
- * 試作版のストア。データはこの端末の localStorage にのみ保存される
- * （複数端末の同期は本番フェーズで Supabase に差し替え予定）。
- * 公演は1回のみのため、公演は単一の設定オブジェクトとして保持する。
- * ロジック自体は lib/logic.ts の純粋関数に委譲し、ここは保持と配線だけを行う。
+ * ストアの共通インターフェース。
+ * - ローカルモード（環境変数なし）: localStorage に保存する従来動作
+ * - クラウドモード（VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY あり）:
+ *   Supabase RPC 経由で全端末同期する（実装は cloudStore.tsx を動的 import）
+ * 操作はどちらも Promise を返す形に統一し、画面側は await して使う。
  */
 
+export interface Store {
+  data: AppData
+  mode: 'local' | 'cloud'
+  /** 表示してよい状態か（クラウドの初回読み込み完了まで false） */
+  ready: boolean
+  /** クラウド読み込みエラー（未設定は null） */
+  loadError: string | null
+  retryLoad: () => void
+  reserve: (input: NewReservationInput) => Promise<Reservation>
+  cancel: (reservationId: string) => Promise<void>
+  setCheckedIn: (reservationId: string, value: boolean) => Promise<void>
+  setPaid: (reservationId: string, value: boolean) => Promise<void>
+  toggleBlocked: (seatId: string) => Promise<void>
+  setBlockedForSeats: (seatIds: string[], blocked: boolean) => Promise<void>
+  /** 公演設定と予約締切をまとめて保存する */
+  saveSettings: (perf: Performance, bookingDeadline: string | null) => Promise<void>
+  lookupReservation: (code: string, phone: string) => Promise<Reservation | null>
+  /** スタッフ入室。パスコードが合えばスタッフ用データも読み込んで true */
+  staffUnlock: (passcode: string) => Promise<boolean>
+  changePasscode: (newPasscode: string) => Promise<void>
+  resetAll: () => void
+}
+
+export const StoreContext = createContext<Store | null>(null)
+
+export function useStore(): Store {
+  const store = useContext(StoreContext)
+  if (!store) throw new Error('useStore は StoreProvider の中で使ってください')
+  return store
+}
+
+/* ---------------- ローカルモード（localStorage） ---------------- */
+
 const STORAGE_KEY = 'sakura-seats-v1'
+const PASSCODE_KEY = 'sakura-seats-passcode'
+export const DEFAULT_PASSCODE = '1234'
 
 function loadData(): AppData {
   try {
@@ -35,57 +81,91 @@ function loadData(): AppData {
   }
 }
 
-export interface Store {
-  data: AppData
-  reserve: (input: NewReservationInput) => Reservation
-  cancel: (reservationId: string) => void
-  setCheckedIn: (reservationId: string, value: boolean) => void
-  setPaid: (reservationId: string, value: boolean) => void
-  toggleBlocked: (seatId: string) => void
-  setBlockedForSeats: (seatIds: string[], blocked: boolean) => void
-  updatePerformance: (perf: Performance) => void
-  resetAll: () => void
+function loadPasscode(): string {
+  try {
+    return localStorage.getItem(PASSCODE_KEY) || DEFAULT_PASSCODE
+  } catch {
+    return DEFAULT_PASSCODE
+  }
 }
 
-const StoreContext = createContext<Store | null>(null)
-
-export function StoreProvider({ children }: { children: ReactNode }) {
+function LocalStoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(loadData)
+  const [passcode, setPasscode] = useState<string>(loadPasscode)
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
     } catch {
-      // 保存に失敗しても画面操作は継続する（試作版）
+      // 保存に失敗しても画面操作は継続する
     }
   }, [data])
 
   const store = useMemo<Store>(
     () => ({
       data,
-      reserve: (input) => {
+      mode: 'local',
+      ready: true,
+      loadError: null,
+      retryLoad: () => undefined,
+      reserve: async (input) => {
         const result = createReservation(data, input)
         setData(result.data)
         return result.reservation
       },
-      cancel: (reservationId) => setData((prev) => cancelReservation(prev, reservationId)),
-      setCheckedIn: (reservationId, value) =>
+      cancel: async (reservationId) =>
+        setData((prev) => cancelReservation(prev, reservationId)),
+      setCheckedIn: async (reservationId, value) =>
         setData((prev) => setCheckedIn(prev, reservationId, value)),
-      setPaid: (reservationId, value) => setData((prev) => setPaid(prev, reservationId, value)),
-      toggleBlocked: (seatId) => setData((prev) => toggleBlocked(prev, seatId)),
-      setBlockedForSeats: (seatIds, blocked) =>
+      setPaid: async (reservationId, value) => setData((prev) => setPaid(prev, reservationId, value)),
+      toggleBlocked: async (seatId) => setData((prev) => toggleBlocked(prev, seatId)),
+      setBlockedForSeats: async (seatIds, blocked) =>
         setData((prev) => setBlockedForSeats(prev, seatIds, blocked)),
-      updatePerformance: (perf) => setData((prev) => updatePerformance(prev, perf)),
+      saveSettings: async (perf, bookingDeadline) =>
+        setData((prev) => ({ ...updatePerformance(prev, perf), bookingDeadline })),
+      lookupReservation: async (code, phone) => findReservationByCodePhone(data, code, phone),
+      staffUnlock: async (candidate) => candidate === passcode,
+      changePasscode: async (newPasscode) => {
+        setPasscode(newPasscode)
+        try {
+          localStorage.setItem(PASSCODE_KEY, newPasscode)
+        } catch {
+          // 保存できなくても今回のセッションでは有効
+        }
+      },
       resetAll: () => setData(emptyData()),
     }),
-    [data],
+    [data, passcode],
   )
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }
 
-export function useStore(): Store {
-  const store = useContext(StoreContext)
-  if (!store) throw new Error('useStore は StoreProvider の中で使ってください')
-  return store
+/* ---------------- クラウドモード（動的 import） ---------------- */
+
+function CloudStoreLazy({ children }: { children: ReactNode }) {
+  const [Provider, setProvider] = useState<ComponentType<{ children: ReactNode }> | null>(null)
+  useEffect(() => {
+    let active = true
+    void import('./cloudStore').then((m) => {
+      if (active) setProvider(() => m.CloudStoreProvider)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (!Provider) {
+    return (
+      <div className="app-shell">
+        <p className="loading-note">読み込み中…♪</p>
+      </div>
+    )
+  }
+  return <Provider>{children}</Provider>
+}
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  if (!cloudEnabled) return <LocalStoreProvider>{children}</LocalStoreProvider>
+  return <CloudStoreLazy>{children}</CloudStoreLazy>
 }

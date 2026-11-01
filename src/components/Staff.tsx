@@ -22,18 +22,20 @@ import {
   type TicketType,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
+import { downloadReservationsCsv } from '../lib/csv'
 import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
-const STAFF_PASSCODE = '1234'
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
 const ZOOMS = [1, 1.25, 1.5]
 const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
 
 export default function Staff({ onExit }: { onExit: () => void }) {
+  const { mode, staffUnlock } = useStore()
   const [unlocked, setUnlocked] = useState(false)
   const [passcode, setPasscode] = useState('')
   const [passError, setPassError] = useState('')
+  const [checking, setChecking] = useState(false)
   const [tab, setTab] = useState<StaffTab>('reception')
 
   if (!unlocked) {
@@ -45,13 +47,20 @@ export default function Staff({ onExit }: { onExit: () => void }) {
         <h2>スタッフ用</h2>
         <p className="muted">受付・当日販売・販売設定・集計・公演設定を行います。パスコードを入力してください。</p>
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
-            if (passcode === STAFF_PASSCODE) {
-              setUnlocked(true)
-              setPassError('')
-            } else {
-              setPassError('パスコードが違います')
+            setChecking(true)
+            try {
+              if (await staffUnlock(passcode)) {
+                setUnlocked(true)
+                setPassError('')
+              } else {
+                setPassError('パスコードが違います')
+              }
+            } catch {
+              setPassError('確認に失敗しました。しばらくしてからお試しください')
+            } finally {
+              setChecking(false)
             }
           }}
         >
@@ -66,11 +75,11 @@ export default function Staff({ onExit }: { onExit: () => void }) {
             />
           </label>
           {passError && <p className="error-text">{passError}</p>}
-          <button type="submit" className="btn btn-primary btn-block">
-            入室する
+          <button type="submit" className="btn btn-primary btn-block" disabled={checking}>
+            {checking ? '確認中…' : '入室する'}
           </button>
         </form>
-        <p className="muted small">試作版のパスコードは 1234 です（READMEにも記載）。</p>
+        <p className="muted small">初期パスコードは 1234 です（公演設定から変更できます）。</p>
       </section>
     )
   }
@@ -82,7 +91,9 @@ export default function Staff({ onExit }: { onExit: () => void }) {
           ← 予約画面へ戻る
         </button>
         <p className="prototype-note">
-          試作版：データはこの端末内のみに保存されます（複数端末の同期は本番フェーズ）
+          {mode === 'cloud'
+            ? 'クラウド同期中：データはスタッフ全員の端末で共有されます'
+            : '試作版：データはこの端末内のみに保存されます'}
         </p>
       </div>
 
@@ -123,12 +134,22 @@ function Reception() {
   const { data, cancel, setCheckedIn, setPaid } = useStore()
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
+  const [unpaidOnly, setUnpaidOnly] = useState(false)
+  const [actionError, setActionError] = useState('')
   const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null)
+
+  const runAction = (fn: () => Promise<void>) => {
+    setActionError('')
+    void fn().catch(() =>
+      setActionError('操作に失敗しました。接続を確認してもう一度お試しください'),
+    )
+  }
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase()
     return data.reservations
       .filter((r) => showCancelled || !r.cancelled)
+      .filter((r) => !unpaidOnly || (!r.paid && !r.cancelled))
       .filter(
         (r) =>
           !q ||
@@ -137,7 +158,7 @@ function Reception() {
           r.phone.replace(/-/g, '').includes(q.replace(/-/g, '')),
       )
       .sort((a, b) => a.id.localeCompare(b.id))
-  }, [data.reservations, query, showCancelled])
+  }, [data.reservations, query, showCancelled, unpaidOnly])
 
   const active = activeReservations(data)
 
@@ -161,6 +182,26 @@ function Reception() {
         />
         キャンセル済みも表示する
       </label>
+      <label className="check-line">
+        <input
+          type="checkbox"
+          data-unpaid-filter
+          checked={unpaidOnly}
+          onChange={(e) => setUnpaidOnly(e.target.checked)}
+        />
+        未払いのみ表示
+      </label>
+      <div className="btn-row">
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          data-csv-download
+          onClick={() => downloadReservationsCsv(data.reservations)}
+        >
+          予約一覧をCSVでダウンロード
+        </button>
+      </div>
+      {actionError && <p className="error-text">{actionError}</p>}
       {list.length === 0 && <p className="muted">該当する予約がありません。</p>}
       <ul className="reservation-list">
         {list.map((res) => (
@@ -190,7 +231,7 @@ function Reception() {
                   data-action="checkin"
                   aria-pressed={res.checkedIn}
                   className={`toggle-btn${res.checkedIn ? ' on' : ''}`}
-                  onClick={() => setCheckedIn(res.id, !res.checkedIn)}
+                  onClick={() => runAction(() => setCheckedIn(res.id, !res.checkedIn))}
                 >
                   {res.checkedIn ? '✓ 来場済み' : '来場チェックイン'}
                 </button>
@@ -199,7 +240,7 @@ function Reception() {
                   data-action="pay"
                   aria-pressed={res.paid}
                   className={`toggle-btn${res.paid ? ' on' : ''}`}
-                  onClick={() => setPaid(res.id, !res.paid)}
+                  onClick={() => runAction(() => setPaid(res.id, !res.paid))}
                 >
                   {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
                 </button>
@@ -210,7 +251,7 @@ function Reception() {
                       type="button"
                       className="btn btn-danger btn-small"
                       onClick={() => {
-                        cancel(res.id)
+                        runAction(() => cancel(res.id))
                         setConfirmingCancel(null)
                       }}
                     >
@@ -321,9 +362,9 @@ function DoorSales() {
     setSelected([...selected, seat.id])
   }
 
-  const handleSell = () => {
+  const handleSell = async () => {
     try {
-      const res = reserve({
+      const res = await reserve({
         seats: selected.map((seatId) => ({
           seatId,
           typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
@@ -402,7 +443,7 @@ function SeatSettings() {
   const handleTap = (seat: SeatDef) => {
     const status = seatStatus(data, seat.id)
     if (status === 'reserved' || status === 'paid') return
-    toggleBlocked(seat.id)
+    void toggleBlocked(seat.id).catch(() => undefined)
   }
 
   const groups: { label: string; seatIds: string[] }[] = [
@@ -446,7 +487,7 @@ function SeatSettings() {
                   type="button"
                   className="btn btn-ghost btn-small"
                   data-row-block={group.label}
-                  onClick={() => setBlockedForSeats(group.seatIds, true)}
+                  onClick={() => void setBlockedForSeats(group.seatIds, true).catch(() => undefined)}
                 >
                   全て販売しない
                 </button>
@@ -454,7 +495,7 @@ function SeatSettings() {
                   type="button"
                   className="btn btn-ghost btn-small"
                   data-row-sell={group.label}
-                  onClick={() => setBlockedForSeats(group.seatIds, false)}
+                  onClick={() => void setBlockedForSeats(group.seatIds, false).catch(() => undefined)}
                 >
                   全て販売する
                 </button>
@@ -472,9 +513,69 @@ function SeatSettings() {
 function Summary() {
   const { data } = useStore()
   const t = totals(data, ALL_SEAT_IDS)
+  const printList = activeReservations(data)
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
   return (
     <section className="card">
       <h3>集計</h3>
+      <div className="btn-row no-print">
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          data-print-summary
+          onClick={() => window.print()}
+        >
+          🖨 予約一覧と集計表を印刷
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          data-csv-download
+          onClick={() => downloadReservationsCsv(data.reservations)}
+        >
+          予約一覧をCSVでダウンロード
+        </button>
+      </div>
+      <div className="print-sheet" aria-hidden="true">
+        <h2>
+          {data.performance.name} ― 予約一覧・集計表
+        </h2>
+        <p>
+          予約 {t.reservationCount}件 ／ 支払済 {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
+          ／ 未払い {formatYen(t.unpaidTotal)}（{t.reservedSeatCount}席分） ／ 残席 {t.availableSeatCount}席
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>予約番号</th>
+              <th>名前</th>
+              <th>電話</th>
+              <th>席</th>
+              <th>券種内訳</th>
+              <th>金額</th>
+              <th>支払い</th>
+              <th>来場</th>
+              <th>種別</th>
+            </tr>
+          </thead>
+          <tbody>
+            {printList.map((r) => (
+              <tr key={r.id}>
+                <td>{r.id}</td>
+                <td>{r.name}</td>
+                <td>{r.phone}</td>
+                <td>{r.seatIds.map((id) => seatById(id).label).join('、')}</td>
+                <td>{reservationTypeSummary(r)}</td>
+                <td>{formatYen(r.amount)}</td>
+                <td>{r.paid ? '支払済' : '未払い'}</td>
+                <td>{r.checkedIn ? '来場済' : ''}</td>
+                <td>{r.source === 'door' ? '当日販売' : '予約'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="summary-grid">
         <div className="summary-item">
           <span className="summary-value" data-summary="reservationCount">
@@ -552,11 +653,12 @@ interface TypeDraft {
 }
 
 function PerformanceSettings() {
-  const { data, updatePerformance, resetAll } = useStore()
+  const { data, mode, saveSettings, resetAll, changePasscode } = useStore()
   const perf = data.performance
   const [name, setName] = useState(perf.name)
   const [date, setDate] = useState(perf.date)
   const [time, setTime] = useState(perf.time)
+  const [deadline, setDeadline] = useState(data.bookingDeadline ? data.bookingDeadline.slice(0, 16) : '')
   const [types, setTypes] = useState<TypeDraft[]>(
     perf.ticketTypes.map((t) => ({ id: t.id, name: t.name, price: String(t.price) })),
   )
@@ -591,7 +693,7 @@ function PerformanceSettings() {
     touch()
   }
 
-  const handleSave = (e: FormEvent) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) {
       setError('公演名を入力してください')
@@ -631,9 +733,13 @@ function PerformanceSettings() {
       priceNote: priceNote.trim(),
       note: note.trim(),
     }
-    updatePerformance(next)
-    setError('')
-    setSaved('公演設定を保存しました')
+    try {
+      await saveSettings(next, deadline ? deadline : null)
+      setError('')
+      setSaved('公演設定を保存しました')
+    } catch {
+      setError('保存に失敗しました。接続を確認してもう一度お試しください')
+    }
   }
 
   return (
@@ -741,6 +847,18 @@ function PerformanceSettings() {
           <span>メモ（お客様画面にも表示されます）</span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
         </label>
+        <label className="field">
+          <span>予約締切（空欄なら締切なし・過ぎるとオンライン予約を受付終了にします）</span>
+          <input
+            type="datetime-local"
+            data-booking-deadline
+            value={deadline}
+            onChange={(e) => {
+              setDeadline(e.target.value)
+              touch()
+            }}
+          />
+        </label>
         {error && <p className="error-text">{error}</p>}
         {saved && <p className="success-text">{saved}</p>}
         <button type="submit" className="btn btn-primary btn-block">
@@ -748,7 +866,11 @@ function PerformanceSettings() {
         </button>
       </form>
       <hr className="divider" />
-      <h4>試作データ</h4>
+      <PasscodeSettings changePasscode={changePasscode} />
+      {mode === 'local' && (
+        <>
+          <hr className="divider" />
+          <h4>試作データ</h4>
       <p className="muted small">
         予約・販売設定をすべて消して、初期状態（サンプル公演のみ・予約なし）に戻します。
       </p>
@@ -781,6 +903,58 @@ function PerformanceSettings() {
           試作データを初期化
         </button>
       )}
+        </>
+      )}
     </section>
+  )
+}
+
+function PasscodeSettings({
+  changePasscode,
+}: {
+  changePasscode: (newPasscode: string) => Promise<void>
+}) {
+  const [next, setNext] = useState('')
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const handleChange = async (e: FormEvent) => {
+    e.preventDefault()
+    setMessage('')
+    setError('')
+    if (!next.trim()) {
+      setError('新しいパスコードを入力してください')
+      return
+    }
+    try {
+      await changePasscode(next.trim())
+      setNext('')
+      setMessage('パスコードを変更しました')
+    } catch {
+      setError('パスコードの変更に失敗しました')
+    }
+  }
+
+  return (
+    <>
+      <h4>スタッフパスコード</h4>
+      <form onSubmit={handleChange}>
+        <label className="field">
+          <span>新しいパスコード</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            placeholder="例：5678"
+          />
+        </label>
+        {error && <p className="error-text">{error}</p>}
+        {message && <p className="success-text">{message}</p>}
+        <button type="submit" className="btn btn-ghost btn-small">
+          パスコードを変更する
+        </button>
+      </form>
+    </>
   )
 }

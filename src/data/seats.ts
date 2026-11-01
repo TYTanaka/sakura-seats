@@ -212,3 +212,22 @@ export function seatIdsOfRow(floor: Floor, row: number): string[] {
     (s) => s.id,
   )
 }
+
+/**
+ * おすすめ席: 1階センターブロックの5〜10列。
+ * 根拠: さくらプラザ規模（約450席）のホールでは、舞台から近すぎず遠すぎない
+ * 中ほどの列が、舞台全体を見渡せて表情も見える距離として定番の良席とされる。
+ * センターブロックは左右の画角の歪みが小さく、音響のバランスも良い位置。
+ * 前寄りの1〜4列は首を上げる角度になりやすく、11列以降は舞台まで距離が出る
+ * こと、さらに12/13列間に通路があることから、5〜10列を「おすすめ」と定義する。
+ * あくまで見やすさの目安であり、料金は他の席と同額。
+ */
+export const RECOMMENDED_SEAT_IDS: ReadonlySet<string> = new Set(
+  ALL_SEATS.filter(
+    (s) => s.floor === 1 && s.kind === 'normal' && s.block === 'center' && s.row !== null && s.row >= 5 && s.row <= 10,
+  ).map((s) => s.id),
+)
+
+export function isRecommendedSeat(seatId: string): boolean {
+  return RECOMMENDED_SEAT_IDS.has(seatId)
+}

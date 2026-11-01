@@ -113,3 +113,21 @@ describe('座席データの整合性（公式座席表PDFの転記仕様）', (
     expect(seatById('OYAKO-2').label).toBe('親子室 2番')
   })
 })
+
+describe('おすすめ席（Phase 2）', () => {
+  it('すべて1階センターブロックの5〜10列で、95席ある', async () => {
+    const { RECOMMENDED_SEAT_IDS, isRecommendedSeat } = await import('./seats')
+    expect(RECOMMENDED_SEAT_IDS.size).toBe(95)
+    for (const id of RECOMMENDED_SEAT_IDS) {
+      const seat = seatById(id)
+      expect(seat.floor).toBe(1)
+      expect(seat.block).toBe('center')
+      expect(seat.row).toBeGreaterThanOrEqual(5)
+      expect(seat.row).toBeLessThanOrEqual(10)
+    }
+    expect(isRecommendedSeat('1F-7-13')).toBe(true)
+    expect(isRecommendedSeat('1F-4-13')).toBe(false)
+    expect(isRecommendedSeat('1F-7-3')).toBe(false) // 左ブロック
+    expect(isRecommendedSeat('2F-21-14')).toBe(false)
+  })
+})

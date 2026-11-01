@@ -1,0 +1,147 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  CloudApi,
+  mapLookupResult,
+  mapPublicState,
+  mapStaffData,
+  type RpcClient,
+} from './cloud'
+import { defaultPerformance } from './logic'
+
+const PERF = defaultPerformance()
+
+function rowFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'uuid-1',
+    code: 'SK-0001',
+    name: '山田 花子',
+    phone: '090-0000-0000',
+    note: '',
+    items: [
+      { seatId: '1F-5-6', typeId: 'adult', typeName: '大人', price: 2000 },
+      { seatId: '1F-5-7', typeId: 'child', typeName: '子供', price: 1000 },
+    ],
+    amount: 3000,
+    kind: 'online',
+    paid: false,
+    checkedIn: false,
+    status: 'active',
+    createdAt: '2026-11-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('mapPublicState', () => {
+  it('公演設定・ブロック席・締切・座席状態を変換する', () => {
+    const state = mapPublicState({
+      performance: PERF,
+      blockedSeats: ['1F-1-3'],
+      bookingDeadline: '2026-12-19T09:00:00.000Z',
+      seats: [
+        { seatId: '1F-5-6', state: 'reserved' },
+        { seatId: '1F-5-7', state: 'sold' },
+        { seatId: '1F-5-8', state: 'bogus' },
+      ],
+    })
+    expect(state.performance.name).toBe(PERF.name)
+    expect(state.blockedSeats).toEqual(['1F-1-3'])
+    expect(state.bookingDeadline).toBe('2026-12-19T09:00:00.000Z')
+    expect(state.seatStates).toEqual({ '1F-5-6': 'reserved', '1F-5-7': 'sold' })
+  })
+
+  it('空でも落ちない', () => {
+    const state = mapPublicState(null)
+    expect(state.blockedSeats).toEqual([])
+    expect(state.bookingDeadline).toBeNull()
+    expect(state.seatStates).toEqual({})
+  })
+})
+
+describe('mapStaffData / mapLookupResult', () => {
+  it('予約行をクライアント形式へ変換する（code→id, kind→source, status→cancelled）', () => {
+    const staff = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [rowFixture({ status: 'cancelled', kind: 'door', paid: true })],
+    })
+    const r = staff.reservations[0]
+    expect(r.id).toBe('SK-0001')
+    expect(r.cloudId).toBe('uuid-1')
+    expect(r.source).toBe('door')
+    expect(r.cancelled).toBe(true)
+    expect(r.paid).toBe(true)
+    expect(r.seatIds).toEqual(['1F-5-6', '1F-5-7'])
+    expect(r.amount).toBe(3000)
+  })
+
+  it('lookup は null をそのまま null にする', () => {
+    expect(mapLookupResult(null)).toBeNull()
+    expect(mapLookupResult(rowFixture())?.id).toBe('SK-0001')
+  })
+})
+
+describe('CloudApi（モック RPC クライアント）', () => {
+  function fakeClient(handler: (fn: string, args: Record<string, unknown>) => unknown) {
+    const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
+      try {
+        return { data: handler(fn, args), error: null }
+      } catch (e) {
+        return { data: null, error: { message: e instanceof Error ? e.message : String(e) } }
+      }
+    })
+    return { client: { rpc } as RpcClient, rpc }
+  }
+
+  it('bookSeats は引数を p_* 形式で渡し、code/amount を返す', async () => {
+    const { client, rpc } = fakeClient(() => ({ code: 'SK-0042', amount: 3000 }))
+    const api = new CloudApi(client)
+    const res = await api.bookSeats({
+      name: '山田 花子',
+      phone: '090',
+      note: '',
+      items: [{ seatId: '1F-5-6', typeId: 'adult' }],
+    })
+    expect(res).toEqual({ code: 'SK-0042', amount: 3000 })
+    expect(rpc).toHaveBeenCalledWith('book_seats', {
+      p_name: '山田 花子',
+      p_phone: '090',
+      p_note: '',
+      p_items: [{ seatId: '1F-5-6', typeId: 'adult' }],
+    })
+  })
+
+  it('SEAT_TAKEN エラーは日本語の案内に変換される', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('SEAT_TAKEN: 選択された座席の一部が…')
+    })
+    const api = new CloudApi(client)
+    await expect(
+      api.bookSeats({ name: 'a', phone: '0', note: '', items: [] }),
+    ).rejects.toThrow('選び直してください')
+  })
+
+  it('staffUnlock 経路: UNAUTHORIZED はパスコード違いの文案になる', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('UNAUTHORIZED: パスコードが違います')
+    })
+    const api = new CloudApi(client)
+    await expect(api.staffGetAll('9999')).rejects.toThrow('パスコードが違います')
+  })
+
+  it('staffSaveConfig は締切 null もそのまま渡す', async () => {
+    const { client, rpc } = fakeClient(() => ({ ok: true }))
+    const api = new CloudApi(client)
+    await api.staffSaveConfig('1234', PERF, ['1F-1-3'], null)
+    expect(rpc).toHaveBeenCalledWith('staff_save_config', {
+      p_passcode: '1234',
+      p_performance: PERF,
+      p_blocked_seats: ['1F-1-3'],
+      p_booking_deadline: null,
+    })
+  })
+
+  it('lookupReservation は RPC の null を null として返す', async () => {
+    const { client } = fakeClient(() => null)
+    const api = new CloudApi(client)
+    await expect(api.lookupReservation('SK-9999', '000')).resolves.toBeNull()
+  })
+})
