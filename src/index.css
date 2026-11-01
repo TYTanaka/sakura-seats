@@ -2397,16 +2397,6 @@ button.seat-available:hover {
   margin-top: 10px;
   min-height: 44px;
 }
-.candidate-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 14px;
-}
-.candidate-nav .btn {
-  min-height: 44px;
-}
 .omakase-note {
   margin-top: 14px;
 }

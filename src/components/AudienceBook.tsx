@@ -116,8 +116,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   )
   /** 「席の候補を見る」を押して候補を表示中か */
   const [searched, setSearched] = useState(false)
-  /** 表示中の候補セット番号 */
-  const [setIndex, setSetIndex] = useState(0)
   /** 選んだ候補の席（=申込対象の席） */
   const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
@@ -202,14 +200,13 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     }
   }, [name, phone, note, selected, typeBySeat, step, partySize, floorPref])
 
-  // 候補セットは現在の占有状態から都度計算する（誰かが予約すれば即座に反映される）
-  const candidateSets = useMemo(
-    () => (closed ? [] : buildCandidateSets(data, partySize, floorPref)),
+  // 候補は現在の占有状態から都度計算する（誰かが予約すれば即座に反映される）。
+  // お客様に見せるのは最初の1組（最大3候補）だけ。気に入らなければ
+  // 人数・階の希望を変えて「席の候補を見る」で探し直してもらう。
+  const candidates = useMemo(
+    () => (closed ? [] : buildCandidateSets(data, partySize, floorPref)[0] ?? []),
     [data, partySize, floorPref, closed],
   )
-  const safeSetIndex =
-    candidateSets.length === 0 ? 0 : Math.min(setIndex, candidateSets.length - 1)
-  const currentSet = candidateSets[safeSetIndex] ?? []
 
   const selectedSeats = useMemo(() => selected.map(seatById), [selected])
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
@@ -219,12 +216,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
   const changePartySize = (next: number) => {
     setPartySize(Math.min(MAX_ONLINE_SEATS, Math.max(1, next)))
-    setSetIndex(0)
     setSeatTakenNotice(false)
   }
   const changeFloorPref = (next: FloorPreference) => {
     setFloorPref(next)
-    setSetIndex(0)
     setSeatTakenNotice(false)
   }
 
@@ -277,7 +272,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         message.includes('販売していない席')
       if (seatGone) {
         setSelected([])
-        setSetIndex(0)
         setSearched(true)
         setSeatTakenNotice(true)
         setStep('omakase')
@@ -300,7 +294,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     setError('')
     setCompleted(null)
     setSearched(false)
-    setSetIndex(0)
     setSeatTakenNotice(false)
     setStep('omakase')
     window.scrollTo({ top: 0 })
@@ -518,7 +511,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                   data-omakase-search
                   onClick={() => {
                     setSearched(true)
-                    setSetIndex(0)
                     setSeatTakenNotice(false)
                     setError('')
                   }}
@@ -531,7 +523,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
             {searched && !closed && (
               <div className="omakase-results">
-                {candidateSets.length === 0 ? (
+                {candidates.length === 0 ? (
                   <p className="omakase-soldout" data-omakase-soldout role="status">
                     申し訳ありません。{partySize}名分の席がご用意できませんでした。
                     人数を変えてお試しいただくか、当日券を会場受付でお求めください。
@@ -539,7 +531,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 ) : (
                   <>
                     <div className="candidate-list" data-candidate-list>
-                      {currentSet.map((cand) => (
+                      {candidates.map((cand) => (
                         <article
                           className="candidate-card"
                           key={cand.seatIds.join(',')}
@@ -584,33 +576,6 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                         </article>
                       ))}
                     </div>
-                    {candidateSets.length > 1 && (
-                      <div className="candidate-nav">
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          data-candidates-prev
-                          disabled={safeSetIndex === 0}
-                          onClick={() => setSetIndex(Math.max(0, safeSetIndex - 1))}
-                        >
-                          ← 前の候補に戻る
-                        </button>
-                        <span className="muted small" data-candidate-page>
-                          {safeSetIndex + 1} / {candidateSets.length} 組目
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          data-candidates-next
-                          disabled={safeSetIndex >= candidateSets.length - 1}
-                          onClick={() =>
-                            setSetIndex(Math.min(candidateSets.length - 1, safeSetIndex + 1))
-                          }
-                        >
-                          他の候補を見る
-                        </button>
-                      </div>
-                    )}
                   </>
                 )}
               </div>

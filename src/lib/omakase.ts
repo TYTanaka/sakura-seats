@@ -55,7 +55,7 @@ export interface OmakaseCandidate {
 
 /** 1セットに並べる候補の最大数 */
 export const CANDIDATES_PER_SET = 3
-/** 生成する候補セットの最大数（「他の候補を見る」の上限） */
+/** 生成する候補セットの最大数（画面に出すのは最初の1組のみ。複数組は内部生成だけに留める） */
 export const MAX_CANDIDATE_SETS = 6
 
 interface Segment {
