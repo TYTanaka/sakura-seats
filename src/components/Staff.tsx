@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -445,12 +445,15 @@ function SeatControls({
   zoom,
   setZoom,
   fitScale,
+  readoutRef,
 }: {
   floor: Floor
   setFloor: (f: Floor) => void
   zoom: SeatZoom
   setZoom: (z: SeatZoom) => void
   fitScale: number | null
+  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
+  readoutRef?: RefObject<HTMLSpanElement | null>
 }) {
   return (
     <div className="seat-controls">
@@ -469,7 +472,7 @@ function SeatControls({
           </button>
         ))}
       </div>
-      <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
+      <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={readoutRef} />
     </div>
   )
 }
@@ -493,6 +496,8 @@ function DoorSales() {
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [fitScale, setFitScale] = useState<number | null>(null)
+  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
+  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -561,9 +566,9 @@ function DoorSales() {
     <section className="card">
       <h3>当日販売</h3>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
+      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
       <SeatLegend variant="staff" />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
       {selected.length > 0 && (
         <>
           <h4 className="form-subhead">席ごとの券種</h4>
@@ -628,6 +633,8 @@ function SeatSettings() {
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [fitScale, setFitScale] = useState<number | null>(null)
+  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
+  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
   /** 占有席タップ時の理由表示（一時的に出す） */
   const [notice, setNotice] = useState('')
 
@@ -677,14 +684,14 @@ function SeatSettings() {
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
+      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
       <SeatLegend variant="staff" />
       {notice && (
         <p className="seat-settings-notice" data-seat-notice role="status">
           {notice}
         </p>
       )}
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
       <h4>列ごとの一括切替</h4>
       <ul className="row-toggle-list">
         {groups.map((group) => {

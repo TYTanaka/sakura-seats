@@ -98,6 +98,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   /** 全体表示の実測倍率（SeatMap が通知）。倍率表示（約○○%）に使う */
   const [fitScale, setFitScale] = useState<number | null>(null)
+  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
+  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
   const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>(
@@ -395,7 +397,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                   </button>
                 ))}
               </div>
-              <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
+              <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
             </div>
             {zoom === 'fit' && (
               <p className="fit-hint">
@@ -411,6 +413,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               showRecommended
               onFitScale={setFitScale}
               onZoomChange={setZoom}
+              previewReadoutRef={zoomReadoutRef}
             />
             <p className="muted small">
               全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import {
   PARENT_ROOM_SEATS,
   ROW_LAYOUT_1F,
@@ -28,6 +28,12 @@ export interface SeatMapProps {
   onFitScale?: (scale: number) => void
   /** ピンチ操作でズームが変わったときに親へ通知する（未指定ならピンチは無効） */
   onZoomChange?: (z: SeatZoom) => void
+  /**
+   * ピンチ中に倍率表示（ZoomControls の読み出しスパン）を再描画なしで書き換えるための ref。
+   * ZoomControls の readoutRef と同じオブジェクトを渡す。ジェスチャ中の表示専用で、
+   * 確定は従来どおり onZoomChange 経由の state で行う
+   */
+  previewReadoutRef?: RefObject<HTMLSpanElement | null>
 }
 
 /** プリセットのズーム倍率 */
@@ -45,11 +51,14 @@ export function ZoomControls({
   zoom,
   setZoom,
   fitScale,
+  readoutRef,
 }: {
   zoom: SeatZoom
   setZoom: (z: SeatZoom) => void
   /** 全体表示の実測倍率（未計測なら null） */
   fitScale: number | null
+  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap が直接書き換える） */
+  readoutRef?: RefObject<HTMLSpanElement | null>
 }) {
   const isFit = zoom === 'fit'
   const fitPercent = fitScale != null ? fitScale * 100 : 38
@@ -74,7 +83,7 @@ export function ZoomControls({
           {Math.round(z * 100)}%
         </button>
       ))}
-      <span className="zoom-readout" data-zoom-readout>
+      <span className="zoom-readout" data-zoom-readout ref={readoutRef}>
         {isFit ? `約${Math.round(fitPercent)}%` : `${Math.round(zoom * 100)}%`}
       </span>
     </div>
@@ -184,10 +193,18 @@ interface PinchState {
   /** 直近のピンチ中心（画面座標） */
   midClientX: number
   midClientY: number
-  /** 前回スクロール補正を適用した実効倍率 */
-  prevEff: number
+  /**
+   * ジェスチャ開始時点でのマップ原点（自然座標 0,0）の画面座標。
+   * ジェスチャ中はスクロールが起きないため不変で、translate+scale の基準に使う
+   */
+  layoutX: number
+  layoutY: number
+  /** 直近に transform へ適用した倍率（指を離すときの確定値の元） */
+  curScale: number
   /** 実際に倍率が動いたか（クリック抑止の判定に使う） */
   moved: boolean
+  /** 指が離れて確定済みか（確定後のスクロール補正エフェクトはこのときだけ働く） */
+  committed: boolean
 }
 
 export default function SeatMap({
@@ -198,6 +215,7 @@ export default function SeatMap({
   showRecommended,
   onFitScale,
   onZoomChange,
+  previewReadoutRef,
 }: SeatMapProps) {
   const isFit = zoom === 'fit'
   // レイアウトは常に等倍（席30px）で組み、表示倍率は transform の scale で適用する。
@@ -207,6 +225,8 @@ export default function SeatMap({
   const size = 30
   const scrollRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<HTMLDivElement>(null)
+  /** 見かけサイズを確保するラッパー（ピンチ中だけ overflow を開くために使う） */
+  const wrapRef = useRef<HTMLDivElement>(null)
   /** 適用中の倍率と、ラッパーが確保すべき見かけサイズ */
   const [box, setBox] = useState<{ scale: number; width: number; height: number } | null>(null)
   const onFitScaleRef = useRef(onFitScale)
@@ -221,6 +241,12 @@ export default function SeatMap({
   const pinchEndTimerRef = useRef<number | undefined>(undefined)
   /** ピンチ直後の残留クリックを1回だけ抑止するフラグ（次のタッチ開始で解除） */
   const suppressClickRef = useRef(false)
+  /** ピンチ中の最新タッチ値（rAF でまとめて1フレームに1回だけ適用する） */
+  const pendingPinchRef = useRef<{ dist: number; midX: number; midY: number } | null>(null)
+  /** 予約済み rAF の ID（未予約なら null） */
+  const pinchRafRef = useRef<number | null>(null)
+  const previewReadoutRefRef = useRef(previewReadoutRef)
+  previewReadoutRefRef.current = previewReadoutRef
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -252,6 +278,17 @@ export default function SeatMap({
    * 1本指の操作（ネイティブスクロール・席タップ）は一切横取りしない。
    * 2本目が触れた瞬間に touchstart を preventDefault して、そのシーケンスの
    * スクロール開始とクリック生成を止めてからピンチを処理するのが肝。
+   *
+   * 滑らかさの要: ジェスチャ中は React の state を一切更新しない（旧方式は
+   * touchmove ごとに onZoomChange → 親の setState → 全席ボタンの再描画＋
+   * 計測レイアウトエフェクト＋スクロール書き込みが走り、フレームに収まらず
+   * カクついていた）。代わりに touchmove は最新値を ref に貯めるだけにし、
+   * requestAnimationFrame で1フレームに1回、マップ要素の transform
+   * （translate+scale）を直接書き換える。transform はコンポジタ側で処理
+   * されるため再描画なしに指へ追従する。倍率表示も ref 経由で span の
+   * textContent を書き換えて追従させる。指が離れた瞬間にだけ onZoomChange
+   * で確定し（1回だけ）、確定レイアウトへのスクロール補正は下のレイアウト
+   * エフェクトが描画前に行うため、離した瞬間の見た目もジャンプしない。
    */
 
   /** この階の全体表示の実測倍率（レイアウトは常時等倍なので offsetWidth がそのまま自然幅） */
@@ -275,6 +312,7 @@ export default function SeatMap({
   const startPinch = (touches: TouchList) => {
     const map = mapRef.current
     if (!map) return
+    if (!onZoomChangeRef.current) return // ピンチ無効時は何もしない（従来どおり）
     const fitScale = measureFitScale()
     if (fitScale == null) return
     const a = touches[0]
@@ -282,7 +320,8 @@ export default function SeatMap({
     const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
     if (dist < 10) return
     const startScale = effectiveScale()
-    // マップの見かけの左上を原点として、ピンチ中心の自然座標をアンカーに取る
+    // 確定表示は「原点左上・scaleのみ」なので、rect の左上がそのまま自然座標の原点。
+    // ジェスチャ中はスクロールしないため、この原点の画面座標は最後まで不変
     const rect = map.getBoundingClientRect()
     const midClientX = (a.clientX + b.clientX) / 2
     const midClientY = (a.clientY + b.clientY) / 2
@@ -294,24 +333,58 @@ export default function SeatMap({
       anchorY: (midClientY - rect.top) / startScale,
       midClientX,
       midClientY,
-      prevEff: startScale,
+      layoutX: rect.left,
+      layoutY: rect.top,
+      curScale: startScale,
       moved: false,
+      committed: false,
+    }
+    pendingPinchRef.current = { dist, midX: midClientX, midY: midClientY }
+    // ジェスチャ中はコンポジタレイヤーへ昇格させ、ラッパーの overflow で
+    // 見かけが確保箱からはみ出す分が切り取られないようにする（確定時に戻す）
+    map.style.willChange = 'transform'
+    if (wrapRef.current) wrapRef.current.style.overflow = 'visible'
+  }
+
+  /** pending の最新タッチ値を transform と倍率表示へ反映する（rAF から1フレーム1回呼ばれる） */
+  const applyPinchFrame = () => {
+    const p = pinchRef.current
+    const pend = pendingPinchRef.current
+    const map = mapRef.current
+    if (!p || !pend || !map) return
+    const target = p.startScale * (pend.dist / p.startDist)
+    const s = Math.min(ZOOM_MAX_SCALE, Math.max(p.fitScale, target))
+    p.curScale = s
+    p.midClientX = pend.midX
+    p.midClientY = pend.midY
+    // アンカー（指の下のコンテンツ）がピンチ中心に留まるよう、平行移動も transform に含める。
+    // スクロロール書き込みなしでアンカーが合うため、フレームごとのレイアウト計算が要らない
+    const tx = pend.midX - p.layoutX - s * p.anchorX
+    const ty = pend.midY - p.layoutY - s * p.anchorY
+    map.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`
+    // 倍率表示は再描画なしで追従させる（確定時の表示と書式を揃える）
+    const ro = previewReadoutRefRef.current?.current
+    if (ro) {
+      ro.textContent =
+        s <= p.fitScale * FIT_SNAP_RATIO
+          ? `約${Math.round(p.fitScale * 100)}%`
+          : `${Math.round(s * 100)}%`
     }
   }
 
-  // ズーム変更の描画直後、ピンチ中心のアンカーが指の下に留まるようスクロールを補正する
+  // ズーム確定の描画直後、ピンチ中心のアンカーが指の下に留まるようスクロールを補正する。
+  // ジェスチャ中（committed になる前）は働かない
   useLayoutEffect(() => {
     const p = pinchRef.current
     const scroll = scrollRef.current
     const map = mapRef.current
-    if (!p || !scroll || !map) return
+    if (!p || !p.committed || !scroll || !map) return
     const newEff = zoom === 'fit' ? p.fitScale : zoom
     const rect = map.getBoundingClientRect()
     const dx = rect.left + p.anchorX * newEff - p.midClientX
     if (dx !== 0) scroll.scrollLeft += dx
     const dy = rect.top + p.anchorY * newEff - p.midClientY
     if (dy !== 0) window.scrollBy(0, dy)
-    p.prevEff = newEff
   }, [zoom, box])
 
   useEffect(() => {
@@ -322,15 +395,18 @@ export default function SeatMap({
       if (e.touches.length === 2) {
         e.preventDefault()
         window.clearTimeout(pinchEndTimerRef.current)
+        // 前ジェスチャの確定済み状態が残っていたら破棄して新しいピンチを始める
+        if (pinchRef.current?.committed) pinchRef.current = null
         if (!pinchRef.current) startPinch(e.touches)
       }
     }
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2) return
-      if (!pinchRef.current) {
+      if (!pinchRef.current || pinchRef.current.committed) {
         // 2本目の touchstart がコンテナの外で始まっていた場合の保険
         window.clearTimeout(pinchEndTimerRef.current)
+        pinchRef.current = null
         startPinch(e.touches)
         if (!pinchRef.current) return
       }
@@ -340,29 +416,69 @@ export default function SeatMap({
       const b = e.touches[1]
       const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
       if (dist < 10) return
-      p.midClientX = (a.clientX + b.clientX) / 2
-      p.midClientY = (a.clientY + b.clientY) / 2
-      const target = p.startScale * (dist / p.startDist)
-      const clamped = Math.min(ZOOM_MAX_SCALE, Math.max(p.fitScale, target))
       if (Math.abs(dist - p.startDist) > 12) p.moved = true
-      const cb = onZoomChangeRef.current
-      if (!cb) return
-      if (clamped <= p.fitScale * FIT_SNAP_RATIO) cb('fit')
-      else cb(Math.round(clamped * 1000) / 1000)
+      // 最新値だけを貯め、反映は rAF に任せる（複数イベントが来ても1フレーム1回）
+      pendingPinchRef.current = {
+        dist,
+        midX: (a.clientX + b.clientX) / 2,
+        midY: (a.clientY + b.clientY) / 2,
+      }
+      if (pinchRafRef.current == null) {
+        pinchRafRef.current = requestAnimationFrame(() => {
+          pinchRafRef.current = null
+          applyPinchFrame()
+        })
+      }
     }
 
     const endPinch = (e: TouchEvent) => {
       if (e.touches.length >= 2 || !pinchRef.current) return
-      if (pinchRef.current.moved) {
+      const p = pinchRef.current
+      if (p.committed) return // 残りの指の touchend で二重に確定しない
+      // 予約済み rAF を止め、最後の値を同期で反映してから確定する
+      if (pinchRafRef.current != null) {
+        cancelAnimationFrame(pinchRafRef.current)
+        pinchRafRef.current = null
+      }
+      applyPinchFrame()
+      pendingPinchRef.current = null
+      if (p.moved) {
         // ピンチ直後に残った指のタップがクリック化して席を誤操作しないための保険。
         // 次のタッチ開始で解除されるので、正規のタップは妨げない。
         suppressClickRef.current = true
       }
-      // 最後の倍率変更へのスクロール補正（レイアウトエフェクト）が走る余地を残して破棄する
-      const p = pinchRef.current
+      // ジェスチャ用に変えた表示プロパティを戻す
+      // （transform は確定描画が上書きする。書き換わらなかった場合は下の復旧で戻す）
+      const map = mapRef.current
+      if (map) map.style.willChange = ''
+      if (wrapRef.current) wrapRef.current.style.overflow = ''
+      // 確定はここで1回だけ（吸着範囲内なら全体表示へ）
+      p.committed = true
+      const cb = onZoomChangeRef.current
+      if (cb) {
+        if (p.curScale <= p.fitScale * FIT_SNAP_RATIO) cb('fit')
+        else cb(Math.round(p.curScale * 1000) / 1000)
+      }
+      // 確定値が従来と同じで React が再描画を省略した場合、transform がジェスチャ用
+      // （translate 付き）のまま残る。少し待って残っていたら、確定表示（scale のみ＋
+      // スクロール補正）へ手動で戻す。確定描画が走った場合は何もしない
       pinchEndTimerRef.current = window.setTimeout(() => {
-        if (pinchRef.current === p) pinchRef.current = null
-      }, 80)
+        if (pinchRef.current !== p) return
+        pinchRef.current = null
+        const m = mapRef.current
+        const scroll = scrollRef.current
+        if (!m || !scroll || !m.style.transform.includes('translate(')) return
+        const cs =
+          p.curScale <= p.fitScale * FIT_SNAP_RATIO
+            ? p.fitScale
+            : Math.round(p.curScale * 1000) / 1000
+        m.style.transform = `scale(${cs})`
+        const rect = m.getBoundingClientRect()
+        const dx = rect.left + p.anchorX * cs - p.midClientX
+        if (dx !== 0) scroll.scrollLeft += dx
+        const dy = rect.top + p.anchorY * cs - p.midClientY
+        if (dy !== 0) window.scrollBy(0, dy)
+      }, 120)
     }
 
     const clearSuppress = () => {
@@ -489,6 +605,7 @@ export default function SeatMap({
     >
       <div
         className="seatmap-fit"
+        ref={wrapRef}
         style={box ? { width: box.width, height: box.height } : undefined}
       >
         {mapContent}
