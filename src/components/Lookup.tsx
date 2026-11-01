@@ -92,7 +92,17 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
         </button>
       </form>
 
-      {found && (
+      {found && found.cancelled && (
+        <div className="lookup-result lookup-cancelled" data-lookup-cancelled>
+          <p className="error-text">この予約はキャンセル済みです</p>
+          <p className="muted">
+            予約番号 {found.id} のご予約は、すでにキャンセルされています。
+            お心当たりがない場合や、再度ご予約をご希望の場合は、主催者までご連絡ください。
+          </p>
+        </div>
+      )}
+
+      {found && !found.cancelled && (
         <div className="lookup-result" data-lookup-result>
           <p className="done-badge">予約が見つかりました</p>
           <p className="reservation-code">{found.id}</p>

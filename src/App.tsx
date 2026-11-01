@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { ALL_SEATS } from './data/seats'
 import {
+  formatMonthDayTime,
   formatPerformanceWhen,
   formatTicketTypes,
+  isBookingClosed,
+  localDateString,
   seatStatus,
   type Performance,
 } from './lib/logic'
@@ -13,6 +16,9 @@ import Lookup from './components/Lookup'
 import Staff from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
+
+/** 会場名（ヒーローと本日開演カードで共用） */
+const VENUE_NAME = '戸塚区民文化センター さくらプラザ・ホール'
 
 function TopHeader({
   perf,
@@ -25,6 +31,7 @@ function TopHeader({
 }) {
   const { data } = useStore()
   const available = ALL_SEATS.filter((s) => seatStatus(data, s.id) === 'available').length
+  const showDeadline = data.bookingDeadline !== null && !isBookingClosed(data)
   return (
     <header className="site-header">
       <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
@@ -32,7 +39,7 @@ function TopHeader({
       <div className="hero-scrim-top" aria-hidden="true" />
       <div className="hero-content">
         <div className="header-top">
-          <p className="venue-line">戸塚区民文化センター さくらプラザ・ホール</p>
+          <p className="venue-line">{VENUE_NAME}</p>
           <div className="header-actions">
             <button type="button" className="staff-link" onClick={onLookup}>
               予約確認
@@ -47,10 +54,32 @@ function TopHeader({
         <p className="site-meta">
           料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席
         </p>
+        {showDeadline && (
+          <p className="site-deadline" data-booking-deadline-display>
+            予約締切：{formatMonthDayTime(data.bookingDeadline!)}まで
+          </p>
+        )}
         {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
         {perf.note && <p className="site-note">{perf.note}</p>}
       </div>
     </header>
+  )
+}
+
+/** 公演日が今日のときだけ出す「本日開演」案内カード */
+function TodayCard({ perf }: { perf: Performance }) {
+  return (
+    <section className="card today-card" data-today-card>
+      <p className="today-badge">♪ 本日開演 ♪</p>
+      <p className="today-name">{perf.name}</p>
+      <p className="today-times">
+        開場 {perf.doorsOpen} ／ 開演 {perf.time}
+      </p>
+      <p className="today-venue">{VENUE_NAME}</p>
+      <p className="today-note">
+        ご予約の方は受付でお名前と予約番号をお伝えください（お支払いは現金のみ）。
+      </p>
+    </section>
   )
 }
 
@@ -91,6 +120,7 @@ function Shell() {
         onStaff={() => setView('staff')}
       />
       <main className="main">
+        {view === 'book' && perf.date === localDateString() && <TodayCard perf={perf} />}
         {view === 'book' && <AudienceBook perf={perf} />}
         {view === 'lookup' && <Lookup onBack={() => setView('book')} />}
         {view === 'staff' && <Staff onExit={() => setView('book')} />}

@@ -22,8 +22,10 @@ export interface Performance {
   name: string
   /** YYYY-MM-DD */
   date: string
-  /** HH:mm */
+  /** 開演時刻 HH:mm */
   time: string
+  /** 開場時刻 HH:mm */
+  doorsOpen: string
   /** 券種リスト。先頭がデフォルト券種 */
   ticketTypes: TicketType[]
   /** 料金に関する自由記述の注記（お客様画面の券種選択付近に表示） */
@@ -96,11 +98,23 @@ export function defaultTicketTypes(): TicketType[] {
   ]
 }
 
+/** 開場時刻のデフォルト: 開演の30分前 */
+export function defaultDoorsOpen(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim())
+  if (!m) return '12:30'
+  const total = Number(m[1]) * 60 + Number(m[2]) - 30
+  const wrapped = ((total % 1440) + 1440) % 1440
+  const hh = String(Math.floor(wrapped / 60)).padStart(2, '0')
+  const mm = String(wrapped % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
 export function defaultPerformance(): Performance {
   return {
     name: 'サンプル公演',
     date: '2026-12-19',
     time: '13:00',
+    doorsOpen: '12:30',
     ticketTypes: defaultTicketTypes(),
     priceNote: '子供料金は小学生以下が対象です。',
     note: '劇団ツインリーブス 2027年5月公演。おとぎ話の世界でお待ちしています！',
@@ -170,10 +184,16 @@ export function normalizePerformance(raw: unknown): Performance {
   const rec = asRecord(raw)
   if (!rec) return defaultPerformance()
   const fallback = defaultPerformance()
+  const time = asString(rec.time, fallback.time)
+  const rawDoors = asString(rec.doorsOpen, '')
   return {
     name: asString(rec.name, fallback.name),
     date: asString(rec.date, fallback.date),
-    time: asString(rec.time, fallback.time),
+    time,
+    // 旧データ（開場時刻なし）は開演の30分前をデフォルトにする
+    doorsOpen: /^\d{1,2}:\d{2}$/.test(rawDoors.trim())
+      ? rawDoors.trim()
+      : defaultDoorsOpen(time),
     ticketTypes: normalizeTicketTypes(rec.ticketTypes, rec.price),
     priceNote: asString(rec.priceNote, ''),
     note: asString(rec.note, ''),
@@ -323,8 +343,26 @@ export function isBookingClosed(data: AppData, now: Date = new Date()): boolean 
 }
 
 /**
+ * 電話番号の正規化: 全角数字を半角にし、ハイフン・空白・括弧などの数字以外を
+ * すべて取り除いて、数字だけの文字列にする。保存値・照会値・検索値は
+ * すべてこの形で比較する（申込時はこの形で保存する）。
+ */
+export function normalizePhone(value: string): string {
+  const halfWidth = value.replace(/[０-９]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) - 0xfee0),
+  )
+  return halfWidth.replace(/[^0-9]/g, '')
+}
+
+/** 電話番号の形式チェック: 正規化して10〜11桁の数字ならOK（英字などは弾く） */
+export function isValidPhone(value: string): boolean {
+  return /^\d{10,11}$/.test(normalizePhone(value))
+}
+
+/**
  * 予約確認（ローカル）: 予約番号と電話番号で自分の予約を探す。
- * 予約番号は大小文字を区別せず、電話番号はハイフン・空白を除いて比較する。
+ * 予約番号は大小文字を区別せず、電話番号は正規化（全角→半角・記号除去）して比較する。
+ * キャンセル済みの予約もヒットさせる（呼び出し側が cancelled を見て文言を出し分ける）。
  */
 export function findReservationByCodePhone(
   data: AppData,
@@ -332,12 +370,11 @@ export function findReservationByCodePhone(
   phone: string,
 ): Reservation | null {
   const normalizedCode = code.trim().toUpperCase()
-  const digits = (v: string) => v.replace(/[\s-]/g, '')
-  const normalizedPhone = digits(phone)
+  const normalizedPhone = normalizePhone(phone)
   if (!normalizedCode || !normalizedPhone) return null
   return (
     data.reservations.find(
-      (r) => !r.cancelled && r.id.toUpperCase() === normalizedCode && digits(r.phone) === normalizedPhone,
+      (r) => r.id.toUpperCase() === normalizedCode && normalizePhone(r.phone) === normalizedPhone,
     ) ?? null
   )
 }
@@ -563,6 +600,14 @@ export function reservationTotal(reservation: Reservation): number {
   return reservation.amount
 }
 
+/** スタッフ一覧での表示名。当日販売で購入者名が空の予約は「当日 様」ではなく内容で示す */
+export function reservationDisplayName(reservation: Reservation): string {
+  if (reservation.source === 'door' && reservation.name === '当日') {
+    return '当日販売（購入者名なし）'
+  }
+  return `${reservation.name} 様`
+}
+
 /** 予約の券種内訳を「大人×2・子供×1」の形で返す（受付表示用） */
 export function reservationTypeSummary(reservation: Reservation): string {
   const counts = new Map<string, number>()
@@ -589,4 +634,21 @@ export function formatPerformanceWhen(perf: Performance): string {
   const day = date.getDate()
   const weekday = weekdays[date.getDay()]
   return `${month}月${day}日（${weekday}） ${perf.time}開演`
+}
+
+/** ISO日時を「12月19日 13:00」のように整形する（予約締切のお客様表示用） */
+export function formatMonthDayTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`
+}
+
+/** ローカル日付を YYYY-MM-DD で返す（「本日開演」判定用） */
+export function localDateString(now: Date = new Date()): string {
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }

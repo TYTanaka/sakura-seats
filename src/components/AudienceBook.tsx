@@ -8,6 +8,8 @@ import {
   formatPerformanceWhen,
   formatYen,
   isBookingClosed,
+  isValidPhone,
+  normalizePhone,
   seatStatus,
   type Performance,
   type Reservation,
@@ -32,6 +34,48 @@ import ReservationQr from './ReservationQr'
 
 type Step = 'seats' | 'form' | 'confirm' | 'done'
 
+/**
+ * 申込フォームの下書き（R3-8）: 入力途中でリロードしても消えないよう
+ * 端末内に保持する。予約が完了したら破棄する。
+ */
+const DRAFT_KEY = 'sakura-seats-booking-draft-v1'
+
+interface BookingDraft {
+  name: string
+  phone: string
+  note: string
+  selected: string[]
+  typeBySeat: Record<string, string>
+}
+
+function loadDraft(): BookingDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<BookingDraft>
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      phone: typeof parsed.phone === 'string' ? parsed.phone : '',
+      note: typeof parsed.note === 'string' ? parsed.note : '',
+      selected: Array.isArray(parsed.selected)
+        ? parsed.selected.filter((s): s is string => typeof s === 'string')
+        : [],
+      typeBySeat:
+        parsed.typeBySeat && typeof parsed.typeBySeat === 'object' ? parsed.typeBySeat : {},
+    }
+  } catch {
+    return null
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // 保存できなくても画面操作は継続する
+  }
+}
+
 export default function AudienceBook({ perf }: { perf: Performance }) {
   const { data, reserve } = useStore()
   const [step, setStep] = useState<Step>('seats')
@@ -39,12 +83,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   /** 全体表示の実測倍率（SeatMap が通知）。倍率表示（約○○%）に使う */
   const [fitScale, setFitScale] = useState<number | null>(null)
-  const [selected, setSelected] = useState<string[]>([])
+  const [initialDraft] = useState<BookingDraft | null>(loadDraft)
+  const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
-  const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [note, setNote] = useState('')
+  const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>(
+    () => initialDraft?.typeBySeat ?? {},
+  )
+  const [name, setName] = useState(() => initialDraft?.name ?? '')
+  const [phone, setPhone] = useState(() => initialDraft?.phone ?? '')
+  const [note, setNote] = useState(() => initialDraft?.note ?? '')
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -64,6 +111,31 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const closed = isBookingClosed(data)
   const remainingByFloor = availableCountByFloor(data)
 
+  // 下書きから復元した選択席のうち、すでに埋まっている席は一度だけ取り除く
+  const prunedDraftRef = useRef(false)
+  useEffect(() => {
+    if (prunedDraftRef.current) return
+    prunedDraftRef.current = true
+    setSelected((prev) => prev.filter((id) => seatStatus(data, id) === 'available'))
+    // 初回マウント時のデータでのみ判定する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 入力内容を下書きとして保持する（全て空なら破棄）
+  useEffect(() => {
+    if (step === 'done') return
+    try {
+      if (!name && !phone && !note && selected.length === 0) {
+        localStorage.removeItem(DRAFT_KEY)
+      } else {
+        const draft: BookingDraft = { name, phone, note, selected, typeBySeat }
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      }
+    } catch {
+      // 保存できなくても画面操作は継続する
+    }
+  }, [name, phone, note, selected, typeBySeat, step])
+
   const selectedSeats = useMemo(() => selected.map(seatById), [selected])
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
   const includesRestricted = selectedSeats.some((s) => s.restrictedView)
@@ -72,10 +144,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
   const stateOf = (seat: SeatDef): SeatVisualState => {
     if (selected.includes(seat.id)) return 'selected'
-    return seatStatus(data, seat.id)
+    const status = seatStatus(data, seat.id)
+    // お客様マップでは支払済席も予約済席と同じ見た目にする（どちらも「選べない席」。
+    // 凡例の1スウォッチとも一致させる。スタッフ画面では従来どおり区別する）
+    return status === 'paid' ? 'reserved' : status
   }
 
   const handleSeatTap = (seat: SeatDef) => {
+    // 予約締切後は席タップも無効（選べるのに進めない状態にしない）
+    if (closed) return
     setError('')
     if (selected.includes(seat.id)) {
       setSelected(selected.filter((id) => id !== seat.id))
@@ -99,10 +176,12 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
         })),
         name,
-        phone,
+        // 電話番号は正規化した数字のみで保存する（照会側も同じ形で比較する）
+        phone: normalizePhone(phone),
         note,
         source: 'online',
       })
+      clearDraft()
       setCompleted(reservation)
       setStep('done')
     } catch (e) {
@@ -116,6 +195,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   }
 
   const resetFlow = () => {
+    clearDraft()
     setSelected([])
     setTypeBySeat({})
     setName('')
@@ -222,7 +302,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </a>
             <span className="muted small">家族や友だちに、この予約ページをLINEで共有できます</span>
           </div>
-          <section className="card seat-picker">
+          <section className={`card seat-picker${closed ? ' is-closed' : ''}`}>
             <div className="seat-controls">
               <div className="floor-tabs" role="tablist" aria-label="階の切り替え">
                 {([1, 2] as Floor[]).map((f) => (
@@ -352,6 +432,14 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 setError('電話番号を入力してください')
                 return
               }
+              if (!isValidPhone(phone)) {
+                setError(
+                  '電話番号は10〜11桁の数字で入力してください（全角数字やハイフンはそのまま使えます）',
+                )
+                return
+              }
+              // 確認画面・保存は正規化した数字のみの形に統一する
+              setPhone(normalizePhone(phone))
               setError('')
               setStep('confirm')
             }}

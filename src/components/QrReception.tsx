@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { seatById } from '../data/seats'
 import {
   formatYen,
+  reservationDisplayName,
   reservationTotal,
   reservationTypeSummary,
   type Reservation,
@@ -19,7 +20,7 @@ type CamStatus = 'starting' | 'scanning' | 'manual'
  * - 新しい RPC は足さず、スタッフ入室時に読み込んだ予約データから検索する
  */
 export default function QrReception({ onClose }: { onClose: () => void }) {
-  const { data, cancel, setCheckedIn, setPaid } = useStore()
+  const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
   const [status, setStatus] = useState<CamStatus>('starting')
   const [camError, setCamError] = useState('')
   const [manual, setManual] = useState('')
@@ -285,7 +286,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
                 <span className="reservation-code-small" data-qr-result-code>
                   {res.id}
                 </span>
-                <span className="reservation-name">{res.name} 様</span>
+                <span className="reservation-name">{reservationDisplayName(res)}</span>
                 <span className={`source-badge source-${res.source}`}>
                   {res.source === 'door' ? '当日販売' : '予約'}
                 </span>
@@ -305,6 +306,16 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
             </div>
             {!res.cancelled && (
               <div className="reservation-actions">
+                {!(res.paid && res.checkedIn) && (
+                  <button
+                    type="button"
+                    data-action="complete"
+                    className="toggle-btn complete-btn"
+                    onClick={() => runAction(() => completeReception(res.id))}
+                  >
+                    受付完了（支払い＋来場）
+                  </button>
+                )}
                 <button
                   type="button"
                   data-action="checkin"

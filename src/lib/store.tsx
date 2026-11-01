@@ -45,6 +45,8 @@ export interface Store {
   cancel: (reservationId: string) => Promise<void>
   setCheckedIn: (reservationId: string, value: boolean) => Promise<void>
   setPaid: (reservationId: string, value: boolean) => Promise<void>
+  /** 受付完了ワンタップ: 支払い済み＋来場済みを一度に設定する */
+  completeReception: (reservationId: string) => Promise<void>
   toggleBlocked: (seatId: string) => Promise<void>
   setBlockedForSeats: (seatIds: string[], blocked: boolean) => Promise<void>
   /** 公演設定と予約締切をまとめて保存する */
@@ -118,6 +120,8 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
       setCheckedIn: async (reservationId, value) =>
         setData((prev) => setCheckedIn(prev, reservationId, value)),
       setPaid: async (reservationId, value) => setData((prev) => setPaid(prev, reservationId, value)),
+      completeReception: async (reservationId) =>
+        setData((prev) => setCheckedIn(setPaid(prev, reservationId, true), reservationId, true)),
       toggleBlocked: async (seatId) => setData((prev) => toggleBlocked(prev, seatId)),
       setBlockedForSeats: async (seatIds, blocked) =>
         setData((prev) => setBlockedForSeats(prev, seatIds, blocked)),

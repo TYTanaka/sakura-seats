@@ -14,7 +14,8 @@
   --ivory: #fbf6ee; /* 絵本のページのようなクリーム背景 */
   --paper: #fffdf8;
   --ink: #322a4a;
-  --muted: #857a9e;
+  /* 補助テキスト色: クリーム背景で 4.5:1 以上を確保（旧 #857a9e は 3.92:1 で AA 未満） */
+  --muted: #6f6196;
   --line: #ddd2ee;
   --error: #d6455b;
   --success: #2f9e66;
@@ -87,25 +88,25 @@ textarea {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(24, 18, 64, 0.66) 0%,
-    rgba(32, 22, 82, 0.58) 48%,
-    rgba(26, 18, 66, 0.78) 100%
+    rgba(24, 18, 64, 0.7) 0%,
+    rgba(32, 22, 82, 0.68) 48%,
+    rgba(26, 18, 66, 0.84) 100%
   );
   pointer-events: none;
 }
 
 /* ヒーロー上端の追加スクリム: 会場名・料金ラインが星空の明るい部分でも
-   読めるよう、最上部だけ局所的に暗くする（アート全体は隠さない） */
+   読めるよう、上部だけ局所的に暗くする（アート全体は隠さない） */
 .hero-scrim-top {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 46%;
+  height: 62%;
   background: linear-gradient(
     180deg,
-    rgba(13, 9, 38, 0.5) 0%,
-    rgba(13, 9, 38, 0.28) 55%,
+    rgba(13, 9, 38, 0.55) 0%,
+    rgba(13, 9, 38, 0.36) 55%,
     rgba(13, 9, 38, 0) 100%
   );
   pointer-events: none;
@@ -153,9 +154,23 @@ textarea {
 .site-meta {
   margin: 0;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   color: #f2ecff;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
+}
+
+/* 予約締切のお客様表示（ヒーロー内の金のピル） */
+.site-deadline {
+  display: inline-block;
+  margin: 10px 0 0;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: rgba(233, 185, 73, 0.95);
+  color: #33270a;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(10, 6, 32, 0.45);
 }
 
 .site-note {
@@ -1361,6 +1376,113 @@ button.seat-available:hover {
 .qr-result .reservation-item {
   border-top: none;
   padding-top: 0;
+}
+
+/* ---------------- ラウンド3: 警告・本日開演・その他 ---------------- */
+
+/* 初期パスコードのままのときの警告（スタッフ画面内のみ） */
+.passcode-warning {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: #fdeceb;
+  border: 1.5px dashed #e0492f;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #a02c1a;
+  line-height: 1.6;
+}
+
+.staff-head-row {
+  margin-top: 0;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.staff-head-row .back-btn {
+  margin-bottom: 0;
+}
+
+/* 受付完了ワンタップボタン（個別トグルより目立たせる） */
+.complete-btn {
+  background: var(--mint-pale);
+  border-color: var(--mint);
+  color: #146c4c;
+}
+
+/* 販売設定: 占有席タップ時の理由表示 */
+.seat-settings-notice {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  background: #fdeceb;
+  border: 1.5px dashed #e0492f;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #a02c1a;
+  text-align: center;
+}
+
+/* 予約締切後のお客様マップ: 席は不活性な見た目にする */
+.seat-picker.is-closed .seat {
+  opacity: 0.72;
+  cursor: default;
+}
+
+/* 予約確認: キャンセル済みの案内 */
+.lookup-cancelled {
+  background: #fdeceb;
+  border: 1.5px dashed #e0492f;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+/* 本日開演カード（公演当日のみ） */
+.today-card {
+  text-align: center;
+  color: #fff;
+  background: linear-gradient(160deg, #241a4d, #4a3a8c 70%, #5b4b9e);
+  border: 2px solid var(--gold);
+  box-shadow: 0 6px 20px rgba(36, 26, 77, 0.4);
+}
+
+.today-badge {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #33270a;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.today-name {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.today-times {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #f6e7bd;
+}
+
+.today-venue {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8defc;
+}
+
+.today-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #e9e2fb;
 }
 
 /* 印刷用シートは画面では隠し、印刷時のみ全面表示する */

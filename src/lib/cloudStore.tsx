@@ -9,6 +9,7 @@ import {
 import {
   createReservation,
   emptyData,
+  normalizePhone,
   setBlockedForSeats as applyBlockedForSeats,
   toggleBlocked as applyToggleBlocked,
   type AppData,
@@ -228,8 +229,19 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         )
         await refreshAll()
       },
+      completeReception: async (reservationId) => {
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target?.cloudId) throw new Error('予約が見つかりません')
+        // staff_update_reservation は支払い・来場を同時に設定できるので1回の呼び出しで完結する
+        await api().staffUpdateReservation(staffPasscode(), target.cloudId, {
+          paid: true,
+          checkedIn: true,
+          status: target.cancelled ? 'cancelled' : 'active',
+        })
+        await refreshStaff()
+      },
       lookupReservation: async (code, phone) =>
-        api().lookupReservation(code.trim().toUpperCase(), phone.trim()),
+        api().lookupReservation(code.trim().toUpperCase(), normalizePhone(phone)),
       staffUnlock: async (candidate) => {
         try {
           const staff = await api().staffGetAll(candidate)

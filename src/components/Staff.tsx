@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -14,6 +14,8 @@ import {
   activeReservations,
   defaultTicketType,
   formatYen,
+  normalizePhone,
+  reservationDisplayName,
   reservationTotal,
   reservationTypeSummary,
   seatStatus,
@@ -21,7 +23,7 @@ import {
   type Performance,
   type TicketType,
 } from '../lib/logic'
-import { useStore } from '../lib/store'
+import { DEFAULT_PASSCODE, useStore } from '../lib/store'
 import { downloadReservationsCsv } from '../lib/csv'
 import SeatMap, {
   SeatLegend,
@@ -35,6 +37,37 @@ import QrReception from './QrReception'
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
 const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
 
+/**
+ * スタッフ入室状態の保持先（R3-8）: sessionStorage なのでタブを閉じれば消える。
+ * 同じタブ内でお客様画面へ出て戻ってきても再入室を求めないための保持で、
+ * 明示的なログアウトで破棄する。
+ */
+const STAFF_SESSION_KEY = 'sakura-seats-staff-session'
+
+function loadStaffSession(): string | null {
+  try {
+    return sessionStorage.getItem(STAFF_SESSION_KEY)
+  } catch {
+    return null
+  }
+}
+
+function saveStaffSession(passcode: string) {
+  try {
+    sessionStorage.setItem(STAFF_SESSION_KEY, passcode)
+  } catch {
+    // 保存できなくても入室自体は継続する
+  }
+}
+
+function clearStaffSession() {
+  try {
+    sessionStorage.removeItem(STAFF_SESSION_KEY)
+  } catch {
+    // 何もしない
+  }
+}
+
 export default function Staff({ onExit }: { onExit: () => void }) {
   const { mode, staffUnlock } = useStore()
   const [unlocked, setUnlocked] = useState(false)
@@ -42,6 +75,45 @@ export default function Staff({ onExit }: { onExit: () => void }) {
   const [passError, setPassError] = useState('')
   const [checking, setChecking] = useState(false)
   const [tab, setTab] = useState<StaffTab>('reception')
+  /** 入室に使ったパスコード（初期値のままかどうか・セッション保持の更新に使う） */
+  const [sessionPasscode, setSessionPasscode] = useState('')
+
+  // 同じタブセッション内での再入室を省略する（保存済みパスコードで自動入室を試す）
+  useEffect(() => {
+    const saved = loadStaffSession()
+    if (!saved) return
+    let active = true
+    setChecking(true)
+    void staffUnlock(saved)
+      .then((ok) => {
+        if (!active) return
+        if (ok) {
+          setSessionPasscode(saved)
+          setUnlocked(true)
+        } else {
+          clearStaffSession()
+        }
+      })
+      .catch(() => {
+        if (active) clearStaffSession()
+      })
+      .finally(() => {
+        if (active) setChecking(false)
+      })
+    return () => {
+      active = false
+    }
+    // 初回マウント時のみ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleLogout = () => {
+    clearStaffSession()
+    setSessionPasscode('')
+    setPasscode('')
+    setPassError('')
+    setUnlocked(false)
+  }
 
   if (!unlocked) {
     return (
@@ -57,12 +129,17 @@ export default function Staff({ onExit }: { onExit: () => void }) {
             setChecking(true)
             try {
               if (await staffUnlock(passcode)) {
+                saveStaffSession(passcode)
+                setSessionPasscode(passcode)
                 setUnlocked(true)
                 setPassError('')
               } else {
+                // 失敗時は入力をクリアして打ち直しやすくする
+                setPasscode('')
                 setPassError('パスコードが違います')
               }
             } catch {
+              setPasscode('')
               setPassError('確認に失敗しました。しばらくしてからお試しください')
             } finally {
               setChecking(false)
@@ -84,7 +161,6 @@ export default function Staff({ onExit }: { onExit: () => void }) {
             {checking ? '確認中…' : '入室する'}
           </button>
         </form>
-        <p className="muted small">初期パスコードは 1234 です（公演設定から変更できます）。</p>
       </section>
     )
   }
@@ -92,14 +168,30 @@ export default function Staff({ onExit }: { onExit: () => void }) {
   return (
     <div className="staff">
       <div className="staff-head">
-        <button type="button" className="btn btn-ghost back-btn" onClick={onExit}>
-          ← 予約画面へ戻る
-        </button>
+        <div className="btn-row staff-head-row">
+          <button type="button" className="btn btn-ghost back-btn" onClick={onExit}>
+            ← 予約画面へ戻る
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            data-staff-logout
+            onClick={handleLogout}
+          >
+            ログアウト
+          </button>
+        </div>
         <p className="prototype-note">
           {mode === 'cloud'
             ? 'クラウド同期中：データはスタッフ全員の端末で共有されます'
             : '試作版：データはこの端末内のみに保存されます'}
         </p>
+        {sessionPasscode === DEFAULT_PASSCODE && (
+          <p className="passcode-warning" data-default-passcode-warning>
+            ⚠ パスコードが初期値のままです。受付情報（お客様のお名前・電話番号）を
+            守るため、「公演設定」からパスコードを変更してください。
+          </p>
+        )}
       </div>
 
       <nav className="staff-tabs" aria-label="スタッフメニュー">
@@ -128,7 +220,14 @@ export default function Staff({ onExit }: { onExit: () => void }) {
       {tab === 'door' && <DoorSales />}
       {tab === 'settings' && <SeatSettings />}
       {tab === 'summary' && <Summary />}
-      {tab === 'perf' && <PerformanceSettings />}
+      {tab === 'perf' && (
+        <PerformanceSettings
+          onPasscodeChanged={(next) => {
+            setSessionPasscode(next)
+            saveStaffSession(next)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -136,7 +235,7 @@ export default function Staff({ onExit }: { onExit: () => void }) {
 /* ---------------- 受付 ---------------- */
 
 function Reception() {
-  const { data, cancel, setCheckedIn, setPaid } = useStore()
+  const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
   const [unpaidOnly, setUnpaidOnly] = useState(false)
@@ -153,6 +252,7 @@ function Reception() {
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const qPhone = normalizePhone(query)
     return data.reservations
       .filter((r) => showCancelled || !r.cancelled)
       .filter((r) => !unpaidOnly || (!r.paid && !r.cancelled))
@@ -161,7 +261,8 @@ function Reception() {
           !q ||
           r.name.toLowerCase().includes(q) ||
           r.id.toLowerCase().includes(q) ||
-          r.phone.replace(/-/g, '').includes(q.replace(/-/g, '')),
+          // 電話番号は全角・ハイフンの有無を正規化してから部分一致させる
+          (qPhone.length > 0 && normalizePhone(r.phone).includes(qPhone)),
       )
       .sort((a, b) => a.id.localeCompare(b.id))
   }, [data.reservations, query, showCancelled, unpaidOnly])
@@ -224,7 +325,7 @@ function Reception() {
             <div className="reservation-main">
               <p className="reservation-title">
                 <span className="reservation-code-small">{res.id}</span>
-                <span className="reservation-name">{res.name} 様</span>
+                <span className="reservation-name">{reservationDisplayName(res)}</span>
                 <span className={`source-badge source-${res.source}`}>
                   {res.source === 'door' ? '当日販売' : '予約'}
                 </span>
@@ -241,6 +342,16 @@ function Reception() {
             </div>
             {!res.cancelled && (
               <div className="reservation-actions">
+                {!(res.paid && res.checkedIn) && (
+                  <button
+                    type="button"
+                    data-action="complete"
+                    className="toggle-btn complete-btn"
+                    onClick={() => runAction(() => completeReception(res.id))}
+                  >
+                    受付完了（支払い＋来場）
+                  </button>
+                )}
                 <button
                   type="button"
                   data-action="checkin"
@@ -396,7 +507,7 @@ function DoorSales() {
       <h3>当日販売</h3>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
       <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
-      <SeatLegend />
+      <SeatLegend variant="staff" />
       <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
       {selected.length > 0 && (
         <>
@@ -444,14 +555,28 @@ function SeatSettings() {
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [fitScale, setFitScale] = useState<number | null>(null)
+  /** 占有席タップ時の理由表示（一時的に出す） */
+  const [notice, setNotice] = useState('')
 
   const stateOf = (seat: SeatDef): SeatVisualState => seatStatus(data, seat.id)
 
   const handleTap = (seat: SeatDef) => {
     const status = seatStatus(data, seat.id)
-    if (status === 'reserved' || status === 'paid') return
+    if (status === 'reserved' || status === 'paid') {
+      // 無反応に見えないよう、切り替えできない理由を一時表示する
+      setNotice('予約済みのため変更できません')
+      return
+    }
+    setNotice('')
     void toggleBlocked(seat.id).catch(() => undefined)
   }
+
+  // 理由表示は数秒で自動的に消す
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(''), 3500)
+    return () => clearTimeout(t)
+  }, [notice])
 
   const groups: { label: string; seatIds: string[] }[] = [
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map((row) => ({
@@ -473,7 +598,12 @@ function SeatSettings() {
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
       <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
-      <SeatLegend />
+      <SeatLegend variant="staff" />
+      {notice && (
+        <p className="seat-settings-notice" data-seat-notice role="status">
+          {notice}
+        </p>
+      )}
       <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
       <h4>列ごとの一括切替</h4>
       <ul className="row-toggle-list">
@@ -659,12 +789,17 @@ interface TypeDraft {
   price: string
 }
 
-function PerformanceSettings() {
+function PerformanceSettings({
+  onPasscodeChanged,
+}: {
+  onPasscodeChanged?: (next: string) => void
+}) {
   const { data, mode, saveSettings, resetAll, changePasscode } = useStore()
   const perf = data.performance
   const [name, setName] = useState(perf.name)
   const [date, setDate] = useState(perf.date)
   const [time, setTime] = useState(perf.time)
+  const [doorsOpen, setDoorsOpen] = useState(perf.doorsOpen)
   const [deadline, setDeadline] = useState(data.bookingDeadline ? data.bookingDeadline.slice(0, 16) : '')
   const [types, setTypes] = useState<TypeDraft[]>(
     perf.ticketTypes.map((t) => ({ id: t.id, name: t.name, price: String(t.price) })),
@@ -710,6 +845,10 @@ function PerformanceSettings() {
       setError('日付と開演時刻を入力してください')
       return
     }
+    if (!doorsOpen) {
+      setError('開場時刻を入力してください')
+      return
+    }
     if (types.length === 0) {
       setError('券種は1つ以上必要です')
       return
@@ -736,6 +875,7 @@ function PerformanceSettings() {
       name: name.trim(),
       date,
       time,
+      doorsOpen,
       ticketTypes,
       priceNote: priceNote.trim(),
       note: note.trim(),
@@ -768,10 +908,22 @@ function PerformanceSettings() {
             }}
           />
         </label>
-        <div className="field-row field-row-2">
+        <div className="field-row">
           <label className="field">
             <span>日付</span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>開場時刻</span>
+            <input
+              type="time"
+              data-doors-open
+              value={doorsOpen}
+              onChange={(e) => {
+                setDoorsOpen(e.target.value)
+                touch()
+              }}
+            />
           </label>
           <label className="field">
             <span>開演時刻</span>
@@ -873,7 +1025,7 @@ function PerformanceSettings() {
         </button>
       </form>
       <hr className="divider" />
-      <PasscodeSettings changePasscode={changePasscode} />
+      <PasscodeSettings changePasscode={changePasscode} onChanged={onPasscodeChanged} />
       {mode === 'local' && (
         <>
           <hr className="divider" />
@@ -918,8 +1070,10 @@ function PerformanceSettings() {
 
 function PasscodeSettings({
   changePasscode,
+  onChanged,
 }: {
   changePasscode: (newPasscode: string) => Promise<void>
+  onChanged?: (next: string) => void
 }) {
   const [next, setNext] = useState('')
   const [message, setMessage] = useState('')
@@ -935,6 +1089,7 @@ function PasscodeSettings({
     }
     try {
       await changePasscode(next.trim())
+      onChanged?.(next.trim())
       setNext('')
       setMessage('パスコードを変更しました')
     } catch {

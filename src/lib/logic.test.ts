@@ -475,11 +475,89 @@ describe('予約確認（ローカル照合・Phase 2）', () => {
     expect(findReservationByCodePhone(data, 'SK-9999', '090-0000-0000')).toBeNull()
   })
 
-  it('キャンセル済みはヒットしない', async () => {
+  it('キャンセル済みもヒットする（画面側で文言を出し分ける）', async () => {
     const { findReservationByCodePhone } = await import('./logic')
     const { data, reservation } = reserveOnline(emptyData(), ['1F-5-6'])
     const cancelled = cancelReservation(data, reservation.id)
-    expect(findReservationByCodePhone(cancelled, 'SK-0001', '090-0000-0000')).toBeNull()
+    const found = findReservationByCodePhone(cancelled, 'SK-0001', '090-0000-0000')
+    expect(found?.id).toBe(reservation.id)
+    expect(found?.cancelled).toBe(true)
+  })
+
+  it('電話番号は全角数字でもヒットする（正規化して比較）', async () => {
+    const { findReservationByCodePhone } = await import('./logic')
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-6'])
+    expect(findReservationByCodePhone(data, 'SK-0001', '０９０-００００-００００')?.id).toBe(
+      reservation.id,
+    )
+    expect(findReservationByCodePhone(data, 'SK-0001', '（０９０）００００-００００')?.id).toBe(
+      reservation.id,
+    )
+  })
+})
+
+describe('電話番号の正規化（R3-2）', () => {
+  it('全角数字を半角にし、記号を取り除く', async () => {
+    const { normalizePhone } = await import('./logic')
+    expect(normalizePhone('０９０-１２３４-５６７８')).toBe('09012345678')
+    expect(normalizePhone('090-1234-5678')).toBe('09012345678')
+    expect(normalizePhone('（090） 1234 5678')).toBe('09012345678')
+    expect(normalizePhone('090　1234　5678')).toBe('09012345678')
+    expect(normalizePhone('')).toBe('')
+  })
+
+  it('形式チェックは10〜11桁の数字のみ通す', async () => {
+    const { isValidPhone } = await import('./logic')
+    expect(isValidPhone('090-1234-5678')).toBe(true)
+    expect(isValidPhone('０９０１２３４５６７８')).toBe(true)
+    expect(isValidPhone('03-1234-5678')).toBe(true)
+    expect(isValidPhone('abc-def')).toBe(false)
+    expect(isValidPhone('090-1234')).toBe(false)
+    expect(isValidPhone('090-1234-56789')).toBe(false)
+    expect(isValidPhone('')).toBe(false)
+  })
+})
+
+describe('開場時刻（本日開演カード）', () => {
+  it('デフォルト公演は開演30分前が開場', () => {
+    const perf = emptyData().performance
+    expect(perf.time).toBe('13:00')
+    expect(perf.doorsOpen).toBe('12:30')
+  })
+
+  it('開場時刻のない旧データは開演から30分前で補完される', () => {
+    const data = normalizeAppData({
+      performance: {
+        name: '旧公演',
+        date: '2027-05-01',
+        time: '18:00',
+        ticketTypes: [{ id: 'adult', name: '大人', price: 2000 }],
+        priceNote: '',
+        note: '',
+      },
+      reservations: [],
+      blocked: [],
+      seq: 0,
+    })
+    expect(data?.performance.doorsOpen).toBe('17:30')
+  })
+
+  it('保存済みの開場時刻はそのまま保持される', () => {
+    const data = normalizeAppData({
+      performance: {
+        name: '公演',
+        date: '2027-05-01',
+        time: '18:00',
+        doorsOpen: '17:15',
+        ticketTypes: [{ id: 'adult', name: '大人', price: 2000 }],
+        priceNote: '',
+        note: '',
+      },
+      reservations: [],
+      blocked: [],
+      seq: 0,
+    })
+    expect(data?.performance.doorsOpen).toBe('17:15')
   })
 })
 

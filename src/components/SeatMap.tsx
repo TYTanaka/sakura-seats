@@ -128,7 +128,13 @@ export function stateLabel(state: SeatVisualState): string {
   }
 }
 
-export function SeatLegend() {
+/**
+ * 座席の凡例。そのマップで実際に描かれる状態と一致させる。
+ * - audience: お客様マップ。支払済席も予約済席と同じ見た目で描くため1スウォッチに統合し、
+ *   おすすめ席の金ティントも案内する
+ * - staff: スタッフマップ。予約済み（淡）と支払済・販売済み（濃）を分けて示す
+ */
+export function SeatLegend({ variant = 'audience' }: { variant?: 'audience' | 'staff' }) {
   return (
     <div className="legend" aria-label="座席の凡例">
       <span className="legend-item">
@@ -137,16 +143,29 @@ export function SeatLegend() {
       <span className="legend-item">
         <span className="legend-swatch seat-selected" /> 選択中
       </span>
-      <span className="legend-item">
-        <span className="legend-swatch seat-reserved" /> 予約済み・販売済み
-      </span>
+      {variant === 'staff' ? (
+        <>
+          <span className="legend-item">
+            <span className="legend-swatch seat-reserved" /> 予約済み
+          </span>
+          <span className="legend-item">
+            <span className="legend-swatch seat-paid" /> 支払済・販売済み
+          </span>
+        </>
+      ) : (
+        <span className="legend-item">
+          <span className="legend-swatch seat-reserved" /> 予約済み・販売済み
+        </span>
+      )}
       <span className="legend-item">
         <span className="legend-swatch seat-blocked" /> 販売しない
       </span>
       <span className="legend-item">※印は見切れ席（舞台の一部が見えにくい席）</span>
-      <span className="legend-item">
-        <span className="legend-swatch seat-recommended-swatch" /> ★おすすめ席（1階中央 5〜10列）
-      </span>
+      {variant === 'audience' && (
+        <span className="legend-item">
+          <span className="legend-swatch seat-recommended-swatch" /> ★おすすめ席（1階中央 5〜10列）
+        </span>
+      )}
     </div>
   )
 }

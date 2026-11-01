@@ -10,6 +10,7 @@ const perf: Performance = {
   name: 'サンプル公演',
   date: '2026-12-19',
   time: '13:00',
+  doorsOpen: '12:30',
   ticketTypes: [{ id: 'adult', name: '大人', price: 2000 }],
   priceNote: '',
   note: '',
