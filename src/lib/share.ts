@@ -63,3 +63,28 @@ export function buildCalendarUrl(perf: Performance, reservation: Reservation): s
   })
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
+
+/** 本番サイトのURL（LINEで送る「予約ページ」のリンク先） */
+export const SITE_URL = 'https://tytanaka.github.io/sakura-seats/'
+
+/** 予約ページURLを LINE で送る（LINE公式のシェアボタン用URL） */
+export function buildLineSharePageUrl(): string {
+  return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(SITE_URL)}`
+}
+
+/** 自分の予約内容（公演・日時・座席・予約番号）を LINE で送る */
+export function buildLineShareReservationUrl(
+  perf: Performance,
+  reservation: Reservation,
+): string {
+  const text = [
+    `【予約控え】${perf.name}`,
+    `日時: ${formatPerformanceWhen(perf)}`,
+    `予約番号: ${reservation.id}`,
+    '座席:',
+    seatLines(reservation),
+    `合計: ${formatYen(reservation.amount)}（当日現金払い）`,
+    '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
+  ].join('\n')
+  return `https://line.me/R/msg/text/?${encodeURIComponent(text)}`
+}

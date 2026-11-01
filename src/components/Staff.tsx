@@ -30,6 +30,7 @@ import SeatMap, {
   type SeatZoom,
 } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
+import QrReception from './QrReception'
 
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
 const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
@@ -139,6 +140,7 @@ function Reception() {
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
   const [unpaidOnly, setUnpaidOnly] = useState(false)
+  const [qrMode, setQrMode] = useState(false)
   const [actionError, setActionError] = useState('')
   const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null)
 
@@ -198,6 +200,14 @@ function Reception() {
       <div className="btn-row">
         <button
           type="button"
+          className="btn btn-primary btn-small"
+          data-qr-open
+          onClick={() => setQrMode(true)}
+        >
+          📷 QRで受付
+        </button>
+        <button
+          type="button"
           className="btn btn-ghost btn-small"
           data-csv-download
           onClick={() => downloadReservationsCsv(data.reservations)}
@@ -205,6 +215,7 @@ function Reception() {
           予約一覧をCSVでダウンロード
         </button>
       </div>
+      {qrMode && <QrReception onClose={() => setQrMode(false)} />}
       {actionError && <p className="error-text">{actionError}</p>}
       {list.length === 0 && <p className="muted">該当する予約がありません。</p>}
       <ul className="reservation-list">
@@ -938,8 +949,9 @@ function PasscodeSettings({
         <label className="field">
           <span>新しいパスコード</span>
           <input
-            type="text"
+            type="password"
             inputMode="numeric"
+            autoComplete="off"
             value={next}
             onChange={(e) => setNext(e.target.value)}
             placeholder="例：5678"

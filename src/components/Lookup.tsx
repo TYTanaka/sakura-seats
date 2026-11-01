@@ -7,6 +7,7 @@ import {
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
+import ReservationQr from './ReservationQr'
 
 /**
  * 予約確認ページ: 予約番号 + 電話番号で自分の予約を表示する。
@@ -95,6 +96,7 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
         <div className="lookup-result" data-lookup-result>
           <p className="done-badge">予約が見つかりました</p>
           <p className="reservation-code">{found.id}</p>
+          <ReservationQr code={found.id} />
           <dl className="detail-list">
             <div>
               <dt>公演</dt>

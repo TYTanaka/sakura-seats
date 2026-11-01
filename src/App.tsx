@@ -29,6 +29,7 @@ function TopHeader({
     <header className="site-header">
       <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
       <div className="hero-overlay" aria-hidden="true" />
+      <div className="hero-scrim-top" aria-hidden="true" />
       <div className="hero-content">
         <div className="header-top">
           <p className="venue-line">戸塚区民文化センター さくらプラザ・ホール</p>

@@ -87,9 +87,26 @@ textarea {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(24, 18, 64, 0.42) 0%,
+    rgba(24, 18, 64, 0.66) 0%,
     rgba(32, 22, 82, 0.58) 48%,
     rgba(26, 18, 66, 0.78) 100%
+  );
+  pointer-events: none;
+}
+
+/* ヒーロー上端の追加スクリム: 会場名・料金ラインが星空の明るい部分でも
+   読めるよう、最上部だけ局所的に暗くする（アート全体は隠さない） */
+.hero-scrim-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46%;
+  background: linear-gradient(
+    180deg,
+    rgba(13, 9, 38, 0.5) 0%,
+    rgba(13, 9, 38, 0.28) 55%,
+    rgba(13, 9, 38, 0) 100%
   );
   pointer-events: none;
 }
@@ -152,7 +169,10 @@ textarea {
 
 .staff-link {
   flex: none;
-  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 6px 14px;
   font-size: 12px;
   font-weight: 700;
   color: #ffffff;
@@ -409,6 +429,7 @@ textarea {
 .floor-tab {
   border: none;
   background: transparent;
+  min-height: 40px;
   padding: 8px 18px;
   border-radius: 999px;
   font-weight: 800;
@@ -431,6 +452,7 @@ textarea {
 .zoom-btn {
   border: 1.5px solid #d5c9ef;
   background: #fff;
+  min-height: 40px;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12.5px;
@@ -916,7 +938,7 @@ button.seat-available:hover {
 }
 
 .toggle-btn {
-  min-height: 38px;
+  min-height: 40px;
   padding: 7px 14px;
   border-radius: 999px;
   border: 1.5px solid var(--pink-soft);
@@ -1004,6 +1026,7 @@ button.seat-available:hover {
 .seg-btn {
   border: none;
   background: transparent;
+  min-height: 40px;
   padding: 7px 12px;
   border-radius: 999px;
   font-weight: 700;
@@ -1186,9 +1209,14 @@ button.seat-available:hover {
 }
 
 .share-actions .btn {
-  flex: 1 1 160px;
+  flex: 1 1 150px;
   text-align: center;
   text-decoration: none;
+  /* ラベルが単語の途中で折り返さないようにする（N-5） */
+  white-space: nowrap;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-size: 14px;
 }
 
 .loading-note {
@@ -1202,6 +1230,137 @@ button.seat-available:hover {
   margin-top: 16px;
   border-top: 2px dashed var(--pink-soft);
   padding-top: 16px;
+}
+
+/* ---------------- QR受付・LINE共有 ---------------- */
+
+/* LINE公式グリーンのボタン */
+.btn-line {
+  background: #06c755;
+  color: #fff;
+  border-color: #05a647;
+  box-shadow: 0 4px 12px rgba(6, 199, 85, 0.35);
+}
+
+.btn-line:hover {
+  background: #05b34c;
+}
+
+/* 予約ページ上部の LINE 共有行 */
+.page-share {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.page-share .btn {
+  min-height: 40px;
+  padding: 8px 18px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* 予約番号QR（完了画面・予約確認） */
+.reservation-qr {
+  margin: 0 auto 16px;
+  text-align: center;
+}
+
+.reservation-qr-img {
+  display: inline-block;
+  width: 168px;
+  height: 168px;
+  padding: 8px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pink);
+}
+
+.reservation-qr-loading {
+  padding: 24px 0;
+}
+
+.qr-caption {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+/* スタッフ: QRで受付 */
+.qr-reception {
+  border: 2px dashed #b7a6e0;
+  border-radius: 16px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: #fdfaff;
+}
+
+.qr-reception-head {
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0;
+}
+
+.qr-reception-title {
+  margin: 0;
+  color: var(--burgundy);
+  font-weight: 800;
+}
+
+.qr-video-wrap {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #171233;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 10px;
+}
+
+.qr-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.qr-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e9e2fb;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px;
+  text-align: center;
+}
+
+.qr-scan-note {
+  margin: 0 0 10px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--burgundy);
+  font-size: 14px;
+}
+
+.qr-manual {
+  margin-bottom: 12px;
+}
+
+.qr-result {
+  border-top: 1.5px dashed var(--line);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.qr-result .reservation-item {
+  border-top: none;
+  padding-top: 0;
 }
 
 /* 印刷用シートは画面では隠し、印刷時のみ全面表示する */

@@ -13,7 +13,12 @@ import {
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
-import { buildCalendarUrl, buildGmailUrl } from '../lib/share'
+import {
+  buildCalendarUrl,
+  buildGmailUrl,
+  buildLineSharePageUrl,
+  buildLineShareReservationUrl,
+} from '../lib/share'
 import flyerUrl from '../assets/flyer.webp'
 import flyerJpgUrl from '../assets/flyer.jpg'
 import SeatMap, {
@@ -23,6 +28,7 @@ import SeatMap, {
   type SeatZoom,
 } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
+import ReservationQr from './ReservationQr'
 
 type Step = 'seats' | 'form' | 'confirm' | 'done'
 
@@ -127,6 +133,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         <p className="done-badge">予約が完了しました</p>
         <p className="done-lead">ご予約ありがとうございます。予約番号をお控えください。</p>
         <p className="reservation-code">{completed.id}</p>
+        <ReservationQr code={completed.id} />
         <dl className="detail-list">
           <div>
             <dt>公演</dt>
@@ -161,6 +168,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         </div>
         <div className="share-actions">
           <a
+            className="btn btn-line"
+            data-share="line"
+            href={buildLineShareReservationUrl(perf, completed)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            LINEで予約内容を送る
+          </a>
+          <a
             className="btn btn-ghost"
             data-share="mailto"
             href={buildGmailUrl(perf, completed)}
@@ -194,6 +210,18 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     <div className="book-flow">
       {step === 'seats' && (
         <>
+          <div className="page-share">
+            <a
+              className="btn btn-line"
+              data-line-share-page
+              href={buildLineSharePageUrl()}
+              target="_blank"
+              rel="noreferrer"
+            >
+              LINEで送る
+            </a>
+            <span className="muted small">家族や友だちに、この予約ページをLINEで共有できます</span>
+          </div>
           <section className="card seat-picker">
             <div className="seat-controls">
               <div className="floor-tabs" role="tablist" aria-label="階の切り替え">
@@ -220,7 +248,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </div>
             {zoom === 'fit' && (
               <p className="fit-hint">
-                全体表示は俯瞰用です。細かく選ぶときは100%表示がおすすめです
+                全体表示は俯瞰用です。座席表をピンチ（2本指で広げる・つまむ）するか、100%表示にすると拡大して選べます
               </p>
             )}
             <SeatLegend />
@@ -234,8 +262,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               onZoomChange={setZoom}
             />
             <p className="muted small">
-              「全体」表示でホール全体が見えます。座席表をピンチ（2本指で広げる・つまむ）しても好きな倍率に変えられます（大きな倍率では左右にスクロールできます）。全
-              {ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
+              全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
           </section>
           <section className="card poster-card">
