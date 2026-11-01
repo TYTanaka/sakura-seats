@@ -23,11 +23,15 @@ import {
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import { downloadReservationsCsv } from '../lib/csv'
-import SeatMap, { SeatLegend, type SeatVisualState, type SeatZoom } from './SeatMap'
+import SeatMap, {
+  SeatLegend,
+  ZoomControls,
+  type SeatVisualState,
+  type SeatZoom,
+} from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
-const ZOOMS = [1, 1.25, 1.5]
 const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
 
 export default function Staff({ onExit }: { onExit: () => void }) {
@@ -290,11 +294,13 @@ function SeatControls({
   setFloor,
   zoom,
   setZoom,
+  fitScale,
 }: {
   floor: Floor
   setFloor: (f: Floor) => void
   zoom: SeatZoom
   setZoom: (z: SeatZoom) => void
+  fitScale: number | null
 }) {
   return (
     <div className="seat-controls">
@@ -313,27 +319,7 @@ function SeatControls({
           </button>
         ))}
       </div>
-      <div className="zoom-controls" aria-label="座席表の拡大縮小">
-        <button
-          type="button"
-          data-zoom="fit"
-          className={`zoom-btn${zoom === 'fit' ? ' active' : ''}`}
-          onClick={() => setZoom('fit')}
-        >
-          全体
-        </button>
-        {ZOOMS.map((z) => (
-          <button
-            key={z}
-            type="button"
-            data-zoom={z}
-            className={`zoom-btn${zoom === z ? ' active' : ''}`}
-            onClick={() => setZoom(z)}
-          >
-            {Math.round(z * 100)}%
-          </button>
-        ))}
-      </div>
+      <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
     </div>
   )
 }
@@ -345,6 +331,7 @@ function DoorSales() {
   const perf = data.performance
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
+  const [fitScale, setFitScale] = useState<number | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -397,9 +384,9 @@ function DoorSales() {
     <section className="card">
       <h3>当日販売</h3>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} />
+      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
       <SeatLegend />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} />
       {selected.length > 0 && (
         <>
           <h4 className="form-subhead">席ごとの券種</h4>
@@ -445,6 +432,7 @@ function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
+  const [fitScale, setFitScale] = useState<number | null>(null)
 
   const stateOf = (seat: SeatDef): SeatVisualState => seatStatus(data, seat.id)
 
@@ -473,9 +461,9 @@ function SeatSettings() {
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} />
+      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
       <SeatLegend />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} />
       <h4>列ごとの一括切替</h4>
       <ul className="row-toggle-list">
         {groups.map((group) => {

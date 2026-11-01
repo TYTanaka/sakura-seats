@@ -24,6 +24,81 @@ export interface SeatMapProps {
   onSeatTap: (seat: SeatDef) => void
   /** おすすめ席の金色ティントを表示するか（お客様用マップのみ） */
   showRecommended?: boolean
+  /** 全体表示の実測倍率（0.38 など）を親へ通知する。ズームスライダーの目安に使う */
+  onFitScale?: (scale: number) => void
+}
+
+/** プリセットのズーム倍率 */
+const PRESET_ZOOMS = [1, 1.25, 1.5]
+/** スライダーで選べる数値ズームの下限（全体表示中は fit 実測値が下限になる） */
+export const NUMERIC_ZOOM_MIN_PERCENT = 30
+/** スライダーで選べるズームの上限（%） */
+export const ZOOM_MAX_PERCENT = 200
+
+/**
+ * ズーム操作UI（プリセットチップ＋自由に動かせるスライダー＋現在の倍率表示）。
+ * お客様画面とスタッフ画面で共用する。
+ * - スライダーの範囲は「全体表示の実測% 〜 200%」。全体表示中は下限が fit 実測値、
+ *   数値ズーム中は下限を 30% 固定にしてスライダーが跳ねないようにする。
+ * - スライダーをドラッグするとその場で数値ズームに切り替わり、マップがライブに追従する。
+ */
+export function ZoomControls({
+  zoom,
+  setZoom,
+  fitScale,
+}: {
+  zoom: SeatZoom
+  setZoom: (z: SeatZoom) => void
+  /** 全体表示の実測倍率（未計測なら null） */
+  fitScale: number | null
+}) {
+  const isFit = zoom === 'fit'
+  const fitPercent = fitScale != null ? fitScale * 100 : 38
+  const sliderMin = isFit
+    ? Math.max(10, Math.floor(fitPercent))
+    : NUMERIC_ZOOM_MIN_PERCENT
+  const sliderValue = isFit ? Math.round(fitPercent) : Math.round(zoom * 100)
+  return (
+    <>
+      <div className="zoom-controls" aria-label="座席表の拡大縮小">
+        <button
+          type="button"
+          data-zoom="fit"
+          className={`zoom-btn${isFit ? ' active' : ''}`}
+          onClick={() => setZoom('fit')}
+        >
+          全体
+        </button>
+        {PRESET_ZOOMS.map((z) => (
+          <button
+            key={z}
+            type="button"
+            data-zoom={z}
+            className={`zoom-btn${zoom === z ? ' active' : ''}`}
+            onClick={() => setZoom(z)}
+          >
+            {Math.round(z * 100)}%
+          </button>
+        ))}
+      </div>
+      <div className="zoom-slider-row">
+        <input
+          type="range"
+          className="zoom-slider"
+          data-zoom-slider
+          aria-label="座席表のズーム（パーセント）"
+          min={sliderMin}
+          max={ZOOM_MAX_PERCENT}
+          step={1}
+          value={Math.min(ZOOM_MAX_PERCENT, Math.max(sliderMin, sliderValue))}
+          onChange={(e) => setZoom(Number(e.target.value) / 100)}
+        />
+        <span className="zoom-readout" data-zoom-readout>
+          {isFit ? `約${Math.round(fitPercent)}%` : `${Math.round(zoom * 100)}%`}
+        </span>
+      </div>
+    </>
+  )
 }
 
 function SeatButton({
@@ -96,13 +171,22 @@ export function SeatLegend() {
   )
 }
 
-export default function SeatMap({ floor, zoom, stateOf, onSeatTap, showRecommended }: SeatMapProps) {
+export default function SeatMap({
+  floor,
+  zoom,
+  stateOf,
+  onSeatTap,
+  showRecommended,
+  onFitScale,
+}: SeatMapProps) {
   const isFit = zoom === 'fit'
   // 全体表示では等倍レイアウトを実測して縮小する（階ごとに自然幅が違うため割合は固定しない）
   const size = Math.round(30 * (isFit ? 1 : zoom))
   const scrollRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const [fit, setFit] = useState<{ scale: number; width: number; height: number } | null>(null)
+  const onFitScaleRef = useRef(onFitScale)
+  onFitScaleRef.current = onFitScale
 
   useLayoutEffect(() => {
     if (!isFit) {
@@ -121,6 +205,7 @@ export default function SeatMap({ floor, zoom, stateOf, onSeatTap, showRecommend
       if (avail <= 0 || naturalWidth <= 0 || naturalHeight <= 0) return
       const scale = Math.min(1, avail / naturalWidth)
       setFit({ scale, width: avail, height: Math.ceil(naturalHeight * scale) })
+      onFitScaleRef.current?.(scale)
     }
     measure()
     window.addEventListener('resize', measure)

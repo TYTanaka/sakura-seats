@@ -16,17 +16,23 @@ import { useStore } from '../lib/store'
 import { buildCalendarUrl, buildGmailUrl } from '../lib/share'
 import flyerUrl from '../assets/flyer.webp'
 import flyerJpgUrl from '../assets/flyer.jpg'
-import SeatMap, { SeatLegend, type SeatVisualState, type SeatZoom } from './SeatMap'
+import SeatMap, {
+  SeatLegend,
+  ZoomControls,
+  type SeatVisualState,
+  type SeatZoom,
+} from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 type Step = 'seats' | 'form' | 'confirm' | 'done'
-const ZOOMS = [1, 1.25, 1.5]
 
 export default function AudienceBook({ perf }: { perf: Performance }) {
   const { data, reserve } = useStore()
   const [step, setStep] = useState<Step>('seats')
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
+  /** 全体表示の実測倍率（SeatMap が通知）。ズームスライダーの目安に使う */
+  const [fitScale, setFitScale] = useState<number | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -210,27 +216,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                   </button>
                 ))}
               </div>
-              <div className="zoom-controls" aria-label="座席表の拡大縮小">
-                <button
-                  type="button"
-                  data-zoom="fit"
-                  className={`zoom-btn${zoom === 'fit' ? ' active' : ''}`}
-                  onClick={() => setZoom('fit')}
-                >
-                  全体
-                </button>
-                {ZOOMS.map((z) => (
-                  <button
-                    key={z}
-                    type="button"
-                    data-zoom={z}
-                    className={`zoom-btn${zoom === z ? ' active' : ''}`}
-                    onClick={() => setZoom(z)}
-                  >
-                    {Math.round(z * 100)}%
-                  </button>
-                ))}
-              </div>
+              <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
             </div>
             {zoom === 'fit' && (
               <p className="fit-hint">
@@ -244,9 +230,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               stateOf={stateOf}
               onSeatTap={handleSeatTap}
               showRecommended
+              onFitScale={setFitScale}
             />
             <p className="muted small">
-              「全体」表示でホール全体が見えます。拡大表示（100%〜）では左右にスクロールできます。全
+              「全体」表示でホール全体が見えます。スライダーで好きな倍率に変えられます（大きな倍率では左右にスクロールできます）。全
               {ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
           </section>
