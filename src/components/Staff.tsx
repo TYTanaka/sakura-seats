@@ -13,8 +13,10 @@ import {
 import {
   activeReservations,
   defaultTicketType,
+  doorsOpenBeforeStart,
   formatYen,
   normalizePhone,
+  normalizeSellerNames,
   reservationDisplayName,
   reservationTotal,
   reservationTypeSummary,
@@ -24,6 +26,7 @@ import {
   type TicketType,
 } from '../lib/logic'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
+import { useToast } from '../lib/toast'
 import { downloadReservationsCsv } from '../lib/csv'
 import SeatMap, {
   SeatLegend,
@@ -41,6 +44,11 @@ const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
  * スタッフ入室状態の保持先（R3-8）: sessionStorage なのでタブを閉じれば消える。
  * 同じタブ内でお客様画面へ出て戻ってきても再入室を求めないための保持で、
  * 明示的なログアウトで破棄する。
+ *
+ * トレードオフ（R4-8）: ここにはパスコードそのものを平文で保持している。
+ * ハッシュを保存しても、それ自体が入室に使える「同等の資格情報」になるため
+ * 安全性は変わらない。守るべき境界は「タブを閉じれば消える」「端末を他人へ
+ * 渡すときはログアウトする」という運用側に置く（警告文もスタッフ内に出している）。
  */
 const STAFF_SESSION_KEY = 'sakura-seats-staff-session'
 
@@ -66,6 +74,19 @@ function clearStaffSession() {
   } catch {
     // 何もしない
   }
+}
+
+/**
+ * ローカルモードの明示バナー（R4-2）: クラウド接続が無効なビルドを
+ * 本番運用と誤認しないよう、スタッフエリアではっきり知らせる。
+ */
+function LocalModeBanner() {
+  return (
+    <p className="local-mode-banner" data-local-mode-banner role="alert">
+      ⚠ ローカルモードで動作しています：データはこの端末内にのみ保存され、
+      他の端末とは同期されません。
+    </p>
+  )
 }
 
 export default function Staff({ onExit }: { onExit: () => void }) {
@@ -122,6 +143,7 @@ export default function Staff({ onExit }: { onExit: () => void }) {
           ← 予約画面へ戻る
         </button>
         <h2>スタッフ用</h2>
+        {mode === 'local' && <LocalModeBanner />}
         <p className="muted">受付・当日販売・販売設定・集計・公演設定を行います。パスコードを入力してください。</p>
         <form
           onSubmit={async (e) => {
@@ -181,11 +203,13 @@ export default function Staff({ onExit }: { onExit: () => void }) {
             ログアウト
           </button>
         </div>
-        <p className="prototype-note">
-          {mode === 'cloud'
-            ? 'クラウド同期中：データはスタッフ全員の端末で共有されます'
-            : '試作版：データはこの端末内のみに保存されます'}
-        </p>
+        {mode === 'cloud' ? (
+          <p className="prototype-note">
+            クラウド同期中：データはスタッフ全員の端末で共有されます
+          </p>
+        ) : (
+          <LocalModeBanner />
+        )}
         {sessionPasscode === DEFAULT_PASSCODE && (
           <p className="passcode-warning" data-default-passcode-warning>
             ⚠ パスコードが初期値のままです。受付情報（お客様のお名前・電話番号）を
@@ -236,17 +260,17 @@ export default function Staff({ onExit }: { onExit: () => void }) {
 
 function Reception() {
   const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
+  const { showToast } = useToast()
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
   const [unpaidOnly, setUnpaidOnly] = useState(false)
   const [qrMode, setQrMode] = useState(false)
-  const [actionError, setActionError] = useState('')
   const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null)
 
+  // 失敗はトーストでその場に出す（一覧上部の表示だとスクロール中に気づけない・R4-4）
   const runAction = (fn: () => Promise<void>) => {
-    setActionError('')
     void fn().catch(() =>
-      setActionError('操作に失敗しました。接続を確認してもう一度お試しください'),
+      showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
     )
   }
 
@@ -317,7 +341,6 @@ function Reception() {
         </button>
       </div>
       {qrMode && <QrReception onClose={() => setQrMode(false)} />}
-      {actionError && <p className="error-text">{actionError}</p>}
       {list.length === 0 && <p className="muted">該当する予約がありません。</p>}
       <ul className="reservation-list">
         {list.map((res) => (
@@ -337,6 +360,11 @@ function Reception() {
               <p className="muted small">
                 <span data-type-breakdown>{reservationTypeSummary(res)}</span>
                 {' ／ '}電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(res))}
+                {res.seller && (
+                  <>
+                    {' ／ '}販売者：<span data-seller-name>{res.seller}</span>
+                  </>
+                )}
                 {res.note && <> ／ 備考：{res.note}</>}
               </p>
             </div>
@@ -448,6 +476,17 @@ function SeatControls({
 
 /* ---------------- 当日販売 ---------------- */
 
+/** 前回選んだ販売者の保持先（同じ端末・同じタブの間だけ引き継ぐ） */
+const LAST_SELLER_KEY = 'sakura-seats-last-seller'
+
+function loadLastSeller(): string {
+  try {
+    return sessionStorage.getItem(LAST_SELLER_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 function DoorSales() {
   const { data, reserve } = useStore()
   const perf = data.performance
@@ -458,8 +497,23 @@ function DoorSales() {
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
   const [buyerName, setBuyerName] = useState('')
+  /** 販売者（公演設定のリストから選択。前回分を初期値にする） */
+  const [seller, setSeller] = useState<string>(loadLastSeller)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+
+  // 設定から削除された販売者が残っていたら未選択扱いにする
+  const effectiveSeller = perf.sellerNames.includes(seller) ? seller : ''
+
+  const handleSellerChange = (next: string) => {
+    setSeller(next)
+    try {
+      if (next) sessionStorage.setItem(LAST_SELLER_KEY, next)
+      else sessionStorage.removeItem(LAST_SELLER_KEY)
+    } catch {
+      // 保持できなくても販売は継続する
+    }
+  }
 
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
 
@@ -490,6 +544,7 @@ function DoorSales() {
         phone: '',
         note: '',
         source: 'door',
+        seller: effectiveSeller || undefined,
       })
       setMessage(
         `販売を記録しました（${res.id}：${res.seatIds.map((id) => seatById(id).label).join('、')} ／ ${formatYen(res.amount)}・支払済）`,
@@ -531,6 +586,23 @@ function DoorSales() {
           placeholder="例：当日券・鈴木様"
         />
       </label>
+      {perf.sellerNames.length > 0 && (
+        <label className="field">
+          <span>販売者（手売りの精算用・任意）</span>
+          <select
+            data-seller-select
+            value={effectiveSeller}
+            onChange={(e) => handleSellerChange(e.target.value)}
+          >
+            <option value="">未選択（記録しない）</option>
+            {perf.sellerNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <p className="selection-total" data-door-total>
         選択中：{selected.length}席 ／ 合計 {formatYen(total)}
       </p>
@@ -552,6 +624,7 @@ function DoorSales() {
 
 function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
+  const { showToast } = useToast()
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [fitScale, setFitScale] = useState<number | null>(null)
@@ -559,6 +632,13 @@ function SeatSettings() {
   const [notice, setNotice] = useState('')
 
   const stateOf = (seat: SeatDef): SeatVisualState => seatStatus(data, seat.id)
+
+  // 失敗を無言にしない（R4-4）: 切替系の失敗はすべてトーストで知らせる
+  const runToggle = (fn: () => Promise<void>) => {
+    void fn().catch(() =>
+      showToast('販売設定の変更に失敗しました。接続を確認してもう一度お試しください'),
+    )
+  }
 
   const handleTap = (seat: SeatDef) => {
     const status = seatStatus(data, seat.id)
@@ -568,7 +648,7 @@ function SeatSettings() {
       return
     }
     setNotice('')
-    void toggleBlocked(seat.id).catch(() => undefined)
+    runToggle(() => toggleBlocked(seat.id))
   }
 
   // 理由表示は数秒で自動的に消す
@@ -624,7 +704,7 @@ function SeatSettings() {
                   type="button"
                   className="btn btn-ghost btn-small"
                   data-row-block={group.label}
-                  onClick={() => void setBlockedForSeats(group.seatIds, true).catch(() => undefined)}
+                  onClick={() => runToggle(() => setBlockedForSeats(group.seatIds, true))}
                 >
                   全て販売しない
                 </button>
@@ -632,7 +712,7 @@ function SeatSettings() {
                   type="button"
                   className="btn btn-ghost btn-small"
                   data-row-sell={group.label}
-                  onClick={() => void setBlockedForSeats(group.seatIds, false).catch(() => undefined)}
+                  onClick={() => runToggle(() => setBlockedForSeats(group.seatIds, false))}
                 >
                   全て販売する
                 </button>
@@ -772,6 +852,33 @@ function Summary() {
           ))}
         </tbody>
       </table>
+      {t.bySeller.length > 0 && (
+        <>
+          <h4>販売者別内訳（手売り・当日販売）</h4>
+          <table className="type-table">
+            <thead>
+              <tr>
+                <th>販売者</th>
+                <th>席数</th>
+                <th>金額</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.bySeller.map((row) => (
+                <tr key={row.seller} data-seller-row={row.seller}>
+                  <td>{row.seller}</td>
+                  <td data-seller-cell="seats">{row.seatCount}席</td>
+                  <td data-seller-cell="amount">{formatYen(row.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted small">
+            販売者が記録された予約だけを集計しています（キャンセル済みは除く）。
+            団員ごとの集金確認に使ってください。
+          </p>
+        </>
+      )}
       <p className="muted small">
         チェックイン状況は「受付」タブで確認できます。金額は各予約に記録された金額
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
@@ -795,11 +902,14 @@ function PerformanceSettings({
   onPasscodeChanged?: (next: string) => void
 }) {
   const { data, mode, saveSettings, resetAll, changePasscode } = useStore()
+  const { showToast } = useToast()
   const perf = data.performance
   const [name, setName] = useState(perf.name)
   const [date, setDate] = useState(perf.date)
   const [time, setTime] = useState(perf.time)
   const [doorsOpen, setDoorsOpen] = useState(perf.doorsOpen)
+  /** 販売者名リストの編集中の値（保存時に正規化する） */
+  const [sellers, setSellers] = useState<string[]>(perf.sellerNames)
   const [deadline, setDeadline] = useState(data.bookingDeadline ? data.bookingDeadline.slice(0, 16) : '')
   const [types, setTypes] = useState<TypeDraft[]>(
     perf.ticketTypes.map((t) => ({ id: t.id, name: t.name, price: String(t.price) })),
@@ -837,36 +947,46 @@ function PerformanceSettings({
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault()
+    // 保存エラーはフォーム内表示に加えてトーストでも出す（画面外でも気づけるように）
+    const fail = (message: string) => {
+      setError(message)
+      showToast(message)
+    }
     if (!name.trim()) {
-      setError('公演名を入力してください')
+      fail('公演名を入力してください')
       return
     }
     if (!date || !time) {
-      setError('日付と開演時刻を入力してください')
+      fail('日付と開演時刻を入力してください')
       return
     }
     if (!doorsOpen) {
-      setError('開場時刻を入力してください')
+      fail('開場時刻を入力してください')
+      return
+    }
+    // 開場が開演と同じ・後になる設定は保存させない（R4-5）
+    if (!doorsOpenBeforeStart(doorsOpen, time)) {
+      fail('開場時刻は開演時刻より前にしてください')
       return
     }
     if (types.length === 0) {
-      setError('券種は1つ以上必要です')
+      fail('券種は1つ以上必要です')
       return
     }
     const names = types.map((t) => t.name.trim())
     if (names.some((n) => !n)) {
-      setError('券種名を入力してください')
+      fail('券種名を入力してください')
       return
     }
     if (new Set(names).size !== names.length) {
-      setError('券種名が重複しています')
+      fail('券種名が重複しています')
       return
     }
     const ticketTypes: TicketType[] = []
     for (const draft of types) {
       const priceNum = Number(draft.price)
       if (!Number.isInteger(priceNum) || priceNum < 0) {
-        setError('券種の料金は0以上の整数で入力してください')
+        fail('券種の料金は0以上の整数で入力してください')
         return
       }
       ticketTypes.push({ id: draft.id, name: draft.name.trim(), price: priceNum })
@@ -879,13 +999,14 @@ function PerformanceSettings({
       ticketTypes,
       priceNote: priceNote.trim(),
       note: note.trim(),
+      sellerNames: normalizeSellerNames(sellers),
     }
     try {
       await saveSettings(next, deadline ? deadline : null)
       setError('')
       setSaved('公演設定を保存しました')
     } catch {
-      setError('保存に失敗しました。接続を確認してもう一度お試しください')
+      fail('保存に失敗しました。接続を確認してもう一度お試しください')
     }
   }
 
@@ -992,6 +1113,50 @@ function PerformanceSettings({
           <button type="button" className="btn btn-ghost btn-small" onClick={addType}>
             ＋ 券種を追加
           </button>
+        </div>
+        <div className="field">
+          <span className="field-label">販売者（手売り・当日販売で記録する担当者）</span>
+          {sellers.map((sellerName, i) => (
+            <div key={i} className="type-editor-row" data-seller-editor-row>
+              <input
+                type="text"
+                aria-label="販売者名"
+                placeholder="例：田中"
+                value={sellerName}
+                onChange={(e) => {
+                  const next = [...sellers]
+                  next[i] = e.target.value
+                  setSellers(next)
+                  touch()
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => {
+                  setSellers(sellers.filter((_, j) => j !== i))
+                  touch()
+                }}
+              >
+                削除
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            data-seller-add
+            onClick={() => {
+              setSellers([...sellers, ''])
+              touch()
+            }}
+          >
+            ＋ 販売者を追加
+          </button>
+          <p className="muted small">
+            当日販売のときに販売者を選ぶと、予約と集計（販売者別内訳）に記録されます。
+            空欄の行は保存時に取り除かれます。
+          </p>
         </div>
         <label className="field">
           <span>料金注記（お客様画面の券種選択付近に表示されます）</span>

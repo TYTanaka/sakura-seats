@@ -14,17 +14,66 @@ import ReservationQr from './ReservationQr'
  * クラウドモードでは lookup_reservation RPC、ローカルモードでは端末内データを照合する。
  */
 export default function Lookup({ onBack }: { onBack: () => void }) {
-  const { data, mode, lookupReservation } = useStore()
+  const { data, mode, lookupReservation, selfCancelReservation } = useStore()
   const [code, setCode] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
   const [searching, setSearching] = useState(false)
   const [found, setFound] = useState<Reservation | null>(null)
+  /** 本人キャンセルの確認表示・処理中・結果メッセージ */
+  const [confirmingSelfCancel, setConfirmingSelfCancel] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelMessage, setCancelMessage] = useState('')
+  const [justCancelled, setJustCancelled] = useState(false)
+
+  const handleSelfCancel = async () => {
+    if (!found) return
+    setCancelling(true)
+    setCancelMessage('')
+    try {
+      const result = await selfCancelReservation(found.id, phone)
+      switch (result) {
+        case 'OK':
+          setJustCancelled(true)
+          setFound({ ...found, cancelled: true })
+          break
+        case 'ALREADY_CANCELLED':
+          setFound({ ...found, cancelled: true })
+          break
+        case 'PAID_LOCKED':
+          setCancelMessage(
+            '支払い済みのため、インターネットからはキャンセルできません。お手数ですが、スタッフまでご連絡ください。',
+          )
+          break
+        case 'CHECKED_IN_LOCKED':
+          setCancelMessage(
+            '受付済みのため、インターネットからはキャンセルできません。お手数ですが、スタッフまでご連絡ください。',
+          )
+          break
+        case 'TOO_LATE':
+          setCancelMessage(
+            'キャンセル期限を過ぎています。変更・キャンセルはスタッフまでご連絡ください。',
+          )
+          break
+        case 'NOT_FOUND':
+          setCancelMessage('予約が見つかりませんでした。予約番号と電話番号をご確認ください')
+          break
+      }
+    } catch {
+      setCancelMessage('キャンセルに失敗しました。しばらくしてからもう一度お試しください')
+    } finally {
+      setCancelling(false)
+      setConfirmingSelfCancel(false)
+    }
+  }
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setFound(null)
+    setCancelMessage('')
+    setJustCancelled(false)
+    setConfirmingSelfCancel(false)
     if (!code.trim() || !phone.trim()) {
       setError('予約番号と電話番号を入力してください')
       return
@@ -94,6 +143,11 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
 
       {found && found.cancelled && (
         <div className="lookup-result lookup-cancelled" data-lookup-cancelled>
+          {justCancelled && (
+            <p className="success-text" data-self-cancel-done>
+              キャンセルが完了しました
+            </p>
+          )}
           <p className="error-text">この予約はキャンセル済みです</p>
           <p className="muted">
             予約番号 {found.id} のご予約は、すでにキャンセルされています。
@@ -145,7 +199,48 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
           </dl>
           <div className="notice-box">
             <p>当日は受付でお名前と予約番号をお伝えください。</p>
-            <p>変更・キャンセルは主催者までご連絡ください。</p>
+            <p>変更は主催者までご連絡ください。キャンセルは下のボタンからもできます。</p>
+          </div>
+          <div className="self-cancel-area">
+            {confirmingSelfCancel ? (
+              <span className="cancel-confirm">
+                本当にキャンセルしますか？（席が解放されます）
+                <button
+                  type="button"
+                  className="btn btn-danger btn-small"
+                  data-self-cancel-confirm
+                  disabled={cancelling}
+                  onClick={() => void handleSelfCancel()}
+                >
+                  {cancelling ? 'キャンセル処理中…' : 'キャンセルする'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  disabled={cancelling}
+                  onClick={() => setConfirmingSelfCancel(false)}
+                >
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                data-self-cancel
+                onClick={() => {
+                  setCancelMessage('')
+                  setConfirmingSelfCancel(true)
+                }}
+              >
+                この予約をキャンセルする
+              </button>
+            )}
+            {cancelMessage && (
+              <p className="error-text" data-self-cancel-message role="alert">
+                {cancelMessage}
+              </p>
+            )}
           </div>
         </div>
       )}

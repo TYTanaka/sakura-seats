@@ -15,6 +15,8 @@ import {
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
+import { useNow } from '../lib/useNow'
+import { saveLastReservation } from '../lib/lastReservation'
 import {
   buildCalendarUrl,
   buildGmailUrl,
@@ -46,6 +48,8 @@ interface BookingDraft {
   note: string
   selected: string[]
   typeBySeat: Record<string, string>
+  /** 申込フロー上のステップも一緒に保持する（R4-8: リロードでステップだけ戻らないように） */
+  step: 'seats' | 'form' | 'confirm'
 }
 
 function loadDraft(): BookingDraft | null {
@@ -62,6 +66,10 @@ function loadDraft(): BookingDraft | null {
         : [],
       typeBySeat:
         parsed.typeBySeat && typeof parsed.typeBySeat === 'object' ? parsed.typeBySeat : {},
+      step:
+        parsed.step === 'form' || parsed.step === 'confirm' || parsed.step === 'seats'
+          ? parsed.step
+          : 'seats',
     }
   } catch {
     return null
@@ -78,12 +86,18 @@ function clearDraft() {
 
 export default function AudienceBook({ perf }: { perf: Performance }) {
   const { data, reserve } = useStore()
-  const [step, setStep] = useState<Step>('seats')
+  const [initialDraft] = useState<BookingDraft | null>(loadDraft)
+  // 下書きがあれば、入力途中のステップから再開する（席が無ければ座席選択から）
+  const [step, setStep] = useState<Step>(() => {
+    const s = initialDraft?.step
+    return (s === 'form' || s === 'confirm') && (initialDraft?.selected.length ?? 0) > 0
+      ? s
+      : 'seats'
+  })
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
   /** 全体表示の実測倍率（SeatMap が通知）。倍率表示（約○○%）に使う */
   const [fitScale, setFitScale] = useState<number | null>(null)
-  const [initialDraft] = useState<BookingDraft | null>(loadDraft)
   const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>(
@@ -108,27 +122,65 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     return () => ro.disconnect()
   }, [step])
 
-  const closed = isBookingClosed(data)
+  // 締切は「今」を定期的に再評価して判定する（開いたまま締切を跨いでも追随する・R4-1）
+  const nowMs = useNow(10000)
+  const closed = isBookingClosed(data, new Date(nowMs))
   const remainingByFloor = availableCountByFloor(data)
+  /** 開いている間に締切を跨いだことを知らせる表示 */
+  const [deadlinePassed, setDeadlinePassed] = useState(false)
+  const wasClosedRef = useRef(closed)
+  useEffect(() => {
+    const was = wasClosedRef.current
+    wasClosedRef.current = closed
+    if (!closed || was) return
+    // 締切を跨いだ瞬間: 選択を解除し、フォーム途中なら座席選択へ戻して詰み状態を防ぐ
+    if (selected.length > 0) {
+      setSelected([])
+      setDeadlinePassed(true)
+    }
+    if (step === 'form' || step === 'confirm') setStep('seats')
+  }, [closed, selected.length, step])
 
-  // 下書きから復元した選択席のうち、すでに埋まっている席は一度だけ取り除く
+  // 下書きから復元した選択席のうち、すでに埋まっている席は一度だけ取り除く。
+  // 外れたことが分かるよう一言表示する（R4-6）
+  const [draftPruned, setDraftPruned] = useState(false)
   const prunedDraftRef = useRef(false)
   useEffect(() => {
     if (prunedDraftRef.current) return
     prunedDraftRef.current = true
-    setSelected((prev) => prev.filter((id) => seatStatus(data, id) === 'available'))
+    const initialSelected = initialDraft?.selected ?? []
+    const kept = initialSelected.filter((id) => seatStatus(data, id) === 'available')
+    if (kept.length !== initialSelected.length) setDraftPruned(true)
+    if (isBookingClosed(data)) {
+      // 戻ってきた時点で既に締切を過ぎていたら、選択は持たずに受付終了として出す
+      if (initialSelected.length > 0) {
+        setSelected([])
+        setDeadlinePassed(true)
+      }
+      setStep('seats')
+    } else {
+      if (kept.length !== initialSelected.length) setSelected(kept)
+      if (kept.length === 0 && initialSelected.length > 0) setStep('seats')
+    }
     // 初回マウント時のデータでのみ判定する
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 入力内容を下書きとして保持する（全て空なら破棄）
+  // 入力内容を下書きとして保持する（ステップも含める。全て空なら破棄）
   useEffect(() => {
     if (step === 'done') return
     try {
       if (!name && !phone && !note && selected.length === 0) {
         localStorage.removeItem(DRAFT_KEY)
       } else {
-        const draft: BookingDraft = { name, phone, note, selected, typeBySeat }
+        const draft: BookingDraft = {
+          name,
+          phone,
+          note,
+          selected,
+          typeBySeat,
+          step: step === 'form' || step === 'confirm' ? step : 'seats',
+        }
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
       }
     } catch {
@@ -182,6 +234,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         source: 'online',
       })
       clearDraft()
+      // 完了画面がリロードで消えても再表示できるよう、端末に控えを残す（R4・F3）
+      saveLastReservation({
+        code: reservation.id,
+        performanceName: perf.name,
+        whenText: formatPerformanceWhen(perf),
+        seatLabels: reservation.items.map((item) => seatById(item.seatId).label),
+        amount: reservation.amount,
+        savedAt: new Date().toISOString(),
+      })
       setCompleted(reservation)
       setStep('done')
     } catch (e) {
@@ -290,6 +351,16 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     <div className="book-flow">
       {step === 'seats' && (
         <>
+          {deadlinePassed && (
+            <p className="closed-notice deadline-passed-notice" data-deadline-passed role="status">
+              予約締切を過ぎたため、受付を終了しました。選択していた座席は解除されました。
+            </p>
+          )}
+          {draftPruned && (
+            <p className="draft-pruned-notice" data-draft-pruned role="status">
+              一部の座席は予約済みになったため、選択から外れました
+            </p>
+          )}
           <div className="page-share">
             <a
               className="btn btn-line"
@@ -302,7 +373,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </a>
             <span className="muted small">家族や友だちに、この予約ページをLINEで共有できます</span>
           </div>
-          <section className={`card seat-picker${closed ? ' is-closed' : ''}`}>
+          <section id="seat-picker" className={`card seat-picker${closed ? ' is-closed' : ''}`}>
             <div className="seat-controls">
               <div className="floor-tabs" role="tablist" aria-label="階の切り替え">
                 {([1, 2] as Floor[]).map((f) => (

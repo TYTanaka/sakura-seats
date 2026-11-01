@@ -1437,52 +1437,65 @@ button.seat-available:hover {
   padding: 14px;
 }
 
-/* 本日開演カード（公演当日のみ） */
+/* 本日開演カード（公演当日のみ）: 当日は座席表を早く見せたいので
+   コンパクトな2〜3行表示にする（R4-7）。以前は約200pxあり座席表を押し下げていた */
 .today-card {
   text-align: center;
   color: #fff;
   background: linear-gradient(160deg, #241a4d, #4a3a8c 70%, #5b4b9e);
   border: 2px solid var(--gold);
   box-shadow: 0 6px 20px rgba(36, 26, 77, 0.4);
+  padding: 10px 14px 12px;
+}
+
+.today-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
 }
 
 .today-badge {
   display: inline-block;
-  margin: 0 0 8px;
-  padding: 5px 16px;
+  margin: 0;
+  padding: 3px 14px;
   border-radius: 999px;
   background: var(--gold);
   color: #33270a;
   font-weight: 800;
-  font-size: 14px;
+  font-size: 13.5px;
   letter-spacing: 0.08em;
 }
 
 .today-name {
-  margin: 0 0 4px;
-  font-size: 20px;
+  margin: 0;
+  font-size: 17px;
   font-weight: 800;
 }
 
 .today-times {
-  margin: 0 0 4px;
-  font-size: 17px;
+  margin: 0 0 8px;
+  font-size: 15.5px;
   font-weight: 800;
   color: #f6e7bd;
 }
 
 .today-venue {
-  margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #e8defc;
 }
 
-.today-note {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: #e9e2fb;
+.today-scroll-btn {
+  background: var(--gold);
+  color: #33270a;
+  border-color: #c99b2e;
+  min-height: 40px;
+  padding: 7px 22px;
+  font-size: 14.5px;
+  box-shadow: 0 3px 10px rgba(10, 6, 32, 0.35);
 }
 
 /* 印刷用シートは画面では隠し、印刷時のみ全面表示する */
@@ -1523,4 +1536,156 @@ button.seat-available:hover {
     padding: 4px 6px;
     text-align: left;
   }
+}
+
+/* ---------------- ラウンド4 ---------------- */
+
+/* 締切後のヒーローピル（締切表示と形を揃えた終了状態） */
+.site-deadline.is-closed {
+  background: rgba(224, 73, 47, 0.92);
+  color: #fff;
+}
+
+/* 締切を跨いだ瞬間のお知らせ・下書き剪定のお知らせ */
+.deadline-passed-notice {
+  margin-bottom: 12px;
+}
+
+.draft-pruned-notice {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  background: #fff6da;
+  border: 1.5px dashed #e5c15c;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #7a5c10;
+  text-align: center;
+}
+
+/* クラウド接続状態バナー（画面上部に固定して常に目に入るようにする・R4-3） */
+.sync-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  margin: 0 -12px 10px;
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: #b3541e;
+  box-shadow: 0 2px 8px rgba(10, 6, 32, 0.3);
+}
+
+.sync-banner.sync-offline {
+  background: #a02c1a;
+}
+
+/* ローカルモードの保存警告（R4-2） */
+.storage-warning {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fdeceb;
+  border: 1.5px solid #e0492f;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #a02c1a;
+  line-height: 1.6;
+}
+
+/* スタッフエリアのローカルモード明示バナー（R4-2） */
+.local-mode-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #fdeceb;
+  border: 2px solid #e0492f;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #a02c1a;
+  line-height: 1.6;
+}
+
+/* トースト（画面下部固定・R4-4） */
+.toast-stack {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(92vw, 560px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(10, 6, 32, 0.35);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast-error {
+  background: #a02c1a;
+}
+
+.toast-info {
+  background: var(--burgundy);
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-close {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 直前の予約カード（R4・F3） */
+.last-reservation-card h3 {
+  text-align: center;
+}
+
+.last-reservation-card .reservation-code {
+  text-align: center;
+}
+
+/* 予約確認: 本人キャンセル操作エリア */
+.self-cancel-area {
+  margin-top: 14px;
+  border-top: 2px dashed var(--pink-soft);
+  padding-top: 14px;
+}
+
+.self-cancel-area .error-text {
+  margin-top: 10px;
 }

@@ -77,6 +77,24 @@ describe('mapStaffData / mapLookupResult', () => {
     expect(mapLookupResult(null)).toBeNull()
     expect(mapLookupResult(rowFixture())?.id).toBe('SK-0001')
   })
+
+  it('staff_get_all の seller を予約へ写す（空・欠落は未設定）', () => {
+    const withSeller = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [rowFixture({ seller: '田中' })],
+    })
+    expect(withSeller.reservations[0].seller).toBe('田中')
+    const withNull = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [rowFixture({ seller: null })],
+    })
+    expect(withNull.reservations[0].seller).toBeUndefined()
+    const without = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [rowFixture()],
+    })
+    expect(without.reservations[0].seller).toBeUndefined()
+  })
 })
 
 describe('CloudApi（モック RPC クライアント）', () => {
@@ -143,5 +161,47 @@ describe('CloudApi（モック RPC クライアント）', () => {
     const { client } = fakeClient(() => null)
     const api = new CloudApi(client)
     await expect(api.lookupReservation('SK-9999', '000')).resolves.toBeNull()
+  })
+
+  it('staffSell は販売者を p_seller で渡す（未選択は null）', async () => {
+    const { client, rpc } = fakeClient(() => ({ code: 'SK-0007', amount: 2000 }))
+    const api = new CloudApi(client)
+    const items = [{ seatId: '1F-5-6', typeId: 'adult' }]
+    await expect(api.staffSell('1234', '', items, '田中')).resolves.toEqual({
+      code: 'SK-0007',
+      amount: 2000,
+    })
+    expect(rpc).toHaveBeenCalledWith('staff_sell', {
+      p_passcode: '1234',
+      p_name: '',
+      p_items: items,
+      p_seller: '田中',
+    })
+    await api.staffSell('1234', '', items)
+    expect(rpc).toHaveBeenLastCalledWith('staff_sell', {
+      p_passcode: '1234',
+      p_name: '',
+      p_items: items,
+      p_seller: null,
+    })
+  })
+
+  it('cancelReservation は RPC の result をそのまま返し、未知の応答はエラーにする', async () => {
+    const okClient = fakeClient(() => ({ ok: true, result: 'OK', code: 'SK-0001' }))
+    await expect(
+      new CloudApi(okClient.client).cancelReservation('SK-0001', '09000000000'),
+    ).resolves.toBe('OK')
+    expect(okClient.rpc).toHaveBeenCalledWith('cancel_reservation', {
+      p_code: 'SK-0001',
+      p_phone: '09000000000',
+    })
+    const lockedClient = fakeClient(() => ({ ok: false, result: 'PAID_LOCKED' }))
+    await expect(
+      new CloudApi(lockedClient.client).cancelReservation('SK-0001', '09000000000'),
+    ).resolves.toBe('PAID_LOCKED')
+    const weirdClient = fakeClient(() => ({ ok: false, result: 'SOMETHING_ELSE' }))
+    await expect(
+      new CloudApi(weirdClient.client).cancelReservation('SK-0001', '09000000000'),
+    ).rejects.toThrow('通信に失敗しました')
   })
 })

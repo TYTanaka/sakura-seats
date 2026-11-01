@@ -35,13 +35,18 @@ import { StoreContext, type Store } from './store'
 
 interface CloudBundle {
   api: CloudApi
-  subscribeSeatChanges: (onChange: () => void) => () => void
+  subscribeSeatChanges: (
+    onChange: () => void,
+    onStatus?: (status: string) => void,
+  ) => () => void
 }
 
 export function CloudStoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(emptyData)
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  /** 接続状態（R4-3）: 'ok' 以外の間は「表示が古いかもしれない」ことを画面に出す */
+  const [syncState, setSyncState] = useState<'ok' | 'reconnecting' | 'offline'>('ok')
   const bundleRef = useRef<CloudBundle | null>(null)
   const passcodeRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -80,21 +85,56 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
     if (passcodeRef.current) await refreshStaff()
   }, [refreshPublic, refreshStaff])
 
+  /**
+   * 再取得をバックオフ付きで再試行する（R4-3）。
+   * 失敗を握り潰さず、接続状態を画面側へ伝える。成功したら 'ok' に戻す。
+   */
+  const refreshWithRetry = useCallback(async (): Promise<boolean> => {
+    const delaysMs = [0, 1000, 3000, 8000]
+    for (const delay of delaysMs) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+      try {
+        await refreshAll()
+        setSyncState('ok')
+        return true
+      } catch {
+        setSyncState(!navigator.onLine ? 'offline' : 'reconnecting')
+      }
+    }
+    return false
+  }, [refreshAll])
+
   /** Realtime 購読からの再取得は間引く（連続変更で RPC を叩きすぎない） */
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) return
     refreshTimerRef.current = setTimeout(() => {
       refreshTimerRef.current = null
-      void refreshAll().catch(() => undefined)
+      void refreshWithRetry()
     }, 400)
-  }, [refreshAll])
+  }, [refreshWithRetry])
+
+  /**
+   * Realtime 購読の状態変化（R4-3）:
+   * - SUBSCRIBED（初回・再接続の両方）: 切断中に取りこぼした変更を取り直す
+   * - それ以外（CHANNEL_ERROR / TIMED_OUT / CLOSED）: 接続状態を悪化として伝える
+   */
+  const handleSubscriptionStatus = useCallback(
+    (status: string) => {
+      if (status === 'SUBSCRIBED') {
+        void refreshWithRetry()
+      } else {
+        setSyncState(!navigator.onLine ? 'offline' : 'reconnecting')
+      }
+    },
+    [refreshWithRetry],
+  )
 
   const load = useCallback(async () => {
     setLoadError(null)
     try {
       if (!bundleRef.current) {
         bundleRef.current = await createCloudApi()
-        bundleRef.current.subscribeSeatChanges(scheduleRefresh)
+        bundleRef.current.subscribeSeatChanges(scheduleRefresh, handleSubscriptionStatus)
       }
       await refreshPublic()
       setReady(true)
@@ -103,11 +143,25 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         'サーバへ接続できませんでした。電波の良い場所で再読み込みしてください（クラウド機能の準備中の場合もあります）。',
       )
     }
-  }, [refreshPublic, scheduleRefresh])
+  }, [refreshPublic, scheduleRefresh, handleSubscriptionStatus])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // ブラウザのオンライン/オフラインにも追随する（オフライン表示・復帰時の再取得）
+  useEffect(() => {
+    const onOnline = () => {
+      void refreshWithRetry()
+    }
+    const onOffline = () => setSyncState('offline')
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [refreshWithRetry])
 
   const store = useMemo<Store>(() => {
     const api = (): CloudApi => {
@@ -142,6 +196,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       ready,
       loadError,
       retryLoad: () => void load(),
+      storageWarning: null,
+      syncState,
       reserve: async (input) => {
         try {
           if (input.source === 'door') {
@@ -149,6 +205,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
               staffPasscode(),
               input.name,
               input.seats.map((s) => ({ seatId: s.seatId, typeId: s.typeId })),
+              input.seller,
             )
             const reservation = buildReservation(input, res.code, res.amount)
             await refreshAll()
@@ -165,7 +222,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           return reservation
         } catch (e) {
           // 失敗時は最新の占有状態を取り直してからエラーを返す
-          void refreshPublic().catch(() => undefined)
+          void refreshWithRetry()
           throw e
         }
       },
@@ -242,6 +299,18 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       },
       lookupReservation: async (code, phone) =>
         api().lookupReservation(code.trim().toUpperCase(), normalizePhone(phone)),
+      selfCancelReservation: async (code, phone) => {
+        // 判定はサーバ（cancel_reservation RPC）が行う。電話は正規化して渡す
+        const result = await api().cancelReservation(
+          code.trim().toUpperCase(),
+          normalizePhone(phone),
+        )
+        if (result === 'OK' || result === 'ALREADY_CANCELLED') {
+          // 席の解放・スタッフ一覧へ反映するため取り直す
+          void refreshWithRetry()
+        }
+        return result
+      },
       staffUnlock: async (candidate) => {
         try {
           const staff = await api().staffGetAll(candidate)
@@ -264,7 +333,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       },
       resetAll: () => undefined,
     }
-  }, [data, ready, loadError, load, refreshAll, refreshPublic, refreshStaff])
+  }, [data, ready, loadError, load, refreshAll, refreshStaff, refreshWithRetry, syncState])
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }

@@ -14,6 +14,7 @@ const perf: Performance = {
   ticketTypes: [{ id: 'adult', name: '大人', price: 2000 }],
   priceNote: '',
   note: '',
+  sellerNames: [],
 }
 
 const reservation: Reservation = {

@@ -31,6 +31,11 @@ export interface Performance {
   /** 料金に関する自由記述の注記（お客様画面の券種選択付近に表示） */
   priceNote: string
   note: string
+  /**
+   * 販売者名リスト（手売り・当日販売の記録用）。
+   * 設定は JSON のまま保存され、スタッフの当日販売で選択して予約に記録する。
+   */
+  sellerNames: string[]
 }
 
 export type ReservationSource = 'online' | 'door'
@@ -64,6 +69,11 @@ export interface Reservation {
   paid: boolean
   cancelled: boolean
   createdAt: string
+  /**
+   * 販売者（手売り・当日販売でスタッフが選択した場合のみ記録）。
+   * Web予約や販売者を選ばなかった販売では未設定。
+   */
+  seller?: string
 }
 
 export interface AppData {
@@ -118,6 +128,7 @@ export function defaultPerformance(): Performance {
     ticketTypes: defaultTicketTypes(),
     priceNote: '子供料金は小学生以下が対象です。',
     note: '劇団ツインリーブス 2027年5月公演。おとぎ話の世界でお待ちしています！',
+    sellerNames: [],
   }
 }
 
@@ -180,6 +191,21 @@ function normalizeTicketTypes(rawTypes: unknown, legacyPrice: unknown): TicketTy
   ]
 }
 
+/** 販売者名リストの正規化: 文字列だけ・前後空白除去・空と重複を除く */
+export function normalizeSellerNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const value of raw) {
+    if (typeof value !== 'string') continue
+    const name = value.trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    names.push(name)
+  }
+  return names
+}
+
 export function normalizePerformance(raw: unknown): Performance {
   const rec = asRecord(raw)
   if (!rec) return defaultPerformance()
@@ -197,6 +223,7 @@ export function normalizePerformance(raw: unknown): Performance {
     ticketTypes: normalizeTicketTypes(rec.ticketTypes, rec.price),
     priceNote: asString(rec.priceNote, ''),
     note: asString(rec.note, ''),
+    sellerNames: normalizeSellerNames(rec.sellerNames),
   }
 }
 
@@ -281,6 +308,8 @@ export function normalizeReservation(
     paid: rec.paid === true,
     cancelled: rec.cancelled === true,
     createdAt: asString(rec.createdAt, new Date().toISOString()),
+    seller:
+      typeof rec.seller === 'string' && rec.seller.trim() ? rec.seller.trim() : undefined,
   }
 }
 
@@ -379,6 +408,72 @@ export function findReservationByCodePhone(
   )
 }
 
+/* ---------------- 本人キャンセル（予約確認ページから） ---------------- */
+
+/**
+ * 本人キャンセルの結果コード。クラウドの cancel_reservation RPC の契約と同一。
+ * 判定の優先順位も RPC と揃える:
+ * NOT_FOUND → ALREADY_CANCELLED → PAID_LOCKED → CHECKED_IN_LOCKED → TOO_LATE
+ */
+export type SelfCancelResult =
+  | 'OK'
+  | 'NOT_FOUND'
+  | 'ALREADY_CANCELLED'
+  | 'PAID_LOCKED'
+  | 'CHECKED_IN_LOCKED'
+  | 'TOO_LATE'
+
+/**
+ * 本人キャンセルの期限: 予約締切が設定されていればそれを優先し、
+ * 無ければ公演日時（公演日の開演時刻）を使う。どちらも無ければ null（期限なし）。
+ */
+export function selfCancelLimit(data: AppData): Date | null {
+  if (data.bookingDeadline) {
+    const d = new Date(data.bookingDeadline)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const { date, time } = data.performance
+  if (!date) return null
+  const d = new Date(`${date}T${time || '00:00'}:00`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * 本人キャンセルができるかどうかを判定する（純粋関数）。
+ * ローカルモードの実行判定と、画面側の事前説明に使う。クラウドモードでは
+ * 同じ規則をサーバ（cancel_reservation RPC）が判定し、この関数は使わない。
+ * 期限ちょうど（now = 期限）はキャンセル不可（RPC の now() >= 期限 と一致）。
+ */
+export function selfCancelEligibility(
+  reservation: Reservation | null,
+  data: AppData,
+  now: Date = new Date(),
+): SelfCancelResult {
+  if (!reservation) return 'NOT_FOUND'
+  if (reservation.cancelled) return 'ALREADY_CANCELLED'
+  // 支払い済みは返金・精算が絡むため本人キャンセル不可（スタッフ対応）
+  if (reservation.paid) return 'PAID_LOCKED'
+  if (reservation.checkedIn) return 'CHECKED_IN_LOCKED'
+  const limit = selfCancelLimit(data)
+  if (limit && now.getTime() >= limit.getTime()) return 'TOO_LATE'
+  return 'OK'
+}
+
+/** 「HH:mm」を分に変換する（解釈できなければ null） */
+export function timeToMinutes(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim())
+  if (!m) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+/** 開場時刻が開演時刻より前かどうか（公演設定の保存時チェック用） */
+export function doorsOpenBeforeStart(doorsOpen: string, startTime: string): boolean {
+  const doors = timeToMinutes(doorsOpen)
+  const start = timeToMinutes(startTime)
+  if (doors === null || start === null) return false
+  return doors < start
+}
+
 /** 階ごとの残席数（販売中で空いている席の数） */
 export function availableCountByFloor(data: AppData): Record<Floor, number> {
   const counts: Record<Floor, number> = { 1: 0, 2: 0 }
@@ -399,6 +494,8 @@ export interface NewReservationInput {
   phone: string
   note: string
   source: ReservationSource
+  /** 販売者（当日販売でスタッフが選択した場合のみ意味を持つ） */
+  seller?: string
 }
 
 /**
@@ -453,6 +550,9 @@ export function createReservation(
     paid: input.source === 'door',
     cancelled: false,
     createdAt: new Date().toISOString(),
+    // 販売者は当日販売（手売り含む）でのみ記録する（Web予約には付けない）
+    seller:
+      input.source === 'door' && input.seller?.trim() ? input.seller.trim() : undefined,
   }
   return {
     data: { ...data, seq, reservations: [...data.reservations, reservation] },
@@ -521,6 +621,15 @@ export interface TicketTypeTotals {
   salesTotal: number
 }
 
+export interface SellerTotals {
+  /** 販売者名 */
+  seller: string
+  /** 販売した席数（キャンセル済みを除く） */
+  seatCount: number
+  /** 販売金額の合計（記録された金額の合計） */
+  amount: number
+}
+
 export interface Totals {
   /** 有効な予約の件数 */
   reservationCount: number
@@ -538,6 +647,8 @@ export interface Totals {
   blockedSeatCount: number
   /** 券種ごとの内訳（現在設定の券種順 → 記録にのみ残る券種名の順） */
   byType: TicketTypeTotals[]
+  /** 販売者ごとの内訳（販売者が記録された有効な予約のみ・登場順） */
+  bySeller: SellerTotals[]
 }
 
 export function totals(data: AppData, allSeatIds: string[]): Totals {
@@ -557,7 +668,17 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   }
   // 現在の設定にある券種は、実績がなくても行を用意する
   for (const type of data.performance.ticketTypes) typeRow(type.name)
+  const bySellerMap = new Map<string, SellerTotals>()
   for (const res of active) {
+    if (res.seller) {
+      let row = bySellerMap.get(res.seller)
+      if (!row) {
+        row = { seller: res.seller, seatCount: 0, amount: 0 }
+        bySellerMap.set(res.seller, row)
+      }
+      row.seatCount += res.seatIds.length
+      row.amount += res.amount
+    }
     // 集計は「記録された金額・券種スナップショット」で行う（後の設定変更に影響されない）
     if (res.paid) {
       paidSeatCount += res.seatIds.length
@@ -592,6 +713,7 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
     availableSeatCount,
     blockedSeatCount,
     byType: [...byTypeMap.values()],
+    bySeller: [...bySellerMap.values()],
   }
 }
 

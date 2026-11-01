@@ -9,6 +9,7 @@ import {
 } from '../lib/logic'
 import type { BarcodeDetectorLike } from '../lib/qr'
 import { useStore } from '../lib/store'
+import { useToast } from '../lib/toast'
 
 type CamStatus = 'starting' | 'scanning' | 'manual'
 
@@ -21,12 +22,12 @@ type CamStatus = 'starting' | 'scanning' | 'manual'
  */
 export default function QrReception({ onClose }: { onClose: () => void }) {
   const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
+  const { showToast } = useToast()
   const [status, setStatus] = useState<CamStatus>('starting')
   const [camError, setCamError] = useState('')
   const [manual, setManual] = useState('')
   const [foundId, setFoundId] = useState<string | null>(null)
   const [notFoundCode, setNotFoundCode] = useState('')
-  const [actionError, setActionError] = useState('')
   const [confirmingCancel, setConfirmingCancel] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -183,9 +184,8 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     : null
 
   const runAction = (fn: () => Promise<void>) => {
-    setActionError('')
     void fn().catch(() =>
-      setActionError('操作に失敗しました。接続を確認してもう一度お試しください'),
+      showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
     )
   }
 
@@ -274,8 +274,6 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       )}
-
-      {actionError && <p className="error-text">{actionError}</p>}
 
       {res && (
         <div className="qr-result" data-qr-result>

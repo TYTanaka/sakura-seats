@@ -3,10 +3,14 @@ import { ALL_SEATS } from '../data/seats'
 import {
   cancelReservation,
   createReservation,
+  doorsOpenBeforeStart,
   emptyData,
   normalizeAppData,
+  normalizeSellerNames,
   reservationTypeSummary,
   seatStatus,
+  selfCancelEligibility,
+  selfCancelLimit,
   setBlockedForSeats,
   setCheckedIn,
   setPaid,
@@ -585,3 +589,187 @@ describe('階ごとの残席数と seatStates（Phase 2）', () => {
     expect(seatStatus(data, '1F-5-8')).toBe('available')
   })
 })
+
+describe('本人キャンセルの可否判定（R4・RPC cancel_reservation と同じ規則）', () => {
+  const NOW = new Date('2026-12-01T12:00:00')
+
+  function booked(data: AppData = emptyData()) {
+    return createReservation(data, {
+      seats: seatsOf(['1F-5-6']),
+      name: '山田 花子',
+      phone: '09000000000',
+      note: '',
+      source: 'online',
+    })
+  }
+
+  it('予約がなければ NOT_FOUND', () => {
+    expect(selfCancelEligibility(null, emptyData(), NOW)).toBe('NOT_FOUND')
+  })
+
+  it('通常の未払い予約は OK（期限は公演日時が使われる）', () => {
+    const { data, reservation } = booked()
+    expect(selfCancelLimit(data)?.getTime()).toBe(new Date('2026-12-19T13:00:00').getTime())
+    expect(selfCancelEligibility(reservation, data, NOW)).toBe('OK')
+  })
+
+  it('キャンセル済みは ALREADY_CANCELLED（支払い済みでも優先される）', () => {
+    const { data, reservation } = booked()
+    const paid = setPaid(data, reservation.id, true)
+    const cancelled = cancelReservation(paid, reservation.id)
+    const target = cancelled.reservations.find((r) => r.id === reservation.id)!
+    expect(selfCancelEligibility(target, cancelled, NOW)).toBe('ALREADY_CANCELLED')
+  })
+
+  it('支払い済みは PAID_LOCKED（来場済みでも優先される）', () => {
+    const { data, reservation } = booked()
+    const both = setCheckedIn(setPaid(data, reservation.id, true), reservation.id, true)
+    const target = both.reservations.find((r) => r.id === reservation.id)!
+    expect(selfCancelEligibility(target, both, NOW)).toBe('PAID_LOCKED')
+  })
+
+  it('来場済みは CHECKED_IN_LOCKED', () => {
+    const { data, reservation } = booked()
+    const checked = setCheckedIn(data, reservation.id, true)
+    const target = checked.reservations.find((r) => r.id === reservation.id)!
+    expect(selfCancelEligibility(target, checked, NOW)).toBe('CHECKED_IN_LOCKED')
+  })
+
+  it('予約締切が設定されていれば公演日時より締切が優先され、過ぎれば TOO_LATE', () => {
+    const base = booked()
+    const data: AppData = { ...base.data, bookingDeadline: '2026-11-30T23:59' }
+    expect(selfCancelLimit(data)?.getTime()).toBe(new Date('2026-11-30T23:59').getTime())
+    expect(selfCancelEligibility(base.reservation, data, NOW)).toBe('TOO_LATE')
+  })
+
+  it('締切が無ければ公演日時を過ぎると TOO_LATE（ちょうどその時刻も不可）', () => {
+    const { data, reservation } = booked()
+    expect(selfCancelEligibility(reservation, data, new Date('2026-12-19T12:59:59'))).toBe('OK')
+    expect(selfCancelEligibility(reservation, data, new Date('2026-12-19T13:00:00'))).toBe(
+      'TOO_LATE',
+    )
+  })
+})
+
+describe('開場時刻の整合チェック（R4-5）', () => {
+  it('開場が開演より前なら OK、同じ・後なら NG', () => {
+    expect(doorsOpenBeforeStart('12:30', '13:00')).toBe(true)
+    expect(doorsOpenBeforeStart('13:00', '13:00')).toBe(false)
+    expect(doorsOpenBeforeStart('19:00', '18:30')).toBe(false)
+  })
+
+  it('解釈できない時刻は NG（保存させない）', () => {
+    expect(doorsOpenBeforeStart('', '13:00')).toBe(false)
+    expect(doorsOpenBeforeStart('12:30', '')).toBe(false)
+  })
+})
+
+describe('販売者記録（R4・F6）', () => {
+  it('当日販売では販売者が記録され、前後の空白は除かれる', () => {
+    const { reservation } = createReservation(emptyData(), {
+      seats: seatsOf(['1F-5-6', '1F-5-7']),
+      name: '',
+      phone: '',
+      note: '',
+      source: 'door',
+      seller: ' 田中 ',
+    })
+    expect(reservation.seller).toBe('田中')
+  })
+
+  it('販売者未選択なら記録されず、Web予約には付けられない', () => {
+    const door = createReservation(emptyData(), {
+      seats: seatsOf(['1F-5-6']),
+      name: '',
+      phone: '',
+      note: '',
+      source: 'door',
+    })
+    expect(door.reservation.seller).toBeUndefined()
+    const online = createReservation(emptyData(), {
+      seats: seatsOf(['1F-5-6']),
+      name: '山田 花子',
+      phone: '09000000000',
+      note: '',
+      source: 'online',
+      seller: '田中',
+    })
+    expect(online.reservation.seller).toBeUndefined()
+  })
+
+  it('販売者別集計は、販売者つきの有効な予約だけを席数・金額で集計する', () => {
+    let data = emptyData()
+    const sell = (seatIds: string[], seller?: string) => {
+      const r = createReservation(data, {
+        seats: seatsOf(seatIds),
+        name: '',
+        phone: '',
+        note: '',
+        source: 'door',
+        seller,
+      })
+      data = r.data
+      return r.reservation
+    }
+    sell(['1F-5-6', '1F-5-7'], '田中')
+    sell(['1F-5-8'], '田中')
+    sell(['1F-5-9'], '鈴木')
+    sell(['1F-5-10'])
+    const cancelled = sell(['1F-5-11'], '田中')
+    data = cancelReservation(data, cancelled.id)
+
+    const t = totals(data, ALL_IDS)
+    expect(t.bySeller).toEqual([
+      { seller: '田中', seatCount: 3, amount: 6000 },
+      { seller: '鈴木', seatCount: 1, amount: 2000 },
+    ])
+  })
+
+  it('販売者名リストは正規化される（空白除去・重複排除）', () => {
+    expect(normalizeSellerNames([' 田中 ', '', '鈴木', '田中', 42, null])).toEqual([
+      '田中',
+      '鈴木',
+    ])
+    expect(normalizeSellerNames('田中')).toEqual([])
+    expect(normalizeSellerNames(undefined)).toEqual([])
+  })
+
+  it('normalizeAppData は販売者と予約の販売者を保持する', () => {
+    const data = normalizeAppData({
+      performance: { ...defaultPerformanceRaw(), sellerNames: ['田中'] },
+      reservations: [
+        {
+          id: 'SK-0001',
+          seatIds: ['1F-5-6'],
+          items: [{ seatId: '1F-5-6', typeId: 'adult', typeName: '大人', price: 2000 }],
+          name: '当日',
+          phone: '',
+          note: '',
+          source: 'door',
+          amount: 2000,
+          checkedIn: false,
+          paid: true,
+          cancelled: false,
+          createdAt: '2026-11-01T00:00:00.000Z',
+          seller: '田中',
+        },
+      ],
+      blocked: [],
+      seq: 1,
+    })
+    expect(data?.performance.sellerNames).toEqual(['田中'])
+    expect(data?.reservations[0].seller).toBe('田中')
+  })
+})
+
+function defaultPerformanceRaw() {
+  return {
+    name: 'サンプル公演',
+    date: '2026-12-19',
+    time: '13:00',
+    doorsOpen: '12:30',
+    ticketTypes: [{ id: 'adult', name: '大人', price: 2000 }],
+    priceNote: '',
+    note: '',
+  }
+}

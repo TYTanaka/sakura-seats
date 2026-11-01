@@ -1,18 +1,28 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ALL_SEATS } from './data/seats'
 import {
   formatMonthDayTime,
   formatPerformanceWhen,
   formatTicketTypes,
+  formatYen,
   isBookingClosed,
   localDateString,
   seatStatus,
   type Performance,
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
+import { ToastProvider } from './lib/toast'
+import { useNow } from './lib/useNow'
+import {
+  clearLastReservation,
+  loadLastReservation,
+  LAST_RESERVATION_EVENT,
+  type LastReservationSnapshot,
+} from './lib/lastReservation'
 import flyerUrl from './assets/flyer.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
+import ReservationQr from './components/ReservationQr'
 import Staff from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
@@ -30,8 +40,11 @@ function TopHeader({
   onStaff: () => void
 }) {
   const { data } = useStore()
+  // 締切ピルも時刻の経過に追随させる（開いたまま締切を跨いだら表示を切り替える・R4-1）
+  const nowMs = useNow(10000)
   const available = ALL_SEATS.filter((s) => seatStatus(data, s.id) === 'available').length
-  const showDeadline = data.bookingDeadline !== null && !isBookingClosed(data)
+  const bookingClosed = isBookingClosed(data, new Date(nowMs))
+  const showDeadline = data.bookingDeadline !== null && !bookingClosed
   return (
     <header className="site-header">
       <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
@@ -59,6 +72,11 @@ function TopHeader({
             予約締切：{formatMonthDayTime(data.bookingDeadline!)}まで
           </p>
         )}
+        {data.bookingDeadline !== null && bookingClosed && (
+          <p className="site-deadline is-closed" data-booking-closed-display>
+            予約受付は終了しました
+          </p>
+        )}
         {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
         {perf.note && <p className="site-note">{perf.note}</p>}
       </div>
@@ -66,25 +84,102 @@ function TopHeader({
   )
 }
 
-/** 公演日が今日のときだけ出す「本日開演」案内カード */
+/**
+ * 公演日が今日のときだけ出す「本日開演」案内カード。
+ * 当日は座席表をなるべく早く見せたいので、1〜2行のコンパクト表示にして
+ * 「座席を選ぶ」ボタンで座席表へジャンプできるようにする（R4-7 / F10）。
+ */
 function TodayCard({ perf }: { perf: Performance }) {
+  const scrollToSeats = () => {
+    document
+      .getElementById('seat-picker')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   return (
     <section className="card today-card" data-today-card>
-      <p className="today-badge">♪ 本日開演 ♪</p>
-      <p className="today-name">{perf.name}</p>
+      <div className="today-head">
+        <span className="today-badge">♪ 本日開演 ♪</span>
+        <span className="today-name">{perf.name}</span>
+      </div>
       <p className="today-times">
         開場 {perf.doorsOpen} ／ 開演 {perf.time}
+        <span className="today-venue">（{VENUE_NAME}）</span>
       </p>
-      <p className="today-venue">{VENUE_NAME}</p>
-      <p className="today-note">
-        ご予約の方は受付でお名前と予約番号をお伝えください（お支払いは現金のみ）。
+      <button
+        type="button"
+        className="btn today-scroll-btn"
+        data-today-scroll
+        onClick={scrollToSeats}
+      >
+        座席を選ぶ ↓
+      </button>
+    </section>
+  )
+}
+
+/**
+ * 「直前の予約」カード（R4・F3）: この端末で直近に完了した予約の控え。
+ * 完了画面がリロードで消えても、ここから予約番号・座席・QRを再表示できる。
+ * 最新の状態（支払い・キャンセル等）はスナップショットでは分からないため、
+ * 予約確認への導線を併記する。
+ */
+function LastReservationCard({ onLookup }: { onLookup: () => void }) {
+  const [snapshot, setSnapshot] = useState<LastReservationSnapshot | null>(loadLastReservation)
+  // 予約完了（保存）・消去のたびに読み直す
+  useEffect(() => {
+    const update = () => setSnapshot(loadLastReservation())
+    window.addEventListener(LAST_RESERVATION_EVENT, update)
+    return () => window.removeEventListener(LAST_RESERVATION_EVENT, update)
+  }, [])
+  if (!snapshot) return null
+  return (
+    <section className="card last-reservation-card" data-last-reservation>
+      <h3>直前の予約（この端末の控え）</h3>
+      <p className="reservation-code">{snapshot.code}</p>
+      <ReservationQr code={snapshot.code} />
+      <dl className="detail-list">
+        <div>
+          <dt>公演</dt>
+          <dd>
+            {snapshot.performanceName}
+            <br />
+            {snapshot.whenText}
+          </dd>
+        </div>
+        <div>
+          <dt>座席</dt>
+          <dd>{snapshot.seatLabels.join('、')}</dd>
+        </div>
+        <div>
+          <dt>合計</dt>
+          <dd className="detail-total">{formatYen(snapshot.amount)}</dd>
+        </div>
+      </dl>
+      <p className="muted small">
+        最新の状態（お支払い・キャンセルの反映）は「予約確認」でご確認ください。
       </p>
+      <div className="btn-row">
+        <button type="button" className="btn btn-primary" onClick={onLookup}>
+          予約確認で見る
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          data-last-reservation-clear
+          onClick={() => {
+            clearLastReservation()
+            setSnapshot(null)
+          }}
+        >
+          この表示を消す
+        </button>
+      </div>
     </section>
   )
 }
 
 function Shell() {
-  const { data, mode, ready, loadError, retryLoad } = useStore()
+  const { data, mode, ready, loadError, retryLoad, storageWarning, syncState } = useStore()
   const [view, setView] = useState<View>('book')
   const perf = data.performance
 
@@ -114,13 +209,30 @@ function Shell() {
 
   return (
     <div className="app-shell">
+      {mode === 'cloud' && syncState !== 'ok' && (
+        <div
+          className={`sync-banner sync-${syncState}`}
+          data-sync-banner={syncState}
+          role="status"
+        >
+          {syncState === 'offline'
+            ? '接続が切れています。表示内容が古い場合があります'
+            : '再接続しています… 表示内容が古い場合があります'}
+        </div>
+      )}
       <TopHeader
         perf={perf}
         onLookup={() => setView('lookup')}
         onStaff={() => setView('staff')}
       />
       <main className="main">
+        {storageWarning && (
+          <p className="storage-warning" data-storage-warning role="alert">
+            ⚠ {storageWarning}
+          </p>
+        )}
         {view === 'book' && perf.date === localDateString() && <TodayCard perf={perf} />}
+        {view === 'book' && <LastReservationCard onLookup={() => setView('lookup')} />}
         {view === 'book' && <AudienceBook perf={perf} />}
         {view === 'lookup' && <Lookup onBack={() => setView('book')} />}
         {view === 'staff' && <Staff onExit={() => setView('book')} />}
@@ -142,7 +254,9 @@ function Shell() {
 export default function App() {
   return (
     <StoreProvider>
-      <Shell />
+      <ToastProvider>
+        <Shell />
+      </ToastProvider>
     </StoreProvider>
   )
 }

@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { normalizePerformance, type Performance, type Reservation } from './logic'
+import {
+  normalizePerformance,
+  type Performance,
+  type Reservation,
+  type SelfCancelResult,
+} from './logic'
 
 /**
  * Supabase RPC のクライアント層。
@@ -47,6 +52,8 @@ interface RawReservationRow {
   checkedIn: boolean
   status: 'active' | 'cancelled'
   createdAt: string
+  /** 販売者（staff_get_all のみが返す。lookup 等では含まれない） */
+  seller?: string | null
 }
 
 /** DB行 → クライアントの Reservation への変換 */
@@ -66,6 +73,8 @@ export function mapReservationRow(row: RawReservationRow): Reservation {
     paid: row.paid === true,
     cancelled: row.status === 'cancelled',
     createdAt: row.createdAt,
+    seller:
+      typeof row.seller === 'string' && row.seller.trim() ? row.seller.trim() : undefined,
   }
 }
 
@@ -191,13 +200,41 @@ export class CloudApi {
     passcode: string,
     name: string,
     items: { seatId: string; typeId: string }[],
+    seller?: string,
   ): Promise<{ code: string; amount: number }> {
+    // 販売者対応の4引数オーバーロードを呼ぶ（未選択は null → サーバ側で NULL 記録）
     const raw = await this.call<{ code: string; amount: number }>('staff_sell', {
       p_passcode: passcode,
       p_name: name,
       p_items: items,
+      p_seller: seller?.trim() ? seller.trim() : null,
     })
     return { code: raw.code, amount: raw.amount }
+  }
+
+  /**
+   * 本人キャンセル（cancel_reservation RPC）。
+   * 業務結果は例外ではなく JSON { ok, result } で返るので、result をそのまま返す。
+   * 未知の result や形が違う応答は通信エラーとして投げる。
+   */
+  async cancelReservation(code: string, phone: string): Promise<SelfCancelResult> {
+    const raw = await this.call<unknown>('cancel_reservation', {
+      p_code: code,
+      p_phone: phone,
+    })
+    const result = (raw as { result?: unknown } | null)?.result
+    const known: SelfCancelResult[] = [
+      'OK',
+      'NOT_FOUND',
+      'ALREADY_CANCELLED',
+      'PAID_LOCKED',
+      'CHECKED_IN_LOCKED',
+      'TOO_LATE',
+    ]
+    if (typeof result === 'string' && (known as string[]).includes(result)) {
+      return result as SelfCancelResult
+    }
+    throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
   }
 
   async staffUpdateReservation(
@@ -240,7 +277,10 @@ export class CloudApi {
 /** 本物の Supabase クライアントで CloudApi を作る（動的 import 先） */
 export async function createCloudApi(): Promise<{
   api: CloudApi
-  subscribeSeatChanges: (onChange: () => void) => () => void
+  subscribeSeatChanges: (
+    onChange: () => void,
+    onStatus?: (status: string) => void,
+  ) => () => void
 }> {
   const { createClient } = await import('@supabase/supabase-js')
   const { SUPABASE_URL, SUPABASE_ANON_KEY } = await import('./config')
@@ -248,7 +288,7 @@ export async function createCloudApi(): Promise<{
 
   const api = new CloudApi(client as unknown as RpcClient)
 
-  const subscribeSeatChanges = (onChange: () => void) => {
+  const subscribeSeatChanges = (onChange: () => void, onStatus?: (status: string) => void) => {
     const channel = client
       .channel('sakura-seat-state')
       .on(
@@ -256,7 +296,12 @@ export async function createCloudApi(): Promise<{
         { event: '*', schema: 'public', table: 'seat_state' },
         () => onChange(),
       )
-      .subscribe()
+      // 購読状態（SUBSCRIBED / CHANNEL_ERROR / TIMED_OUT / CLOSED）を伝える。
+      // 再接続のたびに SUBSCRIBED が来るので、呼び出し側はそのタイミングで
+      // 取りこぼした変更を再取得できる（R4-3）。
+      .subscribe((status) => {
+        onStatus?.(status)
+      })
     return () => {
       void client.removeChannel(channel)
     }
