@@ -386,7 +386,7 @@ function DoorSales() {
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
       <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
       <SeatLegend />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
       {selected.length > 0 && (
         <>
           <h4 className="form-subhead">席ごとの券種</h4>
@@ -463,7 +463,7 @@ function SeatSettings() {
       </p>
       <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} />
       <SeatLegend />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} />
+      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} />
       <h4>列ごとの一括切替</h4>
       <ul className="row-toggle-list">
         {groups.map((group) => {

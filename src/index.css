@@ -424,6 +424,7 @@ textarea {
 
 .zoom-controls {
   display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -443,60 +444,9 @@ textarea {
   color: #1e7a5a;
 }
 
-/* ズームスライダー（チップの下に全幅で1行） */
-.zoom-slider-row {
-  flex: 1 1 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.zoom-slider {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 40px; /* 指で掴めるヒットエリア */
-  margin: 0;
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.zoom-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #d5c9ef, var(--burgundy-soft));
-}
-
-.zoom-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 26px;
-  height: 26px;
-  margin-top: -10px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2.5px solid var(--burgundy-soft);
-  box-shadow: 0 2px 6px rgba(74, 58, 140, 0.35);
-}
-
-.zoom-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #d5c9ef, var(--burgundy-soft));
-}
-
-.zoom-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2.5px solid var(--burgundy-soft);
-  box-shadow: 0 2px 6px rgba(74, 58, 140, 0.35);
-}
-
 .zoom-readout {
   flex: 0 0 auto;
+  margin-left: 4px;
   min-width: 54px;
   text-align: right;
   font-size: 13.5px;
@@ -531,9 +481,13 @@ textarea {
   overflow-x: auto;
   padding: 4px 2px 10px;
   -webkit-overflow-scrolling: touch;
+  /* 1本指のパン（ネイティブスクロール）は許可し、ブラウザのピンチズームは無効化。
+     2本指ピンチは SeatMap 側のタッチハンドラで自前処理する */
+  touch-action: pan-x pan-y;
 }
 
-/* 全体表示：縮小後の見かけサイズで箱を確保し、中身は transform で縮小する */
+/* ズーム共通：ラッパーが見かけサイズで箱を確保し、中身は transform で拡縮する。
+   全体表示のときだけ横スクロールを禁止する */
 .seatmap-scroll-fit {
   overflow-x: hidden;
 }

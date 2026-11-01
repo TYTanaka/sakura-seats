@@ -31,7 +31,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [step, setStep] = useState<Step>('seats')
   const [floor, setFloor] = useState<Floor>(1)
   const [zoom, setZoom] = useState<SeatZoom>('fit')
-  /** 全体表示の実測倍率（SeatMap が通知）。ズームスライダーの目安に使う */
+  /** 全体表示の実測倍率（SeatMap が通知）。倍率表示（約○○%）に使う */
   const [fitScale, setFitScale] = useState<number | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
@@ -231,9 +231,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               onSeatTap={handleSeatTap}
               showRecommended
               onFitScale={setFitScale}
+              onZoomChange={setZoom}
             />
             <p className="muted small">
-              「全体」表示でホール全体が見えます。スライダーで好きな倍率に変えられます（大きな倍率では左右にスクロールできます）。全
+              「全体」表示でホール全体が見えます。座席表をピンチ（2本指で広げる・つまむ）しても好きな倍率に変えられます（大きな倍率では左右にスクロールできます）。全
               {ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
           </section>
