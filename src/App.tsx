@@ -30,6 +30,48 @@ type View = 'book' | 'lookup' | 'staff'
 /** 会場名（ヒーローと本日開演カードで共用） */
 const VENUE_NAME = '戸塚区民文化センター さくらプラザ・ホール'
 
+/**
+ * 劇団ツインリーブスの双葉マーク（ポスターのロゴにある2枚の葉）。
+ * タイトルの横に添える小さな装飾。装飾専用なので aria-hidden。
+ */
+function TwinLeavesMark() {
+  return (
+    <svg className="twin-leaves-mark" viewBox="0 0 48 26" aria-hidden="true" focusable="false">
+      <path
+        d="M22.6 23.5C14.5 22.8 6.8 17.6 4.6 6.6 15 7.4 21.4 13.6 22.6 23.5Z"
+        fill="#ffffff"
+      />
+      <path
+        d="M25.4 23.5c8.1-.7 15.8-5.9 18-16.9-10.4.8-16.8 7-18 16.9Z"
+        fill="#f5c451"
+      />
+      <path
+        d="M24 24.6c-5.5.9-10.8.4-16-1.5 5.6 2.9 11 4 16 3.4 5 .6 10.4-.5 16-3.4-5.2 1.9-10.5 2.4-16 1.5Z"
+        fill="#ffffff"
+        opacity="0.85"
+      />
+    </svg>
+  )
+}
+
+/**
+ * ヒーローの瞬く星（装飾のみ・ポスターの星空に合わせた控えめなきらめき）。
+ * アニメーションは opacity / transform のみで、座席表の描画には影響しない。
+ */
+function HeroSparkles() {
+  return (
+    <div className="hero-sparkles" aria-hidden="true">
+      <span className="sparkle sp-1">✦</span>
+      <span className="sparkle sp-2 violet">✦</span>
+      <span className="sparkle sp-3">✦</span>
+      <span className="sparkle sp-4">✦</span>
+      <span className="sparkle sp-5 violet">✦</span>
+      <span className="sparkle sp-6">✦</span>
+      <span className="sparkle sp-7">✦</span>
+    </div>
+  )
+}
+
 function TopHeader({
   perf,
   onLookup,
@@ -50,6 +92,7 @@ function TopHeader({
       <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
       <div className="hero-overlay" aria-hidden="true" />
       <div className="hero-scrim-top" aria-hidden="true" />
+      <HeroSparkles />
       <div className="hero-content">
         <div className="header-top">
           <p className="venue-line">{VENUE_NAME}</p>
@@ -62,7 +105,10 @@ function TopHeader({
             </button>
           </div>
         </div>
-        <h1 className="site-title">{perf.name}</h1>
+        <h1 className="site-title">
+          <TwinLeavesMark />
+          {perf.name}
+        </h1>
         <p className="site-when">{formatPerformanceWhen(perf)}</p>
         <p className="site-meta">
           料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席

@@ -341,7 +341,7 @@ function Reception() {
         </button>
       </div>
       {qrMode && <QrReception onClose={() => setQrMode(false)} />}
-      {list.length === 0 && <p className="muted">該当する予約がありません。</p>}
+      {list.length === 0 && <p className="muted empty-note">該当する予約がありません。</p>}
       <ul className="reservation-list">
         {list.map((res) => (
           <li key={res.id} className={`reservation-item${res.cancelled ? ' is-cancelled' : ''}`}>

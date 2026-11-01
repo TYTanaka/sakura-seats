@@ -273,6 +273,16 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   if (step === 'done' && completed) {
     return (
       <section className="card done-card">
+        <div className="done-sparkles" aria-hidden="true">
+          <span className="ds ds-1">✦</span>
+          <span className="ds ds-2 violet">✦</span>
+          <span className="ds ds-3">✦</span>
+          <span className="ds ds-4">✦</span>
+          <span className="ds ds-5 violet">✦</span>
+          <span className="ds ds-6">✦</span>
+          <span className="ds ds-7">✦</span>
+          <span className="ds ds-8 violet">✦</span>
+        </div>
         <p className="done-badge">予約が完了しました</p>
         <p className="done-lead">ご予約ありがとうございます。予約番号をお控えください。</p>
         <p className="reservation-code">{completed.id}</p>

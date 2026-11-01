@@ -1,25 +1,25 @@
 :root {
-  /* 星空×絵本テーマ（おとぎ話管理局の夜空と絵本のページ） */
-  --burgundy: #4a3a8c; /* 見出し・主要テキスト用ディープバイオレット */
-  --burgundy-deep: #241a4d; /* ステージ幕用ディープインディゴ */
-  --burgundy-soft: #7c5cbf; /* プライマリバイオレット */
-  --pink: #7c5cbf;
-  --pink-soft: #9a7fd4;
-  --pink-pale: #efeafd;
-  --gold: #e9b949; /* 星の金（おすすめ・差し色） */
+  /* 星空×絵本テーマ（公演ポスターの鮮やかな夜空：深い藍・紫→マゼンタの星雲・星の金） */
+  --burgundy: #3e2884; /* 見出し・主要テキスト用ディープバイオレット */
+  --burgundy-deep: #170b3d; /* ステージ幕用ディープインディゴ */
+  --burgundy-soft: #8a4bce; /* プライマリバイオレット */
+  --pink: #8a4bce;
+  --pink-soft: #a678e0;
+  --pink-pale: #f2e8fd;
+  --gold: #f5c451; /* 星の金（ポスターの輝き・おすすめ・差し色） */
   --mint: #5ec8a7;
   --mint-pale: #e2f6ee;
-  --lavender: #8e7cc3;
-  --lavender-pale: #f1ecfb;
+  --lavender: #7d64bd;
+  --lavender-pale: #f3edfd;
   --ivory: #fbf6ee; /* 絵本のページのようなクリーム背景 */
   --paper: #fffdf8;
   --ink: #322a4a;
   /* 補助テキスト色: クリーム背景で 4.5:1 以上を確保（旧 #857a9e は 3.92:1 で AA 未満） */
   --muted: #6f6196;
-  --line: #ddd2ee;
+  --line: #d8c6f0;
   --error: #d6455b;
   --success: #2f9e66;
-  --shadow-pink: 0 4px 16px rgba(91, 75, 158, 0.14);
+  --shadow-pink: 0 4px 16px rgba(94, 52, 178, 0.14);
 }
 
 * {
@@ -33,7 +33,10 @@ body {
 }
 
 body {
-  background: var(--ivory);
+  background-color: var(--ivory);
+  /* ページ上部だけ夜空のラベンダーをほんのり敷く（本文域はクリームのまま） */
+  background-image: linear-gradient(180deg, rgba(138, 75, 206, 0.12), rgba(138, 75, 206, 0) 430px);
+  background-repeat: no-repeat;
   color: var(--ink);
   font-family: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Hiragino Sans',
     'Noto Sans JP', 'Yu Gothic', sans-serif;
@@ -43,6 +46,40 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+}
+
+/* ページ全体の星空（固定レイヤー・CSSのみ・ごく控えめ）。
+   カードの隙間や余白にポスターの夜空の気配を敷く。装飾専用で操作には干渉しない */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.6px 1.6px at 22px 34px, rgba(245, 196, 81, 0.35) 50%, transparent 52%),
+    radial-gradient(1.2px 1.2px at 128px 92px, rgba(138, 75, 206, 0.3) 50%, transparent 52%),
+    radial-gradient(1px 1px at 196px 168px, rgba(201, 42, 126, 0.22) 50%, transparent 52%),
+    radial-gradient(1.4px 1.4px at 84px 214px, rgba(138, 75, 206, 0.26) 50%, transparent 52%),
+    radial-gradient(1px 1px at 238px 252px, rgba(245, 196, 81, 0.3) 50%, transparent 52%);
+  background-size: 260px 300px;
+  animation: starfield-breathe 7s ease-in-out infinite alternate;
+}
+
+@keyframes starfield-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 
 input,
@@ -66,7 +103,7 @@ textarea {
   padding: 16px 18px 22px;
   text-align: center;
   color: #ffffff;
-  background: linear-gradient(180deg, #1a1545 0%, #33256e 55%, #241a4d 100%);
+  background: linear-gradient(180deg, #0d0730 0%, #38197c 55%, #170b3d 100%);
   border-bottom: 4px solid var(--gold);
   border-radius: 0 0 28px 28px;
   box-shadow: 0 6px 20px rgba(36, 26, 77, 0.35);
@@ -86,11 +123,13 @@ textarea {
 .hero-overlay {
   position: absolute;
   inset: 0;
+  /* 新ポスターは中段（星雲）が明るいため、旧ポスター時より一段濃くして
+     白文字のコントラスト（従来実測 ≥4.5:1）を維持する */
   background: linear-gradient(
     180deg,
-    rgba(24, 18, 64, 0.7) 0%,
-    rgba(32, 22, 82, 0.68) 48%,
-    rgba(26, 18, 66, 0.84) 100%
+    rgba(16, 9, 52, 0.78) 0%,
+    rgba(24, 13, 68, 0.75) 48%,
+    rgba(13, 7, 40, 0.9) 100%
   );
   pointer-events: none;
 }
@@ -105,15 +144,110 @@ textarea {
   height: 62%;
   background: linear-gradient(
     180deg,
-    rgba(13, 9, 38, 0.55) 0%,
-    rgba(13, 9, 38, 0.36) 55%,
-    rgba(13, 9, 38, 0) 100%
+    rgba(9, 5, 30, 0.62) 0%,
+    rgba(9, 5, 30, 0.42) 55%,
+    rgba(9, 5, 30, 0) 100%
   );
   pointer-events: none;
 }
 
 .hero-content {
   position: relative;
+}
+
+/* ヒーローの瞬く星（装飾のみ・控えめに散らす） */
+.hero-sparkles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sparkle {
+  position: absolute;
+  color: #ffe9a8;
+  text-shadow:
+    0 0 8px rgba(245, 196, 81, 0.9),
+    0 0 2px rgba(255, 255, 255, 0.9);
+  line-height: 1;
+  animation: sparkle-twinkle 3s ease-in-out infinite;
+}
+
+.sparkle.violet {
+  color: #e6ccff;
+  text-shadow:
+    0 0 8px rgba(166, 120, 224, 0.9),
+    0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.sparkle.sp-1 {
+  top: 12%;
+  left: 6%;
+  font-size: 15px;
+}
+.sparkle.sp-2 {
+  top: 30%;
+  left: 16%;
+  font-size: 10px;
+  animation-delay: 0.7s;
+}
+.sparkle.sp-3 {
+  top: 10%;
+  right: 22%;
+  font-size: 12px;
+  animation-delay: 1.3s;
+}
+.sparkle.sp-4 {
+  top: 42%;
+  right: 7%;
+  font-size: 16px;
+  animation-delay: 0.4s;
+}
+.sparkle.sp-5 {
+  top: 62%;
+  left: 4%;
+  font-size: 11px;
+  animation-delay: 1.8s;
+}
+.sparkle.sp-6 {
+  top: 70%;
+  right: 16%;
+  font-size: 10px;
+  animation-delay: 2.2s;
+}
+.sparkle.sp-7 {
+  top: 24%;
+  left: 46%;
+  font-size: 9px;
+  animation-delay: 2.6s;
+}
+
+@keyframes sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sparkle {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
+/* タイトル横の双葉マーク */
+.twin-leaves-mark {
+  width: 40px;
+  height: auto;
+  margin-right: 10px;
+  vertical-align: -3px;
+  filter: drop-shadow(0 1px 5px rgba(10, 6, 32, 0.65));
 }
 
 /* ヘッダー最上段：会場名（左）とアクション（右）の flex 行 */
@@ -141,7 +275,9 @@ textarea {
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  text-shadow: 0 2px 10px rgba(10, 6, 32, 0.7);
+  text-shadow:
+    0 2px 10px rgba(10, 6, 32, 0.7),
+    0 0 24px rgba(245, 196, 81, 0.35);
 }
 
 .site-when {
@@ -165,7 +301,7 @@ textarea {
   margin: 10px 0 0;
   padding: 5px 16px;
   border-radius: 999px;
-  background: rgba(233, 185, 73, 0.95);
+  background: rgba(245, 196, 81, 0.96);
   color: #33270a;
   font-size: 13.5px;
   font-weight: 800;
@@ -204,9 +340,16 @@ textarea {
 /* ---------- 共通 ---------- */
 
 .card {
-  background: var(--paper);
+  background-color: var(--paper);
+  /* 星雲の気配をほんのり重ねる（地色は --paper のままなので文字コントラストは不変） */
+  background-image: linear-gradient(
+    160deg,
+    rgba(166, 120, 224, 0.08),
+    rgba(201, 42, 126, 0.04) 55%,
+    rgba(255, 255, 255, 0) 78%
+  );
   border: 1.5px solid var(--line);
-  border-radius: 20px;
+  border-radius: 22px;
   padding: 16px;
   margin-bottom: 14px;
   box-shadow: var(--shadow-pink);
@@ -217,6 +360,18 @@ textarea {
   margin: 0 0 10px;
   color: var(--burgundy);
   font-weight: 800;
+}
+
+/* 見出しの金の星アクセント（装飾のみ・DOMテキストには含まれない） */
+.card h2::before,
+.card h3::before,
+.form-subhead::before {
+  content: '✦';
+  margin-right: 0.32em;
+  font-size: 0.74em;
+  color: var(--gold);
+  text-shadow: 0 0 6px rgba(245, 196, 81, 0.55);
+  vertical-align: 0.12em;
 }
 
 .card h4 {
@@ -259,9 +414,29 @@ textarea {
 }
 
 .btn-primary {
-  background: linear-gradient(160deg, #5b4b9e, var(--pink) 60%, #9a5fc0);
+  position: relative;
+  /* ポスターの星雲グラデーション（紫→マゼンタ）＋金の縁取りと柔らかなグロー。
+     白文字とのコントラストは最も明るい終端でも 5:1 以上を確保 */
+  background: linear-gradient(160deg, #3a1c92, var(--pink) 52%, #c92a7e);
+  border-color: rgba(245, 196, 81, 0.55);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(91, 75, 158, 0.4);
+  box-shadow:
+    0 4px 14px rgba(94, 52, 178, 0.45),
+    0 0 12px rgba(201, 42, 126, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+/* 主要ボタンの右上の小さな星（装飾のみ・小ボタンには付けない） */
+.btn-primary:not(.btn-small)::after {
+  content: '✦';
+  position: absolute;
+  top: 3px;
+  right: 9px;
+  font-size: 10px;
+  line-height: 1;
+  color: #ffe9a8;
+  text-shadow: 0 0 6px rgba(245, 196, 81, 0.85);
+  pointer-events: none;
 }
 
 .btn-primary:disabled {
@@ -273,7 +448,11 @@ textarea {
 .btn-ghost {
   background: #fff;
   color: var(--burgundy);
-  border-color: #c9bce9;
+  border-color: #c3aef2;
+}
+
+.btn-ghost:hover {
+  background: var(--pink-pale);
 }
 
 .btn-danger {
@@ -303,9 +482,26 @@ textarea {
 }
 
 .divider {
+  position: relative;
   border: none;
   border-top: 1.5px dashed var(--line);
   margin: 20px 0;
+  overflow: visible;
+}
+
+/* ― ✦ ― の区切り（中央に金の星） */
+.divider::after {
+  content: '✦';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 8px;
+  background: var(--paper);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 0 0 6px rgba(245, 196, 81, 0.5);
 }
 
 .site-footer {
@@ -328,7 +524,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #6a5a94;
+  color: #624fa0;
 }
 
 .field input,
@@ -336,7 +532,7 @@ textarea {
 .field textarea {
   width: 100%;
   padding: 11px 12px;
-  border: 1.5px solid #d5c9ef;
+  border: 1.5px solid #dac9f3;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -348,7 +544,7 @@ textarea {
 .field textarea:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(154, 127, 212, 0.3);
+  box-shadow: 0 0 0 3px rgba(166, 120, 224, 0.3);
 }
 
 .field textarea {
@@ -370,7 +566,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #6a5a94;
+  color: #624fa0;
 }
 
 .required {
@@ -403,11 +599,29 @@ textarea {
   text-align: center;
 }
 
+/* 注目カード（ポスター／直前の予約）は紫→マゼンタ→金のグラデーション縁取り */
+.poster-card,
+.last-reservation-card {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(
+        160deg,
+        rgba(166, 120, 224, 0.08),
+        rgba(201, 42, 126, 0.04) 55%,
+        rgba(255, 255, 255, 0) 78%
+      )
+      padding-box,
+    linear-gradient(var(--paper), var(--paper)) padding-box,
+    linear-gradient(135deg, var(--pink), #c92a7e 55%, var(--gold)) border-box;
+}
+
 .poster-link {
   display: block;
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 6px 18px rgba(36, 26, 77, 0.3);
+  box-shadow:
+    0 6px 18px rgba(23, 11, 61, 0.35),
+    0 0 0 1.5px rgba(245, 196, 81, 0.4);
 }
 
 .poster-link img {
@@ -453,9 +667,9 @@ textarea {
 }
 
 .floor-tab.active {
-  background: var(--pink);
+  background: linear-gradient(135deg, var(--pink), #c92a7e);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(124, 92, 191, 0.4);
+  box-shadow: 0 2px 8px rgba(138, 75, 206, 0.4);
 }
 
 .zoom-controls {
@@ -465,7 +679,7 @@ textarea {
 }
 
 .zoom-btn {
-  border: 1.5px solid #d5c9ef;
+  border: 1.5px solid #dac9f3;
   background: #fff;
   min-height: 40px;
   padding: 6px 10px;
@@ -546,13 +760,22 @@ textarea {
   margin-bottom: 14px;
   border-radius: 12px 12px 40px 40px / 12px 12px 22px 22px;
   border-bottom: 3px solid var(--gold);
-  background: linear-gradient(180deg, #171038, var(--burgundy-deep) 70%, #372a6e);
+  /* 深い藍のグラデーション＋星屑ドット＋金の縁のグロー */
+  background-image:
+    radial-gradient(1.6px 1.6px at 12% 34%, rgba(255, 255, 255, 0.9) 50%, transparent 52%),
+    radial-gradient(1.2px 1.2px at 32% 68%, rgba(255, 233, 168, 0.9) 50%, transparent 52%),
+    radial-gradient(1.4px 1.4px at 56% 26%, rgba(255, 255, 255, 0.75) 50%, transparent 52%),
+    radial-gradient(1.2px 1.2px at 76% 62%, rgba(230, 204, 255, 0.9) 50%, transparent 52%),
+    radial-gradient(1.6px 1.6px at 90% 30%, rgba(255, 255, 255, 0.85) 50%, transparent 52%),
+    linear-gradient(180deg, #0a0522, var(--burgundy-deep) 55%, #38197c);
   color: #f6e7bd;
   font-weight: 800;
   letter-spacing: 0.6em;
   text-indent: 0.6em;
   font-size: 14px;
-  box-shadow: 0 4px 12px rgba(36, 26, 77, 0.35);
+  box-shadow:
+    0 4px 12px rgba(23, 11, 61, 0.45),
+    0 6px 20px rgba(245, 196, 81, 0.2);
 }
 
 .stage::before,
@@ -563,16 +786,17 @@ textarea {
   letter-spacing: 0;
   text-indent: 0;
   font-size: 13px;
-  color: rgba(233, 185, 73, 0.8);
+  color: rgba(245, 196, 81, 0.95);
+  text-shadow: 0 0 7px rgba(245, 196, 81, 0.6);
 }
 
 .stage::before {
-  content: '♪ ♫';
+  content: '✦ ♪';
   left: 18px;
 }
 
 .stage::after {
-  content: '♫ ♪';
+  content: '♪ ✦';
   right: 18px;
 }
 
@@ -611,7 +835,7 @@ textarea {
 .aisle-note {
   text-align: center;
   font-size: 11px;
-  color: #b3a6cc;
+  color: #9a86c6;
   margin: 6px 0;
   letter-spacing: 0.3em;
 }
@@ -661,7 +885,7 @@ textarea {
 .seat-available {
   background: #fff;
   border: 1.5px solid var(--pink-soft);
-  box-shadow: 0 1px 3px rgba(124, 92, 191, 0.18);
+  box-shadow: 0 1px 3px rgba(138, 75, 206, 0.18);
 }
 
 button.seat-available:hover {
@@ -669,10 +893,14 @@ button.seat-available:hover {
 }
 
 .seat-selected {
-  background: linear-gradient(160deg, var(--pink) 20%, #d9578b);
-  border-color: #5b4b9e;
+  /* 選択中：星雲グラデーション（紫→深マゼンタ）。予約済（灰紫）・支払済（単色紫）と
+     一目で区別できるよう、彩度と奥行きを持たせる。白の座番とのコントラストも従来以上 */
+  background: linear-gradient(160deg, var(--pink) 15%, #c92a7e);
+  border-color: #4a2a86;
   color: #fff;
-  box-shadow: 0 3px 8px rgba(124, 92, 191, 0.55);
+  box-shadow:
+    0 3px 9px rgba(138, 75, 206, 0.55),
+    0 0 8px rgba(201, 42, 126, 0.35);
 }
 
 .seat-reserved {
@@ -683,7 +911,7 @@ button.seat-available:hover {
 
 .seat-paid {
   background: var(--lavender);
-  border-color: #7768ad;
+  border-color: #6a54a8;
   color: #fff;
 }
 
@@ -724,11 +952,56 @@ button.seat-available:hover {
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   width: min(856px, calc(100% - 24px));
   z-index: 40;
-  background: #fdfaff;
-  border: 2px dashed #b7a6e0;
+  /* 深い藍のグラス＋金の縁取り（ポスターの夜空に浮かぶバー） */
+  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(46, 22, 104, 0.97));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(245, 196, 81, 0.55);
   border-radius: 20px;
   padding: 12px 14px;
-  box-shadow: 0 8px 24px rgba(74, 58, 140, 0.22);
+  box-shadow:
+    0 10px 28px rgba(13, 7, 40, 0.5),
+    0 0 14px rgba(138, 75, 206, 0.25);
+}
+
+/* バーの縁に乗る小さな星 */
+.selection-bar::before {
+  content: '✦';
+  position: absolute;
+  top: -9px;
+  right: 16px;
+  padding: 0 5px;
+  background: #2b1460;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--gold);
+  text-shadow: 0 0 6px rgba(245, 196, 81, 0.6);
+  pointer-events: none;
+}
+
+/* バー内だけ文字を夜空用に反転（フォーム側の .selection-total 等は従来色のまま） */
+.selection-bar .selection-empty {
+  color: #cfc2ee;
+}
+
+.selection-bar .selection-seats {
+  color: #f2ecff;
+}
+
+.selection-bar .selection-total {
+  color: var(--gold);
+}
+
+.selection-bar .selection-type-note {
+  color: #c9bce9;
+}
+
+.selection-bar .selection-warn {
+  color: #ffa98a;
+}
+
+.selection-bar .error-text {
+  color: #ff9d9d;
 }
 
 .fit-hint {
@@ -746,6 +1019,18 @@ button.seat-available:hover {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* 未選択の案内に三日月のマーク（バー＝夜空背景でのみ使われる） */
+.selection-empty::before {
+  content: '☾ ';
+  color: var(--gold);
+}
+
+/* 空状態の案内（三日月マーク・紙の上では濃い金） */
+.empty-note::before {
+  content: '☾ ';
+  color: #cf9a1e;
 }
 
 .selection-seats {
@@ -804,16 +1089,122 @@ button.seat-available:hover {
   text-align: center;
 }
 
+.done-card {
+  position: relative;
+}
+
 .done-badge {
   display: inline-block;
   margin: 0 0 10px;
   padding: 7px 18px;
   border-radius: 999px;
-  background: linear-gradient(160deg, #5b4b9e, var(--pink));
+  background: linear-gradient(160deg, #3a1c92, var(--pink) 60%, #c92a7e);
+  border: 1.5px solid rgba(245, 196, 81, 0.5);
   color: #fff;
   font-weight: 800;
   font-size: 14px;
-  box-shadow: 0 3px 10px rgba(91, 75, 158, 0.4);
+  box-shadow: 0 3px 10px rgba(94, 52, 178, 0.4);
+}
+
+.done-badge::before {
+  content: '✦ ';
+  color: #ffe9a8;
+}
+
+.done-badge::after {
+  content: ' ✦';
+  color: #ffe9a8;
+}
+
+/* 完了画面の星のバースト（CSSのみ・1回だけ・控えめ） */
+.done-sparkles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.done-sparkles .ds {
+  position: absolute;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 0 0 8px rgba(245, 196, 81, 0.7);
+  opacity: 0;
+  animation: done-burst 1.9s ease-out 0.25s both;
+}
+
+.done-sparkles .ds.violet {
+  color: var(--pink-soft);
+  text-shadow: 0 0 8px rgba(166, 120, 224, 0.7);
+}
+
+.done-sparkles .ds-1 {
+  left: 16%;
+  top: 5%;
+  font-size: 15px;
+}
+.done-sparkles .ds-2 {
+  left: 30%;
+  top: 1.5%;
+  font-size: 10px;
+  animation-delay: 0.4s;
+}
+.done-sparkles .ds-3 {
+  right: 26%;
+  top: 3%;
+  font-size: 13px;
+  animation-delay: 0.55s;
+}
+.done-sparkles .ds-4 {
+  right: 13%;
+  top: 9%;
+  font-size: 16px;
+  animation-delay: 0.35s;
+}
+.done-sparkles .ds-5 {
+  left: 44%;
+  top: 8%;
+  font-size: 10px;
+  animation-delay: 0.7s;
+}
+.done-sparkles .ds-6 {
+  right: 42%;
+  top: 1%;
+  font-size: 11px;
+  animation-delay: 0.85s;
+}
+.done-sparkles .ds-7 {
+  left: 7%;
+  top: 13%;
+  font-size: 11px;
+  animation-delay: 0.95s;
+}
+.done-sparkles .ds-8 {
+  right: 6%;
+  top: 15%;
+  font-size: 10px;
+  animation-delay: 1.05s;
+}
+
+@keyframes done-burst {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.4) rotate(0deg);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px) scale(1.25) rotate(35deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .done-sparkles {
+    display: none;
+  }
 }
 
 .done-lead {
@@ -834,6 +1225,7 @@ button.seat-available:hover {
 }
 
 .notice-box {
+  position: relative;
   background: #fff6da;
   border: 1.5px dashed #e5c15c;
   border-radius: 16px;
@@ -842,6 +1234,18 @@ button.seat-available:hover {
   text-align: left;
   line-height: 1.7;
   font-size: 14px;
+}
+
+/* 案内ボックスの隅の小さな星 */
+.notice-box::before {
+  content: '✦';
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 12px;
+  line-height: 1;
+  color: #cf9a1e;
+  pointer-events: none;
 }
 
 .notice-box p {
@@ -873,7 +1277,7 @@ button.seat-available:hover {
 }
 
 .staff-tab {
-  border: 1.5px solid #d5c9ef;
+  border: 1.5px solid #dac9f3;
   background: #fff;
   color: var(--muted);
   padding: 9px 16px;
@@ -883,10 +1287,10 @@ button.seat-available:hover {
 }
 
 .staff-tab.active {
-  background: var(--pink);
+  background: linear-gradient(135deg, var(--pink), #c92a7e);
   border-color: var(--pink);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(124, 92, 191, 0.35);
+  box-shadow: 0 2px 8px rgba(138, 75, 206, 0.35);
 }
 
 .reservation-list {
@@ -964,7 +1368,7 @@ button.seat-available:hover {
 }
 
 .toggle-btn.on {
-  background: var(--pink);
+  background: linear-gradient(135deg, var(--pink), #c92a7e);
   border-color: var(--pink);
   color: #fff;
 }
@@ -1051,9 +1455,9 @@ button.seat-available:hover {
 }
 
 .seg-btn.active {
-  background: var(--pink);
+  background: linear-gradient(135deg, var(--pink), #c92a7e);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(124, 92, 191, 0.35);
+  box-shadow: 0 2px 6px rgba(138, 75, 206, 0.35);
 }
 
 .detail-seat-line {
@@ -1102,7 +1506,7 @@ button.seat-available:hover {
   flex: 1 1 auto;
   min-width: 0;
   padding: 11px 12px;
-  border: 1.5px solid #d5c9ef;
+  border: 1.5px solid #dac9f3;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1119,7 +1523,7 @@ button.seat-available:hover {
 .type-editor-price input {
   width: 96px;
   padding: 11px 10px;
-  border: 1.5px solid #d5c9ef;
+  border: 1.5px solid #dac9f3;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1130,7 +1534,7 @@ button.seat-available:hover {
 .type-editor-price input:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(154, 127, 212, 0.3);
+  box-shadow: 0 0 0 3px rgba(166, 120, 224, 0.3);
 }
 
 .yen-unit {
@@ -1148,7 +1552,7 @@ button.seat-available:hover {
 
 .summary-item {
   background: var(--lavender-pale);
-  border: 1.5px solid #ddd2f2;
+  border: 1.5px solid var(--line);
   border-radius: 16px;
   padding: 12px;
   display: flex;
@@ -1177,11 +1581,13 @@ button.seat-available:hover {
   flex: none;
 }
 
-/* おすすめ席: 空席のときだけ柔らかい金色ティント */
+/* おすすめ席: 空席のときだけ柔らかい金色ティント＋金のグロー */
 .seat-available.seat-recommended {
   background: #fdf3d0;
-  border-color: #dfae3e;
-  box-shadow: 0 1px 4px rgba(223, 174, 62, 0.45);
+  border-color: #e0aa28;
+  box-shadow:
+    0 1px 4px rgba(224, 170, 40, 0.5),
+    0 0 7px rgba(245, 196, 81, 0.45);
 }
 
 .seat-star-rec {
@@ -1192,7 +1598,7 @@ button.seat-available:hover {
 
 .legend-swatch.seat-recommended-swatch {
   background: #fdf3d0;
-  border: 1.5px solid #dfae3e;
+  border: 1.5px solid #e0aa28;
 }
 
 .low-seats-badge {
@@ -1307,7 +1713,7 @@ button.seat-available:hover {
 
 /* スタッフ: QRで受付 */
 .qr-reception {
-  border: 2px dashed #b7a6e0;
+  border: 2px dashed #a678e0;
   border-radius: 16px;
   padding: 12px;
   margin-bottom: 14px;
@@ -1442,9 +1848,16 @@ button.seat-available:hover {
 .today-card {
   text-align: center;
   color: #fff;
-  background: linear-gradient(160deg, #241a4d, #4a3a8c 70%, #5b4b9e);
-  border: 2px solid var(--gold);
-  box-shadow: 0 6px 20px rgba(36, 26, 77, 0.4);
+  /* 星屑ドット入りの深藍グラデーション＋金→マゼンタ→紫のグラデーション縁取り */
+  background:
+    radial-gradient(1.6px 1.6px at 10% 30%, rgba(255, 255, 255, 0.9) 50%, transparent 52%) padding-box,
+    radial-gradient(1.2px 1.2px at 88% 22%, rgba(255, 233, 168, 0.95) 50%, transparent 52%) padding-box,
+    radial-gradient(1.3px 1.3px at 72% 80%, rgba(255, 255, 255, 0.7) 50%, transparent 52%) padding-box,
+    radial-gradient(1px 1px at 26% 84%, rgba(230, 204, 255, 0.9) 50%, transparent 52%) padding-box,
+    linear-gradient(160deg, #170b3d, #402a86 70%, #5b2ea6) padding-box,
+    linear-gradient(120deg, var(--gold), #c92a7e 55%, var(--pink)) border-box;
+  border: 2px solid transparent;
+  box-shadow: 0 6px 20px rgba(23, 11, 61, 0.45);
   padding: 10px 14px 12px;
 }
 
@@ -1574,12 +1987,16 @@ button.seat-available:hover {
   font-size: 13px;
   font-weight: 800;
   color: #fff;
-  background: #b3541e;
+  /* 再接続中：深い藍のグラス＋紫の縁 */
+  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(56, 25, 124, 0.97));
+  border-bottom: 2px solid rgba(166, 120, 224, 0.8);
   box-shadow: 0 2px 8px rgba(10, 6, 32, 0.3);
 }
 
 .sync-banner.sync-offline {
-  background: #a02c1a;
+  /* 切断時：藍寄りの深紅グラス＋赤の縁（警告の意味は保つ） */
+  background: linear-gradient(165deg, rgba(74, 10, 34, 0.97), rgba(120, 24, 44, 0.97));
+  border-bottom: 2px solid rgba(255, 120, 130, 0.8);
 }
 
 /* ローカルモードの保存警告（R4-2） */
@@ -1638,11 +2055,15 @@ button.seat-available:hover {
 }
 
 .toast-error {
-  background: #a02c1a;
+  /* 深紅のグラス＋ピンクの縁 */
+  background: linear-gradient(165deg, rgba(84, 12, 36, 0.97), rgba(128, 26, 48, 0.97));
+  border: 1.5px solid rgba(255, 130, 150, 0.55);
 }
 
 .toast-info {
-  background: var(--burgundy);
+  /* 深い藍のグラス＋金の縁 */
+  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(56, 25, 124, 0.97));
+  border: 1.5px solid rgba(245, 196, 81, 0.55);
 }
 
 .toast-message {
