@@ -172,7 +172,7 @@ function TodayCard({ perf }: { perf: Performance }) {
         data-today-scroll
         onClick={scrollToSeats}
       >
-        座席を選ぶ ↓
+        席の候補を見る ↓
       </button>
     </section>
   )
@@ -396,7 +396,7 @@ function Shell() {
       </main>
       <footer className="site-footer">
         <p>
-          指定席予約 ― 座席表から席を選んで予約し、当日は受付で現金でお支払いいただきます。
+          指定席予約 ― 人数を選ぶと見やすい席を自動でご用意します。当日は受付で現金でお支払いいただきます。
         </p>
         <p className="muted small">
           {mode === 'cloud'

@@ -2265,3 +2265,209 @@ button.seat-available:hover {
 .self-cancel-area .error-text {
   margin-top: 10px;
 }
+
+/* ===== おまかせ予約（候補提示） ===== */
+.omakase-lead {
+  margin: 2px 0 12px;
+}
+.omakase-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.party-row,
+.floor-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.party-label {
+  font-weight: 700;
+  color: var(--burgundy);
+}
+.party-stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stepper-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--paper);
+  color: var(--burgundy);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: var(--shadow-pink);
+}
+.stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+.party-size {
+  min-width: 52px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+.floor-pref {
+  flex: 1;
+  justify-content: flex-end;
+}
+.omakase-remaining {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.remaining-sep {
+  color: var(--line);
+}
+.omakase-results {
+  margin-top: 16px;
+}
+.omakase-soldout {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--pink-pale);
+  color: var(--burgundy);
+  font-weight: 700;
+}
+.seat-taken-notice {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(245, 196, 81, 0.28), rgba(138, 75, 206, 0.16));
+  border: 1.5px solid var(--gold);
+  color: var(--burgundy);
+  font-weight: 700;
+}
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.candidate-card {
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fffdf8, #f7f0fe);
+  box-shadow: var(--shadow-pink);
+}
+.candidate-label {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--burgundy);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.candidate-split-badge,
+.candidate-restricted-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #4a3200;
+}
+.candidate-restricted-badge {
+  background: #f6d9de;
+  color: #8c2438;
+}
+.candidate-reason {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.candidate-seats {
+  margin: 0 0 10px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+.candidate-card .btn {
+  margin-top: 10px;
+  min-height: 44px;
+}
+.candidate-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+}
+.candidate-nav .btn {
+  min-height: 44px;
+}
+.omakase-note {
+  margin-top: 14px;
+}
+.chosen-seats {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--lavender-pale);
+  color: var(--burgundy);
+  font-weight: 700;
+}
+
+/* ===== 候補カードのミニ座席表（読み取り専用・模式図） ===== */
+.mini-map {
+  background: linear-gradient(180deg, #241557, #170b3d);
+  border-radius: 12px;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mini-stage {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  color: var(--gold);
+  border: 1px solid rgba(245, 196, 81, 0.55);
+  border-radius: 6px;
+  padding: 2px 0 2px 0.4em;
+  margin-bottom: 4px;
+}
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mini-row-label {
+  width: 14px;
+  flex: none;
+  font-size: 8px;
+  color: rgba(232, 222, 252, 0.75);
+  text-align: right;
+}
+.mini-block {
+  display: flex;
+  gap: 2px;
+  flex-basis: 0;
+  min-width: 0;
+}
+.mini-seat {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 7px;
+  border-radius: 2px;
+  background: rgba(232, 222, 252, 0.4);
+}
+.mini-seat.is-taken {
+  background: rgba(232, 222, 252, 0.13);
+}
+.mini-seat.is-highlight {
+  background: linear-gradient(135deg, var(--gold), #ffb347);
+  box-shadow: 0 0 0 1.5px rgba(245, 196, 81, 0.9), 0 0 6px rgba(245, 196, 81, 0.8);
+  height: 9px;
+}

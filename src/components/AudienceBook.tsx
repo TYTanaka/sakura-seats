@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ALL_SEATS, seatById, type Floor, type SeatDef } from '../data/seats'
+import { ALL_SEATS, seatById } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
   availableCountByFloor,
@@ -14,6 +14,11 @@ import {
   type Performance,
   type Reservation,
 } from '../lib/logic'
+import {
+  buildCandidateSets,
+  type FloorPreference,
+  type OmakaseCandidate,
+} from '../lib/omakase'
 import { useStore } from '../lib/store'
 import { useNow } from '../lib/useNow'
 import { addLastReservation } from '../lib/lastReservation'
@@ -25,20 +30,16 @@ import {
 } from '../lib/share'
 import flyerUrl from '../assets/flyer.webp'
 import flyerJpgUrl from '../assets/flyer.jpg'
-import SeatMap, {
-  SeatLegend,
-  ZoomControls,
-  type SeatVisualState,
-  type SeatZoom,
-} from './SeatMap'
+import MiniMap from './MiniMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import ReservationQr from './ReservationQr'
 
-type Step = 'seats' | 'form' | 'confirm' | 'done'
+type Step = 'omakase' | 'form' | 'confirm' | 'done'
 
 /**
  * 申込フォームの下書き（R3-8）: 入力途中でリロードしても消えないよう
  * 端末内に保持する。予約が完了したら破棄する。
+ * おまかせ化に伴い、人数と階の希望も一緒に保持する。
  */
 const DRAFT_KEY = 'sakura-seats-booking-draft-v1'
 
@@ -49,27 +50,40 @@ interface BookingDraft {
   selected: string[]
   typeBySeat: Record<string, string>
   /** 申込フロー上のステップも一緒に保持する（R4-8: リロードでステップだけ戻らないように） */
-  step: 'seats' | 'form' | 'confirm'
+  step: 'omakase' | 'form' | 'confirm'
+  /** おまかせの人数 */
+  partySize: number
+  /** おまかせの階の希望 */
+  floorPref: FloorPreference
+}
+
+function clampPartySize(n: unknown, fallback: number): number {
+  return typeof n === 'number' && Number.isFinite(n)
+    ? Math.min(MAX_ONLINE_SEATS, Math.max(1, Math.floor(n)))
+    : fallback
 }
 
 function loadDraft(): BookingDraft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<BookingDraft>
+    const parsed = JSON.parse(raw) as Partial<BookingDraft> & { step?: string }
+    const selected = Array.isArray(parsed.selected)
+      ? parsed.selected.filter((s): s is string => typeof s === 'string')
+      : []
     return {
       name: typeof parsed.name === 'string' ? parsed.name : '',
       phone: typeof parsed.phone === 'string' ? parsed.phone : '',
       note: typeof parsed.note === 'string' ? parsed.note : '',
-      selected: Array.isArray(parsed.selected)
-        ? parsed.selected.filter((s): s is string => typeof s === 'string')
-        : [],
+      selected,
       typeBySeat:
         parsed.typeBySeat && typeof parsed.typeBySeat === 'object' ? parsed.typeBySeat : {},
+      // 旧バージョンの 'seats'（座席表で選ぶステップ）は 'omakase' として読み替える
       step:
-        parsed.step === 'form' || parsed.step === 'confirm' || parsed.step === 'seats'
-          ? parsed.step
-          : 'seats',
+        parsed.step === 'form' || parsed.step === 'confirm' ? parsed.step : 'omakase',
+      partySize: clampPartySize(parsed.partySize, selected.length > 0 ? selected.length : 2),
+      floorPref:
+        parsed.floorPref === 1 || parsed.floorPref === 2 ? parsed.floorPref : 'any',
     }
   } catch {
     return null
@@ -87,19 +101,24 @@ function clearDraft() {
 export default function AudienceBook({ perf }: { perf: Performance }) {
   const { data, reserve } = useStore()
   const [initialDraft] = useState<BookingDraft | null>(loadDraft)
-  // 下書きがあれば、入力途中のステップから再開する（席が無ければ座席選択から）
+  // 下書きがあれば、入力途中のステップから再開する（席が無ければ候補えらびから）
   const [step, setStep] = useState<Step>(() => {
     const s = initialDraft?.step
     return (s === 'form' || s === 'confirm') && (initialDraft?.selected.length ?? 0) > 0
       ? s
-      : 'seats'
+      : 'omakase'
   })
-  const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState<SeatZoom>('fit')
-  /** 全体表示の実測倍率（SeatMap が通知）。倍率表示（約○○%）に使う */
-  const [fitScale, setFitScale] = useState<number | null>(null)
-  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
-  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
+  /** おまかせの人数（1〜8名） */
+  const [partySize, setPartySize] = useState<number>(() => initialDraft?.partySize ?? 2)
+  /** おまかせの階の希望 */
+  const [floorPref, setFloorPref] = useState<FloorPreference>(
+    () => initialDraft?.floorPref ?? 'any',
+  )
+  /** 「席の候補を見る」を押して候補を表示中か */
+  const [searched, setSearched] = useState(false)
+  /** 表示中の候補セット番号 */
+  const [setIndex, setSetIndex] = useState(0)
+  /** 選んだ候補の席（=申込対象の席） */
   const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>(
@@ -111,18 +130,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  /** 画面下部固定の選択バーの高さ（本文側に同じ高さの余白を確保して隠れを防ぐ） */
-  const barRef = useRef<HTMLDivElement | null>(null)
-  const [barHeight, setBarHeight] = useState(0)
-  useEffect(() => {
-    const el = barRef.current
-    if (!el) return
-    const update = () => setBarHeight(el.offsetHeight)
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [step])
+  /** 送信直前に席が取られてしまった場合の案内（新しい候補を出し直す） */
+  const [seatTakenNotice, setSeatTakenNotice] = useState(false)
 
   // 締切は「今」を定期的に再評価して判定する（開いたまま締切を跨いでも追随する・R4-1）
   const nowMs = useNow(10000)
@@ -135,40 +144,41 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     const was = wasClosedRef.current
     wasClosedRef.current = closed
     if (!closed || was) return
-    // 締切を跨いだ瞬間: 選択を解除し、フォーム途中なら座席選択へ戻して詰み状態を防ぐ
+    // 締切を跨いだ瞬間: 選択を解除し、フォーム途中なら候補えらびへ戻して詰み状態を防ぐ
     if (selected.length > 0) {
       setSelected([])
       setDeadlinePassed(true)
     }
-    if (step === 'form' || step === 'confirm') setStep('seats')
+    if (step === 'form' || step === 'confirm') setStep('omakase')
   }, [closed, selected.length, step])
 
-  // 下書きから復元した選択席のうち、すでに埋まっている席は一度だけ取り除く。
-  // 外れたことが分かるよう一言表示する（R4-6）
+  // 下書きから復元した候補の席のうち、1席でも埋まっていたら候補ごと選び直しにする。
+  // 外れたことが分かるよう一言表示する（R4-6 のおまかせ版）
   const [draftPruned, setDraftPruned] = useState(false)
   const prunedDraftRef = useRef(false)
   useEffect(() => {
     if (prunedDraftRef.current) return
     prunedDraftRef.current = true
     const initialSelected = initialDraft?.selected ?? []
-    const kept = initialSelected.filter((id) => seatStatus(data, id) === 'available')
-    if (kept.length !== initialSelected.length) setDraftPruned(true)
+    if (initialSelected.length === 0) return
+    const allAvailable = initialSelected.every(
+      (id) => seatStatus(data, id) === 'available',
+    )
     if (isBookingClosed(data)) {
       // 戻ってきた時点で既に締切を過ぎていたら、選択は持たずに受付終了として出す
-      if (initialSelected.length > 0) {
-        setSelected([])
-        setDeadlinePassed(true)
-      }
-      setStep('seats')
-    } else {
-      if (kept.length !== initialSelected.length) setSelected(kept)
-      if (kept.length === 0 && initialSelected.length > 0) setStep('seats')
+      setSelected([])
+      setDeadlinePassed(true)
+      setStep('omakase')
+    } else if (!allAvailable) {
+      setSelected([])
+      setDraftPruned(true)
+      setStep('omakase')
     }
     // 初回マウント時のデータでのみ判定する
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 入力内容を下書きとして保持する（ステップも含める。全て空なら破棄）
+  // 入力内容を下書きとして保持する（ステップ・人数・階の希望も含める。全て空なら破棄）
   useEffect(() => {
     if (step === 'done') return
     try {
@@ -181,14 +191,25 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           note,
           selected,
           typeBySeat,
-          step: step === 'form' || step === 'confirm' ? step : 'seats',
+          step: step === 'form' || step === 'confirm' ? step : 'omakase',
+          partySize,
+          floorPref,
         }
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
       }
     } catch {
       // 保存できなくても画面操作は継続する
     }
-  }, [name, phone, note, selected, typeBySeat, step])
+  }, [name, phone, note, selected, typeBySeat, step, partySize, floorPref])
+
+  // 候補セットは現在の占有状態から都度計算する（誰かが予約すれば即座に反映される）
+  const candidateSets = useMemo(
+    () => (closed ? [] : buildCandidateSets(data, partySize, floorPref)),
+    [data, partySize, floorPref, closed],
+  )
+  const safeSetIndex =
+    candidateSets.length === 0 ? 0 : Math.min(setIndex, candidateSets.length - 1)
+  const currentSet = candidateSets[safeSetIndex] ?? []
 
   const selectedSeats = useMemo(() => selected.map(seatById), [selected])
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
@@ -196,28 +217,27 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const typeNameOf = (seatId: string) =>
     findTicketType(perf, typeBySeat[seatId] ?? defaultTicketType(perf).id)?.name ?? ''
 
-  const stateOf = (seat: SeatDef): SeatVisualState => {
-    if (selected.includes(seat.id)) return 'selected'
-    const status = seatStatus(data, seat.id)
-    // お客様マップでは支払済席も予約済席と同じ見た目にする（どちらも「選べない席」。
-    // 凡例の1スウォッチとも一致させる。スタッフ画面では従来どおり区別する）
-    return status === 'paid' ? 'reserved' : status
+  const changePartySize = (next: number) => {
+    setPartySize(Math.min(MAX_ONLINE_SEATS, Math.max(1, next)))
+    setSetIndex(0)
+    setSeatTakenNotice(false)
+  }
+  const changeFloorPref = (next: FloorPreference) => {
+    setFloorPref(next)
+    setSetIndex(0)
+    setSeatTakenNotice(false)
   }
 
-  const handleSeatTap = (seat: SeatDef) => {
-    // 予約締切後は席タップも無効（選べるのに進めない状態にしない）
-    if (closed) return
+  const pickCandidate = (cand: OmakaseCandidate) => {
     setError('')
-    if (selected.includes(seat.id)) {
-      setSelected(selected.filter((id) => id !== seat.id))
-      return
-    }
-    if (seatStatus(data, seat.id) !== 'available') return
-    if (selected.length >= MAX_ONLINE_SEATS) {
-      setError(`一度に申し込めるのは${MAX_ONLINE_SEATS}席までです`)
-      return
-    }
-    setSelected([...selected, seat.id])
+    setSeatTakenNotice(false)
+    setSelected(cand.seatIds)
+    // 券種の指定は、選んだ候補の席分だけを引き継ぐ
+    setTypeBySeat((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([id]) => cand.seatIds.includes(id))),
+    )
+    setStep('form')
+    window.scrollTo({ top: 0 })
   }
 
   const handleSubmit = async () => {
@@ -249,10 +269,22 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       setCompleted(reservation)
       setStep('done')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '予約に失敗しました')
-      // 取れなかった席を選択から外して座席選択に戻す
-      setSelected((prev) => prev.filter((id) => seatStatus(data, id) === 'available'))
-      setStep('seats')
+      const message = e instanceof Error ? e.message : '予約に失敗しました'
+      // 席が他の人に取られた場合は、古い候補を持たず新しい候補を出し直す
+      const seatGone =
+        message.includes('予約されてしまいました') ||
+        message.includes('すでに予約・販売済み') ||
+        message.includes('販売していない席')
+      if (seatGone) {
+        setSelected([])
+        setSetIndex(0)
+        setSearched(true)
+        setSeatTakenNotice(true)
+        setStep('omakase')
+        window.scrollTo({ top: 0 })
+      } else {
+        setError(message)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -267,7 +299,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
     setNote('')
     setError('')
     setCompleted(null)
-    setStep('seats')
+    setSearched(false)
+    setSetIndex(0)
+    setSeatTakenNotice(false)
+    setStep('omakase')
     window.scrollTo({ top: 0 })
   }
 
@@ -354,7 +389,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           予約の確認はトップページの「予約確認」からもできます。
         </p>
         <button type="button" className="btn btn-primary btn-block" onClick={resetFlow}>
-          座席の選択に戻る
+          席の候補に戻る
         </button>
       </section>
     )
@@ -362,7 +397,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
 
   return (
     <div className="book-flow">
-      {step === 'seats' && (
+      {step === 'omakase' && (
         <>
           {deadlinePassed && (
             <p className="closed-notice deadline-passed-notice" data-deadline-passed role="status">
@@ -371,7 +406,12 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
           )}
           {draftPruned && (
             <p className="draft-pruned-notice" data-draft-pruned role="status">
-              一部の座席は予約済みになったため、選択から外れました
+              選んでいた座席は予約済みになったため、選択を解除しました。新しい候補からお選びください
+            </p>
+          )}
+          {seatTakenNotice && (
+            <p className="seat-taken-notice" data-seat-taken role="status">
+              先ほどの席は他の方に予約されました。新しい候補です
             </p>
           )}
           <div className="page-share">
@@ -386,46 +426,198 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </a>
             <span className="muted small">家族や友だちに、この予約ページをLINEで共有できます</span>
           </div>
-          <section id="seat-picker" className={`card seat-picker${closed ? ' is-closed' : ''}`}>
-            <div className="seat-controls">
-              <div className="floor-tabs" role="tablist" aria-label="階の切り替え">
-                {([1, 2] as Floor[]).map((f) => (
+          <section id="seat-picker" className={`card omakase-card${closed ? ' is-closed' : ''}`}>
+            <h3>おまかせ予約</h3>
+            <p className="muted small omakase-lead">
+              人数とご希望を選ぶと、見やすい席を自動でご用意します。席は候補の中からお選びいただけます。
+            </p>
+            <div className="omakase-controls">
+              <div className="party-row">
+                <span className="party-label" id="party-label">
+                  人数
+                </span>
+                <div className="party-stepper" role="group" aria-labelledby="party-label">
                   <button
-                    key={f}
                     type="button"
-                    role="tab"
-                    aria-selected={floor === f}
-                    data-floor-tab={f}
-                    className={`floor-tab${floor === f ? ' active' : ''}`}
-                    onClick={() => setFloor(f)}
+                    className="stepper-btn"
+                    data-party-dec
+                    aria-label="人数を減らす"
+                    disabled={closed || partySize <= 1}
+                    onClick={() => changePartySize(partySize - 1)}
                   >
-                    {f}階席（残り{remainingByFloor[f]}席）
-                    {remainingByFloor[f] < 20 && (
-                      <span className="low-seats-badge" data-low-seats={f}>
-                        残りわずか
-                      </span>
-                    )}
+                    −
                   </button>
-                ))}
+                  <span className="party-size" data-party-size>
+                    {partySize}名
+                  </span>
+                  <button
+                    type="button"
+                    className="stepper-btn"
+                    data-party-inc
+                    aria-label="人数を増やす"
+                    disabled={closed || partySize >= MAX_ONLINE_SEATS}
+                    onClick={() => changePartySize(partySize + 1)}
+                  >
+                    ＋
+                  </button>
+                </div>
               </div>
-              <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
-            </div>
-            {zoom === 'fit' && (
-              <p className="fit-hint">
-                全体表示は俯瞰用です。座席表をピンチ（2本指で広げる・つまむ）するか、100%表示にすると拡大して選べます
+              <div className="floor-pref-row">
+                <span className="party-label">階の希望</span>
+                <div className="seg-group floor-pref" role="group" aria-label="階の希望">
+                  {(
+                    [
+                      { value: 'any', label: 'おまかせ' },
+                      { value: 1, label: '1階席' },
+                      { value: 2, label: '2階席' },
+                    ] as { value: FloorPreference; label: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      className={`seg-btn${floorPref === opt.value ? ' active' : ''}`}
+                      data-floor-pref={String(opt.value)}
+                      aria-pressed={floorPref === opt.value}
+                      disabled={closed}
+                      onClick={() => changeFloorPref(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="omakase-remaining muted small">
+                <span className="remaining-floor">
+                  1階席 残り{remainingByFloor[1]}席
+                  {remainingByFloor[1] < 20 && (
+                    <span className="low-seats-badge" data-low-seats={1}>
+                      残りわずか
+                    </span>
+                  )}
+                </span>
+                <span className="remaining-sep" aria-hidden="true">
+                  ／
+                </span>
+                <span className="remaining-floor">
+                  2階席 残り{remainingByFloor[2]}席
+                  {remainingByFloor[2] < 20 && (
+                    <span className="low-seats-badge" data-low-seats={2}>
+                      残りわずか
+                    </span>
+                  )}
+                </span>
               </p>
+              {closed ? (
+                <p className="closed-notice" data-booking-closed>
+                  予約受付は終了しました。当日券は会場受付でお求めください。
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-block"
+                  data-omakase-search
+                  onClick={() => {
+                    setSearched(true)
+                    setSetIndex(0)
+                    setSeatTakenNotice(false)
+                    setError('')
+                  }}
+                >
+                  席の候補を見る
+                </button>
+              )}
+              {error && <p className="error-text">{error}</p>}
+            </div>
+
+            {searched && !closed && (
+              <div className="omakase-results">
+                {candidateSets.length === 0 ? (
+                  <p className="omakase-soldout" data-omakase-soldout role="status">
+                    申し訳ありません。{partySize}名分の席がご用意できませんでした。
+                    人数を変えてお試しいただくか、当日券を会場受付でお求めください。
+                  </p>
+                ) : (
+                  <>
+                    <div className="candidate-list" data-candidate-list>
+                      {currentSet.map((cand) => (
+                        <article
+                          className="candidate-card"
+                          key={cand.seatIds.join(',')}
+                          data-candidate
+                          data-candidate-seats={cand.seatIds.join(',')}
+                          data-candidate-class={cand.areaClass}
+                        >
+                          <h4 className="candidate-label">
+                            {cand.label}
+                            {cand.split && (
+                              <span className="candidate-split-badge">2か所に分かれます</span>
+                            )}
+                            {cand.restricted && (
+                              <span className="candidate-restricted-badge">見切れ席あり</span>
+                            )}
+                          </h4>
+                          <p className="candidate-reason">{cand.reason}</p>
+                          <p className="candidate-seats" data-candidate-summary>
+                            {cand.summary}
+                          </p>
+                          {([...new Set(cand.seatIds.map((id) => seatById(id).floor))] as (
+                            | 1
+                            | 2
+                          )[]).map((f) => (
+                            <MiniMap
+                              key={f}
+                              floor={f}
+                              highlight={cand.seatIds.filter(
+                                (id) => seatById(id).floor === f,
+                              )}
+                              data={data}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-block"
+                            data-candidate-pick
+                            onClick={() => pickCandidate(cand)}
+                          >
+                            この席にする
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                    {candidateSets.length > 1 && (
+                      <div className="candidate-nav">
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          data-candidates-prev
+                          disabled={safeSetIndex === 0}
+                          onClick={() => setSetIndex(Math.max(0, safeSetIndex - 1))}
+                        >
+                          ← 前の候補に戻る
+                        </button>
+                        <span className="muted small" data-candidate-page>
+                          {safeSetIndex + 1} / {candidateSets.length} 組目
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          data-candidates-next
+                          disabled={safeSetIndex >= candidateSets.length - 1}
+                          onClick={() =>
+                            setSetIndex(Math.min(candidateSets.length - 1, safeSetIndex + 1))
+                          }
+                        >
+                          他の候補を見る
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             )}
-            <SeatLegend />
-            <SeatMap
-              floor={floor}
-              zoom={zoom}
-              stateOf={stateOf}
-              onSeatTap={handleSeatTap}
-              showRecommended
-              onFitScale={setFitScale}
-              onZoomChange={setZoom}
-              previewReadoutRef={zoomReadoutRef}
-            />
+            <p className="muted small omakase-note">
+              車椅子席・親子室をご希望の方は、申込フォームの備考欄にご記入ください
+            </p>
             <p className="muted small">
               全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
@@ -450,49 +642,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
             </a>
             <p className="poster-caption">劇団ツインリーブス 2027年5月公演</p>
           </section>
-          <div className="selection-bar" ref={barRef}>
-            {selected.length === 0 ? (
-              <p className="selection-empty">座席表から席を選んでください（最大{MAX_ONLINE_SEATS}席）</p>
-            ) : (
-              <>
-                <p className="selection-seats">
-                  {selectedSeats.map((s) => s.label).join('、')}
-                </p>
-                <p className="selection-total">
-                  {selected.length}席 ／ 合計 {formatYen(total)}
-                </p>
-                <p className="muted small selection-type-note">
-                  券種（{perf.ticketTypes.map((t) => t.name).join('・')}）は次の画面で席ごとに選べます
-                </p>
-                {includesRestricted && (
-                  <p className="selection-warn">
-                    ※見切れ席（舞台の一部が見えにくい席）が含まれています
-                  </p>
-                )}
-              </>
-            )}
-            {error && <p className="error-text">{error}</p>}
-            {closed && (
-              <p className="closed-notice" data-booking-closed>
-                予約受付は終了しました。当日券は会場受付でお求めください。
-              </p>
-            )}
-            <button
-              type="button"
-              className="btn btn-primary btn-block"
-              disabled={selected.length === 0 || closed}
-              onClick={() => setStep('form')}
-            >
-              申込手続きへ進む
-            </button>
-          </div>
-          <div aria-hidden="true" style={{ height: barHeight + 12 }} />
         </>
       )}
 
       {step === 'form' && (
         <section className="card">
           <h3>お申し込み情報</h3>
+          <p className="chosen-seats" data-chosen-seats>
+            座席：{selectedSeats.map((s) => s.label).join('、')}
+          </p>
           <h4 className="form-subhead">座席と券種</h4>
           <TicketTypePicker
             perf={perf}
@@ -569,10 +727,10 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 className="btn btn-ghost"
                 onClick={() => {
                   setError('')
-                  setStep('seats')
+                  setStep('omakase')
                 }}
               >
-                席の選択に戻る
+                候補を選び直す
               </button>
               <button type="submit" className="btn btn-primary">
                 確認画面へ
