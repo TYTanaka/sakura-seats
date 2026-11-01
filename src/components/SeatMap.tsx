@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import {
   PARENT_ROOM_SEATS,
   ROW_LAYOUT_1F,
@@ -12,10 +13,13 @@ import {
 
 export type SeatVisualState = 'available' | 'reserved' | 'paid' | 'blocked' | 'selected'
 
+/** 数値は倍率（1 = 100%）。'fit' はホール全体が横幅に収まる全体表示 */
+export type SeatZoom = number | 'fit'
+
 export interface SeatMapProps {
   floor: Floor
-  /** 1 = 100%, 1.25 = 125%, 1.5 = 150% */
-  zoom: number
+  /** 1 = 100%, 1.25 = 125%, 1.5 = 150%, 'fit' = 全体表示 */
+  zoom: SeatZoom
   stateOf: (seat: SeatDef) => SeatVisualState
   onSeatTap: (seat: SeatDef) => void
   /** おすすめ席の金色ティントを表示するか（お客様用マップのみ） */
@@ -93,7 +97,36 @@ export function SeatLegend() {
 }
 
 export default function SeatMap({ floor, zoom, stateOf, onSeatTap, showRecommended }: SeatMapProps) {
-  const size = Math.round(30 * zoom)
+  const isFit = zoom === 'fit'
+  // 全体表示では等倍レイアウトを実測して縮小する（階ごとに自然幅が違うため割合は固定しない）
+  const size = Math.round(30 * (isFit ? 1 : zoom))
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState<{ scale: number; width: number; height: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!isFit) {
+      setFit(null)
+      return
+    }
+    const measure = () => {
+      const scroll = scrollRef.current
+      const map = mapRef.current
+      if (!scroll || !map) return
+      // .seatmap-scroll の左右パディング（2px × 2）を除いた表示可能幅
+      const avail = scroll.clientWidth - 4
+      // offsetWidth/Height は transform の影響を受けないレイアウト上の自然サイズ
+      const naturalWidth = map.offsetWidth
+      const naturalHeight = map.offsetHeight
+      if (avail <= 0 || naturalWidth <= 0 || naturalHeight <= 0) return
+      const scale = Math.min(1, avail / naturalWidth)
+      setFit({ scale, width: avail, height: Math.ceil(naturalHeight * scale) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [isFit, floor])
+
   const renderSeat = (seat: SeatDef) => {
     const state = stateOf(seat)
     return (
@@ -108,66 +141,96 @@ export default function SeatMap({ floor, zoom, stateOf, onSeatTap, showRecommend
     )
   }
 
-  return (
-    <div className="seatmap-scroll">
-      <div className="seatmap" style={{ minWidth: floor === 1 ? 640 : 700 }}>
-        <div className="stage" aria-hidden="true">
-          舞台
-        </div>
-        {floor === 1 ? (
-          <div className="floor-rows">
-            {ROW_LAYOUT_1F.map((rowLayout) => (
-              <div key={rowLayout.row}>
-                <div className="seat-row">
-                  <span className="row-label">{rowLayout.row}列</span>
-                  {rowLayout.blocks.map((blk) => (
-                    <span key={blk.block} className={`seat-block block-${blk.block}`}>
-                      {blk.seats.map(renderSeat)}
-                    </span>
-                  ))}
+  const mapContent = (
+    <div
+      className="seatmap"
+      ref={mapRef}
+      style={{
+        minWidth: floor === 1 ? 640 : 700,
+        ...(isFit
+          ? {
+              margin: 0,
+              transform: fit ? `scale(${fit.scale})` : undefined,
+              transformOrigin: 'top left' as const,
+            }
+          : {}),
+      }}
+    >
+      <div className="stage" aria-hidden="true">
+        舞台
+      </div>
+      {floor === 1 ? (
+        <div className="floor-rows">
+          {ROW_LAYOUT_1F.map((rowLayout) => (
+            <div key={rowLayout.row}>
+              <div className="seat-row">
+                <span className="row-label">{rowLayout.row}列</span>
+                {rowLayout.blocks.map((blk) => (
+                  <span key={blk.block} className={`seat-block block-${blk.block}`}>
+                    {blk.seats.map(renderSeat)}
+                  </span>
+                ))}
+              </div>
+              {rowLayout.row === 11 && (
+                <div className="seat-row special-row">
+                  <span className="row-label">車椅子</span>
+                  <span className="seat-block">{WHEELCHAIR_SEATS.map(renderSeat)}</span>
+                  <span className="special-note">車椅子席（11〜12列の位置）</span>
                 </div>
-                {rowLayout.row === 11 && (
-                  <div className="seat-row special-row">
-                    <span className="row-label">車椅子</span>
-                    <span className="seat-block">{WHEELCHAIR_SEATS.map(renderSeat)}</span>
-                    <span className="special-note">車椅子席（11〜12列の位置）</span>
-                  </div>
-                )}
-                {rowLayout.row === 12 && <div className="aisle-note">― 通路 ―</div>}
+              )}
+              {rowLayout.row === 12 && <div className="aisle-note">― 通路 ―</div>}
+            </div>
+          ))}
+          <div className="seat-row special-row">
+            <span className="row-label">親子室</span>
+            <span className="seat-block">{PARENT_ROOM_SEATS.map(renderSeat)}</span>
+            <span className="special-note">親子室（16列の後方・室内）</span>
+          </div>
+        </div>
+      ) : (
+        <div className="floor2-wrap">
+          <div className="side-column">
+            <span className="side-label">L席</span>
+            {SIDE_L_SEATS.map(renderSeat)}
+          </div>
+          <div className="floor-rows floor2-rows">
+            {ROW_LAYOUT_2F.map((rowLayout) => (
+              <div className="seat-row" key={rowLayout.row}>
+                <span className="row-label">{rowLayout.row}列</span>
+                {rowLayout.blocks.map((blk) => (
+                  <span key={blk.block} className={`seat-block block-${blk.block}`}>
+                    {blk.seats.map(renderSeat)}
+                  </span>
+                ))}
               </div>
             ))}
-            <div className="seat-row special-row">
-              <span className="row-label">親子室</span>
-              <span className="seat-block">{PARENT_ROOM_SEATS.map(renderSeat)}</span>
-              <span className="special-note">親子室（16列の後方・室内）</span>
-            </div>
+            <p className="floor2-note">2階席は後方ほど横に広い扇形です。両端の※印は見切れ席です。</p>
           </div>
-        ) : (
-          <div className="floor2-wrap">
-            <div className="side-column">
-              <span className="side-label">L席</span>
-              {SIDE_L_SEATS.map(renderSeat)}
-            </div>
-            <div className="floor-rows floor2-rows">
-              {ROW_LAYOUT_2F.map((rowLayout) => (
-                <div className="seat-row" key={rowLayout.row}>
-                  <span className="row-label">{rowLayout.row}列</span>
-                  {rowLayout.blocks.map((blk) => (
-                    <span key={blk.block} className={`seat-block block-${blk.block}`}>
-                      {blk.seats.map(renderSeat)}
-                    </span>
-                  ))}
-                </div>
-              ))}
-              <p className="floor2-note">2階席は後方ほど横に広い扇形です。両端の※印は見切れ席です。</p>
-            </div>
-            <div className="side-column">
-              <span className="side-label">R席</span>
-              {SIDE_R_SEATS.map(renderSeat)}
-            </div>
+          <div className="side-column">
+            <span className="side-label">R席</span>
+            {SIDE_R_SEATS.map(renderSeat)}
           </div>
-        )}
+        </div>
+      )}
+    </div>
+  )
+
+  if (isFit) {
+    return (
+      <div className="seatmap-scroll seatmap-scroll-fit" ref={scrollRef}>
+        <div
+          className="seatmap-fit"
+          style={fit ? { width: fit.width, height: fit.height } : undefined}
+        >
+          {mapContent}
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <div className="seatmap-scroll" ref={scrollRef}>
+      {mapContent}
     </div>
   )
 }

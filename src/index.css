@@ -443,6 +443,16 @@ textarea {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 全体表示：縮小後の見かけサイズで箱を確保し、中身は transform で縮小する */
+.seatmap-scroll-fit {
+  overflow-x: hidden;
+}
+
+.seatmap-fit {
+  overflow: hidden;
+  margin: 0 auto;
+}
+
 .seatmap {
   width: max-content;
   margin: 0 auto;

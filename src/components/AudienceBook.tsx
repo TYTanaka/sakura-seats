@@ -15,7 +15,7 @@ import {
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import { buildCalendarUrl, buildMailtoUrl } from '../lib/share'
-import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
+import SeatMap, { SeatLegend, type SeatVisualState, type SeatZoom } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 type Step = 'seats' | 'form' | 'confirm' | 'done'
@@ -25,7 +25,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
   const { data, reserve } = useStore()
   const [step, setStep] = useState<Step>('seats')
   const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -204,6 +204,14 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 ))}
               </div>
               <div className="zoom-controls" aria-label="座席表の拡大縮小">
+                <button
+                  type="button"
+                  data-zoom="fit"
+                  className={`zoom-btn${zoom === 'fit' ? ' active' : ''}`}
+                  onClick={() => setZoom('fit')}
+                >
+                  全体
+                </button>
                 {ZOOMS.map((z) => (
                   <button
                     key={z}
@@ -226,7 +234,8 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
               showRecommended
             />
             <p className="muted small">
-              座席表は左右にスクロールできます。全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
+              「全体」表示でホール全体が見えます。拡大表示（100%〜）では左右にスクロールできます。全
+              {ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
             </p>
           </section>
           <div className="selection-bar">

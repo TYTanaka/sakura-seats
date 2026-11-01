@@ -23,7 +23,7 @@ import {
 } from '../lib/logic'
 import { useStore } from '../lib/store'
 import { downloadReservationsCsv } from '../lib/csv'
-import SeatMap, { SeatLegend, type SeatVisualState } from './SeatMap'
+import SeatMap, { SeatLegend, type SeatVisualState, type SeatZoom } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
@@ -293,8 +293,8 @@ function SeatControls({
 }: {
   floor: Floor
   setFloor: (f: Floor) => void
-  zoom: number
-  setZoom: (z: number) => void
+  zoom: SeatZoom
+  setZoom: (z: SeatZoom) => void
 }) {
   return (
     <div className="seat-controls">
@@ -314,6 +314,14 @@ function SeatControls({
         ))}
       </div>
       <div className="zoom-controls" aria-label="座席表の拡大縮小">
+        <button
+          type="button"
+          data-zoom="fit"
+          className={`zoom-btn${zoom === 'fit' ? ' active' : ''}`}
+          onClick={() => setZoom('fit')}
+        >
+          全体
+        </button>
         {ZOOMS.map((z) => (
           <button
             key={z}
@@ -336,7 +344,7 @@ function DoorSales() {
   const { data, reserve } = useStore()
   const perf = data.performance
   const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState<SeatZoom>('fit')
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -436,7 +444,7 @@ function DoorSales() {
 function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
   const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState<SeatZoom>('fit')
 
   const stateOf = (seat: SeatDef): SeatVisualState => seatStatus(data, seat.id)
 
