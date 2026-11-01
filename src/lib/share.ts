@@ -5,6 +5,7 @@ import {
   type Performance,
   type Reservation,
 } from './logic'
+import type { LastReservationSnapshot } from './lastReservation'
 
 /**
  * 予約完了後の「自分の控え」用リンク生成。
@@ -87,4 +88,67 @@ export function buildLineShareReservationUrl(
     '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
   ].join('\n')
   return `https://line.me/R/msg/text/?${encodeURIComponent(text)}`
+}
+
+/* ================= 控え（端末保存スナップショット）用の共有リンク =================
+ * 完了画面と同じ文面を、端末に残した控えから作り直すための生成関数群。
+ * 控えには席ごとの券種・料金が無いため、座席はラベルの列挙になる。
+ * 日時は整形済みの whenText を使う（Gmail / LINE）。
+ * カレンダーだけは実日付が必要なので、perfDate / perfTime を持たない
+ * 旧い控えでは null を返し、画面側はボタン自体を出さない。
+ */
+
+function snapshotSeatLines(snap: LastReservationSnapshot): string {
+  return snap.seatLabels.join('\n')
+}
+
+export function buildSnapshotGmailUrl(snap: LastReservationSnapshot): string {
+  const subject = `【予約控え】${snap.performanceName} 予約番号 ${snap.code}`
+  const body = [
+    `${snap.performanceName} のご予約控えです。`,
+    '',
+    `公演: ${snap.performanceName}`,
+    `日時: ${snap.whenText}`,
+    `予約番号: ${snap.code}`,
+    '座席:',
+    snapshotSeatLines(snap),
+    `合計: ${formatYen(snap.amount)}（当日現金払い）`,
+    '',
+    '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
+    '変更・キャンセルは主催者までご連絡ください。',
+  ].join('\n')
+  return `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
+export function buildSnapshotLineUrl(snap: LastReservationSnapshot): string {
+  const text = [
+    `【予約控え】${snap.performanceName}`,
+    `日時: ${snap.whenText}`,
+    `予約番号: ${snap.code}`,
+    '座席:',
+    snapshotSeatLines(snap),
+    `合計: ${formatYen(snap.amount)}（当日現金払い）`,
+    '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
+  ].join('\n')
+  return `https://line.me/R/msg/text/?${encodeURIComponent(text)}`
+}
+
+/** 控え用のカレンダー登録URL。公演日・開演時刻が無い控えでは null */
+export function buildSnapshotCalendarUrl(snap: LastReservationSnapshot): string | null {
+  if (!snap.perfDate || !snap.perfTime) return null
+  const details = [
+    `予約番号: ${snap.code}`,
+    '座席:',
+    snapshotSeatLines(snap),
+    `合計: ${formatYen(snap.amount)}（当日現金払い）`,
+    '当日は受付でお名前と予約番号をお伝えください。',
+  ].join('\n')
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: snap.performanceName,
+    dates: `${toCalendarStamp(snap.perfDate, snap.perfTime)}/${toCalendarStamp(snap.perfDate, snap.perfTime, 2)}`,
+    details,
+    location: '戸塚区民文化センター さくらプラザ・ホール',
+  })
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
 }

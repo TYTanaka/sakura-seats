@@ -260,6 +260,9 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         seatLabels: reservation.items.map((item) => seatById(item.seatId).label),
         amount: reservation.amount,
         savedAt: new Date().toISOString(),
+        // 控えからカレンダー登録できるよう、公演日・開演時刻も一緒に残す
+        perfDate: perf.date,
+        perfTime: perf.time,
       })
       setCompleted(reservation)
       setStep('done')

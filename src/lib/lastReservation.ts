@@ -6,6 +6,10 @@
  * （上限を超えたら古いものから静かに落とす）。
  * あくまで控えのコピーであり、最新の状態（支払い・キャンセル等）は
  * 予約確認ページで確認してもらう前提。
+ *
+ * 控えの削除はできない（誤操作防止のため、ユーザー判断で削除UI自体を廃止）。
+ * 長くなった一覧は各カードを「小さくする」で1行に折りたためる。
+ * 折りたたみ状態は予約番号ごとに端末へ保存し、リロード後も保たれる。
  */
 
 export interface LastReservationSnapshot {
@@ -16,6 +20,14 @@ export interface LastReservationSnapshot {
   seatLabels: string[]
   amount: number
   savedAt: string
+  /**
+   * 公演日（YYYY-MM-DD）。控えからカレンダー登録リンクを作るために保存する。
+   * この項目が追加される前に保存された控えには無いため任意項目とし、
+   * 無い場合はカレンダー導線を出さない（Gmail / LINE は whenText で賄える）。
+   */
+  perfDate?: string
+  /** 開演時刻（HH:mm）。perfDate と同じ扱い */
+  perfTime?: string
 }
 
 /**
@@ -27,7 +39,7 @@ const LAST_RESERVATION_KEY = 'sakura-seats-last-reservation-v1'
 /** 控えの保持上限（新しい順にこの件数まで） */
 export const MAX_LAST_RESERVATIONS = 10
 
-/** 保存・削除を画面側へ知らせるためのイベント名 */
+/** 保存・折りたたみ変更を画面側へ知らせるためのイベント名 */
 export const LAST_RESERVATION_EVENT = 'sakura-seats:last-reservation-changed'
 
 function notifyChanged(): void {
@@ -37,6 +49,9 @@ function notifyChanged(): void {
     // 通知できなくても保存自体は済んでいる
   }
 }
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const TIME_RE = /^\d{2}:\d{2}$/
 
 /** 1件分の形チェック。形が崩れていたら null（無言で捨てる） */
 export function parseLastReservationSnapshot(rec: unknown): LastReservationSnapshot | null {
@@ -54,6 +69,13 @@ export function parseLastReservationSnapshot(rec: unknown): LastReservationSnaps
     seatLabels: r.seatLabels.filter((s): s is string => typeof s === 'string'),
     amount: r.amount,
     savedAt: typeof r.savedAt === 'string' ? r.savedAt : '',
+    // 形式が正しいものだけ引き継ぐ（旧い控えや壊れた値は「無し」として扱う）
+    ...(typeof r.perfDate === 'string' && DATE_RE.test(r.perfDate)
+      ? { perfDate: r.perfDate }
+      : {}),
+    ...(typeof r.perfTime === 'string' && TIME_RE.test(r.perfTime)
+      ? { perfTime: r.perfTime }
+      : {}),
   }
 }
 
@@ -93,14 +115,6 @@ export function insertLastReservation(
   )
 }
 
-/** 一覧から1件だけ取り除いた新しい一覧を返す */
-export function removeLastReservationFromList(
-  list: LastReservationSnapshot[],
-  code: string,
-): LastReservationSnapshot[] {
-  return list.filter((s) => s.code !== code)
-}
-
 function saveList(list: LastReservationSnapshot[]): void {
   try {
     localStorage.setItem(LAST_RESERVATION_KEY, JSON.stringify(list))
@@ -123,7 +137,41 @@ export function addLastReservation(snapshot: LastReservationSnapshot): void {
   saveList(insertLastReservation(loadLastReservations(), snapshot))
 }
 
-/** 控えを1件だけ消す（他の控えは残る） */
-export function removeLastReservation(code: string): void {
-  saveList(removeLastReservationFromList(loadLastReservations(), code))
+/* ================= 折りたたみ状態（予約番号ごと） ================= */
+
+/** 折りたたんだ控えの予約番号一覧を保存するキー */
+const FOLDED_KEY = 'sakura-seats-last-reservation-folded-v1'
+
+/** 保存文字列 → 折りたたみ中の予約番号集合。壊れた値は無言で捨てる */
+export function parseFoldedCodes(raw: string | null): Set<string> {
+  if (!raw) return new Set()
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.filter((v): v is string => typeof v === 'string' && !!v))
+  } catch {
+    return new Set()
+  }
+}
+
+/** 折りたたみ中の予約番号集合を読む（保存が無ければ全て「広げた」状態） */
+export function loadFoldedCodes(): Set<string> {
+  try {
+    return parseFoldedCodes(localStorage.getItem(FOLDED_KEY))
+  } catch {
+    return new Set()
+  }
+}
+
+/** 1件分の折りたたみ状態を保存する（控え自体は消えない） */
+export function setReservationFolded(code: string, folded: boolean): void {
+  const codes = loadFoldedCodes()
+  if (folded) codes.add(code)
+  else codes.delete(code)
+  try {
+    localStorage.setItem(FOLDED_KEY, JSON.stringify([...codes]))
+  } catch {
+    // 折りたたみ状態が残せなくても、控えの表示自体は継続する
+  }
+  notifyChanged()
 }

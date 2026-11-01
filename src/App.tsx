@@ -14,11 +14,17 @@ import { StoreProvider, useStore } from './lib/store'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
 import {
+  loadFoldedCodes,
   loadLastReservations,
-  removeLastReservation,
+  setReservationFolded,
   LAST_RESERVATION_EVENT,
   type LastReservationSnapshot,
 } from './lib/lastReservation'
+import {
+  buildSnapshotCalendarUrl,
+  buildSnapshotGmailUrl,
+  buildSnapshotLineUrl,
+} from './lib/share'
 import flyerUrl from './assets/flyer.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
@@ -179,26 +185,51 @@ function TodayCard({ perf }: { perf: Performance }) {
 }
 
 /**
- * 控え1件分（R6）: QR サムネイル＋要約＋小さな「控えを消す」。
- * 消去は誤操作防止のため2段階にする: 小さなテキストボタンを押すと
- * その場が確認表示（本当に消しますか？／消す／やめる）に切り替わり、
- * 約4秒放置か他の場所のタップで自動的に元へ戻る。1回のタップでは消えない。
+ * 控え1件分: QR サムネイル＋要約＋共有ボタン（LINE / Gmail / カレンダー）。
+ * 控えは削除できない（誤操作防止のため削除UI自体を廃止）。代わりに
+ * 「小さくする」で1行の要約に折りたためる。折りたたみ状態は予約番号
+ * ごとに端末へ保存され、リロード後も保たれる。
+ * 共有リンクは完了画面と同じ文面を、この控え自身の内容で作り直す。
+ * カレンダーは公演日・開演時刻を持つ控えだけに出す（旧い控えには無い）。
  */
-function SavedReservationItem({
-  snapshot,
-  confirming,
-  onArmRemove,
-  onCancelRemove,
-  onConfirmRemove,
-}: {
-  snapshot: LastReservationSnapshot
-  confirming: boolean
-  onArmRemove: () => void
-  onCancelRemove: () => void
-  onConfirmRemove: () => void
-}) {
+function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot }) {
   const [qrExpanded, setQrExpanded] = useState(false)
+  const [folded, setFolded] = useState(() => loadFoldedCodes().has(snapshot.code))
   const qrUrl = useReservationQrUrl(snapshot.code)
+  const calendarUrl = buildSnapshotCalendarUrl(snapshot)
+
+  const toggleFolded = () => {
+    const next = !folded
+    setFolded(next)
+    setReservationFolded(snapshot.code, next)
+  }
+
+  if (folded) {
+    return (
+      <article
+        className="last-res-item is-folded"
+        data-last-reservation-item={snapshot.code}
+        data-last-reservation-folded
+      >
+        <div className="last-res-folded">
+          <p className="last-res-folded-line">
+            {snapshot.code} ／ {snapshot.performanceName} ／ {snapshot.seatLabels.length}席 ／{' '}
+            {formatYen(snapshot.amount)}
+          </p>
+          <button
+            type="button"
+            className="last-res-fold-toggle"
+            data-last-reservation-fold-toggle
+            aria-expanded={false}
+            onClick={toggleFolded}
+          >
+            広げる
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
     <article className="last-res-item" data-last-reservation-item={snapshot.code}>
       <div className="last-res-main">
@@ -224,35 +255,15 @@ function SavedReservationItem({
         <div className="last-res-summary">
           <div className="last-res-head">
             <p className="last-res-code">{snapshot.code}</p>
-            {confirming ? (
-              <span className="last-res-confirm" data-last-reservation-remove-area>
-                <span className="last-res-confirm-text">本当に消しますか？</span>
-                <button
-                  type="button"
-                  className="last-res-confirm-btn is-danger"
-                  data-last-reservation-remove-confirm
-                  onClick={onConfirmRemove}
-                >
-                  消す
-                </button>
-                <button
-                  type="button"
-                  className="last-res-confirm-btn"
-                  onClick={onCancelRemove}
-                >
-                  やめる
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="last-res-remove"
-                data-last-reservation-remove
-                onClick={onArmRemove}
-              >
-                控えを消す
-              </button>
-            )}
+            <button
+              type="button"
+              className="last-res-fold-toggle"
+              data-last-reservation-fold-toggle
+              aria-expanded={true}
+              onClick={toggleFolded}
+            >
+              小さくする
+            </button>
           </div>
           <p className="last-res-line">
             {snapshot.performanceName} ／ {snapshot.whenText}
@@ -262,6 +273,37 @@ function SavedReservationItem({
         </div>
       </div>
       {qrExpanded && <ReservationQr code={snapshot.code} />}
+      <div className="last-res-share">
+        <a
+          className="last-res-share-btn is-line"
+          data-share="line"
+          href={buildSnapshotLineUrl(snapshot)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          LINEで送る
+        </a>
+        <a
+          className="last-res-share-btn"
+          data-share="mailto"
+          href={buildSnapshotGmailUrl(snapshot)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          ✉ Gmailで送る
+        </a>
+        {calendarUrl && (
+          <a
+            className="last-res-share-btn"
+            data-share="calendar"
+            href={calendarUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            📅 カレンダーに追加
+          </a>
+        )}
+      </div>
     </article>
   )
 }
@@ -279,49 +321,18 @@ function SavedReservationItem({
  */
 function SavedReservations({ onLookup }: { onLookup: () => void }) {
   const [items, setItems] = useState<LastReservationSnapshot[]>(loadLastReservations)
-  const [confirmingCode, setConfirmingCode] = useState<string | null>(null)
-  // 予約完了（保存）・削除のたびに読み直す
+  // 予約完了（保存）・折りたたみ変更のたびに読み直す
   useEffect(() => {
     const update = () => setItems(loadLastReservations())
     window.addEventListener(LAST_RESERVATION_EVENT, update)
     return () => window.removeEventListener(LAST_RESERVATION_EVENT, update)
   }, [])
-  // 消去の確認表示は約4秒で自動的に戻す＋他の場所をタップしても戻す
-  useEffect(() => {
-    if (!confirmingCode) return
-    const timer = window.setTimeout(() => setConfirmingCode(null), 4000)
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Element | null
-      if (
-        target?.closest('[data-last-reservation-remove-area]') ||
-        target?.closest('[data-last-reservation-remove]')
-      ) {
-        return
-      }
-      setConfirmingCode(null)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => {
-      window.clearTimeout(timer)
-      document.removeEventListener('pointerdown', onPointerDown)
-    }
-  }, [confirmingCode])
   if (items.length === 0) return null
   return (
     <section className="card last-reservation-card" data-last-reservation>
       <h3>この端末で予約した控え</h3>
       {items.map((snapshot) => (
-        <SavedReservationItem
-          key={snapshot.code}
-          snapshot={snapshot}
-          confirming={confirmingCode === snapshot.code}
-          onArmRemove={() => setConfirmingCode(snapshot.code)}
-          onCancelRemove={() => setConfirmingCode(null)}
-          onConfirmRemove={() => {
-            removeLastReservation(snapshot.code)
-            setConfirmingCode(null)
-          }}
-        />
+        <SavedReservationItem key={snapshot.code} snapshot={snapshot} />
       ))}
       <p className="muted small">
         最新の状態（お支払い・キャンセルの反映）は「予約確認」でご確認ください。

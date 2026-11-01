@@ -2,15 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   addLastReservation,
   insertLastReservation,
+  loadFoldedCodes,
   loadLastReservations,
   MAX_LAST_RESERVATIONS,
+  parseFoldedCodes,
   parseLastReservations,
-  removeLastReservation,
-  removeLastReservationFromList,
+  setReservationFolded,
   type LastReservationSnapshot,
 } from './lastReservation'
 
 const KEY = 'sakura-seats-last-reservation-v1'
+const FOLDED_KEY = 'sakura-seats-last-reservation-folded-v1'
 
 const snap = (code: string, seat = '1階 5列 6番'): LastReservationSnapshot => ({
   code,
@@ -99,7 +101,7 @@ describe('旧形式（単一オブジェクト）からの移行', () => {
   })
 })
 
-describe('控えの追加・削除', () => {
+describe('控えの追加', () => {
   it('2回目の予約を追加しても1回目の控えは消えない（新しい順）', () => {
     stubStorage()
     addLastReservation(SNAP_A)
@@ -123,17 +125,58 @@ describe('控えの追加・削除', () => {
     expect(list.some((s) => s.code === 'SK-0001')).toBe(false)
     expect(list.some((s) => s.code === 'SK-0003')).toBe(true)
   })
+})
 
-  it('1件だけ消しても他の控えは残る', () => {
-    stubStorage()
-    addLastReservation(SNAP_A)
-    addLastReservation(SNAP_B)
-    removeLastReservation(SNAP_B.code)
-    expect(loadLastReservations()).toEqual([SNAP_A])
+describe('公演日・開演時刻（カレンダー導線用）の読み取り', () => {
+  it('形式が正しい perfDate / perfTime は引き継がれる', () => {
+    const withDate = { ...SNAP_A, perfDate: '2026-12-19', perfTime: '13:00' }
+    expect(parseLastReservations(JSON.stringify([withDate]))).toEqual([withDate])
   })
 
-  it('removeLastReservationFromList は対象以外をそのまま返す', () => {
-    expect(removeLastReservationFromList([SNAP_B, SNAP_A], 'SK-9999')).toEqual([SNAP_B, SNAP_A])
-    expect(removeLastReservationFromList([SNAP_B, SNAP_A], SNAP_A.code)).toEqual([SNAP_B])
+  it('形式が崩れた perfDate / perfTime は「無し」として落とされる', () => {
+    const broken = { ...SNAP_A, perfDate: '2026/12/19', perfTime: '13時' }
+    const [parsed] = parseLastReservations(JSON.stringify([broken]))
+    expect(parsed?.perfDate).toBeUndefined()
+    expect(parsed?.perfTime).toBeUndefined()
+  })
+
+  it('追加前に保存された控え（項目なし）はそのまま読める', () => {
+    expect(parseLastReservations(JSON.stringify([SNAP_A]))).toEqual([SNAP_A])
+  })
+})
+
+describe('折りたたみ状態の保存', () => {
+  it('折りたたみ→読み戻しで往復できる（広げ直しも）', () => {
+    stubStorage()
+    setReservationFolded('SK-0001', true)
+    expect(loadFoldedCodes()).toEqual(new Set(['SK-0001']))
+    setReservationFolded('SK-0002', true)
+    expect(loadFoldedCodes()).toEqual(new Set(['SK-0001', 'SK-0002']))
+    setReservationFolded('SK-0001', false)
+    expect(loadFoldedCodes()).toEqual(new Set(['SK-0002']))
+  })
+
+  it('折りたたみ保存は控え一覧そのものには触れない', () => {
+    const s = stubStorage()
+    addLastReservation(SNAP_A)
+    setReservationFolded('SK-0001', true)
+    expect(loadLastReservations()).toEqual([SNAP_A])
+    expect(s.getItem(FOLDED_KEY)).toBe(JSON.stringify(['SK-0001']))
+  })
+
+  it('折りたたみ保存が無い端末では全て「広げた」状態（デフォルト）', () => {
+    stubStorage()
+    expect(loadFoldedCodes().size).toBe(0)
+    expect(loadFoldedCodes().has('SK-0001')).toBe(false)
+  })
+
+  it('壊れた折りたたみ保存は空集合として扱う', () => {
+    expect(parseFoldedCodes(null)).toEqual(new Set())
+    expect(parseFoldedCodes('')).toEqual(new Set())
+    expect(parseFoldedCodes('{oops')).toEqual(new Set())
+    expect(parseFoldedCodes('"SK-0001"')).toEqual(new Set())
+    expect(parseFoldedCodes(JSON.stringify(['SK-0001', 42, '', null]))).toEqual(
+      new Set(['SK-0001']),
+    )
   })
 })
