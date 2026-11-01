@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 
-/**
- * 予約番号の QR コード表示（予約完了画面・予約確認結果で共用）。
- * QR 生成ライブラリは動的 import で遅延読み込みする。
- */
-export default function ReservationQr({ code }: { code: string }) {
+/** 予約番号QRの画像URLを取得する（生成ライブラリは動的 import で遅延読み込み） */
+export function useReservationQrUrl(code: string): string {
   const [url, setUrl] = useState('')
 
   useEffect(() => {
@@ -19,6 +16,16 @@ export default function ReservationQr({ code }: { code: string }) {
       cancelled = true
     }
   }, [code])
+
+  return url
+}
+
+/**
+ * 予約番号の QR コード表示（予約完了画面・予約確認結果で共用）。
+ * QR 生成ライブラリは動的 import で遅延読み込みする。
+ */
+export default function ReservationQr({ code }: { code: string }) {
+  const url = useReservationQrUrl(code)
 
   return (
     <div className="reservation-qr" data-reservation-qr>

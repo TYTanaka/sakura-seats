@@ -1012,8 +1012,13 @@ function PerformanceSettings({
       await saveSettings(next, deadline ? deadline : null)
       setError('')
       setSaved('公演設定を保存しました')
-    } catch {
-      fail('保存に失敗しました。接続を確認してもう一度お試しください')
+    } catch (e) {
+      // 保存できなかった場合は成功表示を出さず、理由のあるエラーだけを出す（R5-2）
+      fail(
+        e instanceof Error && e.message
+          ? e.message
+          : '保存に失敗しました。接続を確認してもう一度お試しください',
+      )
     }
   }
 

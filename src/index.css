@@ -1670,13 +1670,74 @@ button.seat-available:hover {
   }
 }
 
-/* 直前の予約カード（R4・F3） */
+/* 直前の予約カード（R4・F3 / R5-3 コンパクト表示） */
 .last-reservation-card h3 {
-  text-align: center;
+  margin-bottom: 8px;
+  font-size: 16px;
 }
 
-.last-reservation-card .reservation-code {
-  text-align: center;
+.last-res-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.last-res-qr-toggle {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pink);
+  cursor: pointer;
+}
+
+.last-res-qr-toggle img {
+  display: block;
+  width: 64px;
+  height: 64px;
+}
+
+.last-res-qr-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.last-res-qr-hint {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--burgundy-soft);
+}
+
+.last-res-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.last-res-code {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--burgundy);
+}
+
+.last-res-line {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+}
+
+.last-reservation-card .reservation-qr {
+  margin-top: 12px;
 }
 
 /* 予約確認: 本人キャンセル操作エリア */

@@ -22,7 +22,7 @@ import {
 import flyerUrl from './assets/flyer.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
-import ReservationQr from './components/ReservationQr'
+import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
 import Staff from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
@@ -122,9 +122,14 @@ function TodayCard({ perf }: { perf: Performance }) {
  * 完了画面がリロードで消えても、ここから予約番号・座席・QRを再表示できる。
  * 最新の状態（支払い・キャンセル等）はスナップショットでは分からないため、
  * 予約確認への導線を併記する。
+ * 通常は QR を小さなサムネイルで出すコンパクト表示にし（R5-3: 当日の
+ * カード積み重なりで座席表が遠くならないように）、タップでその場に
+ * 大きな QR を展開する。完了画面の QR は従来どおり大きいまま。
  */
 function LastReservationCard({ onLookup }: { onLookup: () => void }) {
   const [snapshot, setSnapshot] = useState<LastReservationSnapshot | null>(loadLastReservation)
+  const [qrExpanded, setQrExpanded] = useState(false)
+  const qrUrl = useReservationQrUrl(snapshot?.code ?? '')
   // 予約完了（保存）・消去のたびに読み直す
   useEffect(() => {
     const update = () => setSnapshot(loadLastReservation())
@@ -135,26 +140,36 @@ function LastReservationCard({ onLookup }: { onLookup: () => void }) {
   return (
     <section className="card last-reservation-card" data-last-reservation>
       <h3>直前の予約（この端末の控え）</h3>
-      <p className="reservation-code">{snapshot.code}</p>
-      <ReservationQr code={snapshot.code} />
-      <dl className="detail-list">
-        <div>
-          <dt>公演</dt>
-          <dd>
-            {snapshot.performanceName}
-            <br />
-            {snapshot.whenText}
-          </dd>
+      <div className="last-res-main">
+        <button
+          type="button"
+          className="last-res-qr-toggle"
+          data-last-reservation-qr-toggle
+          aria-expanded={qrExpanded}
+          onClick={() => setQrExpanded((v) => !v)}
+        >
+          {qrUrl ? (
+            <img
+              src={qrUrl}
+              alt={`予約番号 ${snapshot.code} のQRコード`}
+              width={64}
+              height={64}
+            />
+          ) : (
+            <span className="last-res-qr-loading">QR準備中</span>
+          )}
+          <span className="last-res-qr-hint">{qrExpanded ? 'QRを閉じる' : 'QRを拡大'}</span>
+        </button>
+        <div className="last-res-summary">
+          <p className="last-res-code">{snapshot.code}</p>
+          <p className="last-res-line">
+            {snapshot.performanceName} ／ {snapshot.whenText}
+          </p>
+          <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
+          <p className="last-res-line">合計：{formatYen(snapshot.amount)}</p>
         </div>
-        <div>
-          <dt>座席</dt>
-          <dd>{snapshot.seatLabels.join('、')}</dd>
-        </div>
-        <div>
-          <dt>合計</dt>
-          <dd className="detail-total">{formatYen(snapshot.amount)}</dd>
-        </div>
-      </dl>
+      </div>
+      {qrExpanded && <ReservationQr code={snapshot.code} />}
       <p className="muted small">
         最新の状態（お支払い・キャンセルの反映）は「予約確認」でご確認ください。
       </p>
