@@ -122,6 +122,17 @@ describe('おまかせ割当: 基本', () => {
     // 2階指定でもクラス多様性がある（前方/中段/後方など行ゾーンで分かれる）
     expect(new Set(sets2[0].map((c) => c.areaClass)).size).toBe(3)
   })
+
+  it('2階候補の理由文には列番号が21列から始まる補足が付き、1階候補には付かない（R6・D-4）', () => {
+    const sets2 = buildCandidateSets(emptyData(), 2, 2)
+    for (const cand of allCandidates(sets2)) {
+      expect(cand.reason).toContain('21列から始まります')
+    }
+    const sets1 = buildCandidateSets(emptyData(), 2, 1)
+    for (const cand of allCandidates(sets1)) {
+      expect(cand.reason).not.toContain('21列から始まります')
+    }
+  })
 })
 
 describe('おまかせ割当: 断片化回避', () => {

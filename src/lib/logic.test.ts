@@ -16,6 +16,7 @@ import {
   setPaid,
   toggleBlocked,
   totals,
+  uncancelReservation,
   updatePerformance,
   type AppData,
 } from './logic'
@@ -58,6 +59,38 @@ describe('予約フロー', () => {
     // 解放後は別の人が予約できる
     const again = reserveOnline(after, ['1F-5-12'], '佐藤 一郎')
     expect(again.reservation.id).toBe('SK-0002')
+  })
+
+  it('キャンセルの取り消しで元の予約番号・内容のまま復旧し、席も再占有される（R6・O-1）', () => {
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-12', '1F-5-13'])
+    const cancelled = cancelReservation(data, reservation.id)
+    expect(seatStatus(cancelled, '1F-5-12')).toBe('available')
+    const { data: restored, result } = uncancelReservation(cancelled, reservation.id)
+    expect(result).toBe('OK')
+    const r = restored.reservations.find((x) => x.id === reservation.id)
+    expect(r?.cancelled).toBe(false)
+    expect(r?.name).toBe('山田 花子')
+    expect(r?.phone).toBe('090-0000-0000')
+    expect(r?.amount).toBe(reservation.amount)
+    expect(seatStatus(restored, '1F-5-12')).toBe('reserved')
+    expect(seatStatus(restored, '1F-5-13')).toBe('reserved')
+  })
+
+  it('キャンセル取り消し: 席が別の有効な予約に取られていたら SEAT_TAKEN で復旧しない（R6・O-1）', () => {
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-12'])
+    const cancelled = cancelReservation(data, reservation.id)
+    // 解放された席を別の人が予約する
+    const other = reserveOnline(cancelled, ['1F-5-12'], '佐藤 一郎')
+    const { data: after, result } = uncancelReservation(other.data, reservation.id)
+    expect(result).toBe('SEAT_TAKEN')
+    expect(after.reservations.find((x) => x.id === reservation.id)?.cancelled).toBe(true)
+    expect(seatStatus(after, '1F-5-12')).toBe('reserved')
+  })
+
+  it('キャンセル取り消し: 対象が無い・キャンセル済みでない場合は結果コードだけ返す（R6・O-1）', () => {
+    const { data, reservation } = reserveOnline(emptyData(), ['1F-5-12'])
+    expect(uncancelReservation(data, 'SK-9999').result).toBe('NOT_FOUND')
+    expect(uncancelReservation(data, reservation.id).result).toBe('NOT_CANCELLED')
   })
 
   it('オンライン申込は8席まで', () => {

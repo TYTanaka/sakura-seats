@@ -23,6 +23,7 @@ import {
   seatStatus,
   totals,
   type Performance,
+  type Reservation,
   type TicketType,
 } from '../lib/logic'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
@@ -212,8 +213,14 @@ export default function Staff({ onExit }: { onExit: () => void }) {
         )}
         {sessionPasscode === DEFAULT_PASSCODE && (
           <p className="passcode-warning" data-default-passcode-warning>
-            ⚠ パスコードが初期値のままです。受付情報（お客様のお名前・電話番号）を
-            守るため、「公演設定」からパスコードを変更してください。
+            <span>⚠ パスコードが初期値のままです</span>
+            <button
+              type="button"
+              className="passcode-warning-btn"
+              onClick={() => setTab('perf')}
+            >
+              公演設定へ
+            </button>
           </p>
         )}
       </div>
@@ -246,6 +253,7 @@ export default function Staff({ onExit }: { onExit: () => void }) {
       {tab === 'summary' && <Summary />}
       {tab === 'perf' && (
         <PerformanceSettings
+          verifyPasscode={staffUnlock}
           onPasscodeChanged={(next) => {
             setSessionPasscode(next)
             saveStaffSession(next)
@@ -259,7 +267,8 @@ export default function Staff({ onExit }: { onExit: () => void }) {
 /* ---------------- 受付 ---------------- */
 
 function Reception() {
-  const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
+  const { data, cancel, uncancelReservation, setCheckedIn, setPaid, completeReception } =
+    useStore()
   const { showToast } = useToast()
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
@@ -272,6 +281,41 @@ function Reception() {
     void fn().catch(() =>
       showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
     )
+  }
+
+  /**
+   * 受付完了の成功トースト（R6・O-2）: 「未払いのみ表示」ON のままだと
+   * 完了した予約は即座に一覧から消えるため、成功したことが分からない。
+   * 一覧が更新された後に、対象の予約番号を名指しで知らせる。
+   */
+  const handleComplete = (res: Reservation) => {
+    void completeReception(res.id)
+      .then(() => showToast(`${res.id} を受付完了にしました`, 'info'))
+      .catch(() =>
+        showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+      )
+  }
+
+  /** キャンセルの取り消し（R6・O-1）: 結果コードごとに案内を出し分ける */
+  const handleUncancel = (res: Reservation) => {
+    void (async () => {
+      try {
+        const result = await uncancelReservation(res.id)
+        if (result === 'OK') {
+          showToast(`${res.id} のキャンセルを取り消しました`, 'info')
+        } else if (result === 'SEAT_TAKEN') {
+          showToast(
+            '席が他の予約で使われているため、キャンセルを取り消せません',
+          )
+        } else {
+          showToast('キャンセルを取り消せませんでした')
+        }
+      } catch (e) {
+        showToast(
+          e instanceof Error ? e.message : 'キャンセルの取り消しに失敗しました',
+        )
+      }
+    })()
   }
 
   const list = useMemo(() => {
@@ -375,7 +419,7 @@ function Reception() {
                     type="button"
                     data-action="complete"
                     className="toggle-btn complete-btn"
-                    onClick={() => runAction(() => completeReception(res.id))}
+                    onClick={() => handleComplete(res)}
                   >
                     受付完了（支払い＋来場）
                   </button>
@@ -428,6 +472,18 @@ function Reception() {
                     予約キャンセル
                   </button>
                 )}
+              </div>
+            )}
+            {res.cancelled && (
+              <div className="reservation-actions">
+                <button
+                  type="button"
+                  data-action="uncancel"
+                  className="toggle-btn"
+                  onClick={() => handleUncancel(res)}
+                >
+                  キャンセルを取り消す
+                </button>
               </div>
             )}
           </li>
@@ -494,7 +550,10 @@ function DoorSales() {
   const { data, reserve } = useStore()
   const perf = data.performance
   const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState<SeatZoom>('fit')
+  // 当日販売は開いた直後から席を指で狙う作業なので、全体表示（約37%・
+  // 席が約11px）ではなく 100% を初期値にする（R6・O-3）。全体表示は
+  // ズームチップ「全体」からいつでも戻れる
+  const [zoom, setZoom] = useState<SeatZoom>(1)
   const [fitScale, setFitScale] = useState<number | null>(null)
   /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
   const zoomReadoutRef = useRef<HTMLSpanElement>(null)
@@ -570,6 +629,11 @@ function DoorSales() {
       <SeatLegend variant="staff" />
       <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
       {selected.length > 0 && (
+        <p className="door-selection-bar" data-door-selection-bar>
+          選択中：{selected.map((id) => seatById(id).label).join('、')}
+        </p>
+      )}
+      {selected.length > 0 && (
         <>
           <h4 className="form-subhead">席ごとの券種</h4>
           <TicketTypePicker
@@ -607,6 +671,12 @@ function DoorSales() {
             ))}
           </select>
         </label>
+      )}
+      {perf.sellerNames.length === 0 && (
+        <p className="muted small" data-seller-missing-hint>
+          販売者（手売りの担当者）は「公演設定」で登録できます。登録すると、
+          ここで販売者を選んで集計に記録できます。
+        </p>
       )}
       <p className="selection-total" data-door-total>
         選択中：{selected.length}席 ／ 合計 {formatYen(total)}
@@ -781,6 +851,7 @@ function Summary() {
               <th>支払い</th>
               <th>来場</th>
               <th>種別</th>
+              <th>販売者</th>
             </tr>
           </thead>
           <tbody>
@@ -795,6 +866,7 @@ function Summary() {
                 <td>{r.paid ? '支払済' : '未払い'}</td>
                 <td>{r.checkedIn ? '来場済' : ''}</td>
                 <td>{r.source === 'door' ? '当日販売' : '予約'}</td>
+                <td>{r.seller ?? ''}</td>
               </tr>
             ))}
           </tbody>
@@ -903,10 +975,29 @@ interface TypeDraft {
   price: string
 }
 
+/**
+ * 極端な料金変更の検出（R6・O-6）: 既存値の後ろに桁を足してしまう等の
+ * 入力事故（実演で 2,000円 → 20,002,500円 を再現）を保存前に止めるため、
+ * 「従来の10倍以上」または「新規・0円から10万円以上」の変更を列挙する。
+ */
+function findExtremePriceChanges(before: TicketType[], after: TicketType[]): string[] {
+  const lines: string[] = []
+  for (const t of after) {
+    const oldPrice = before.find((o) => o.id === t.id)?.price ?? 0
+    if ((oldPrice > 0 && t.price >= oldPrice * 10) || (oldPrice === 0 && t.price >= 100000)) {
+      lines.push(`${t.name}： ${formatYen(oldPrice)} → ${formatYen(t.price)}`)
+    }
+  }
+  return lines
+}
+
 function PerformanceSettings({
   onPasscodeChanged,
+  verifyPasscode,
 }: {
   onPasscodeChanged?: (next: string) => void
+  /** パスコード変更時の「現在のパスコード」照合用（スタッフ入室と同じ照合） */
+  verifyPasscode?: (candidate: string) => Promise<boolean>
 }) {
   const { data, mode, saveSettings, resetAll, changePasscode } = useStore()
   const { showToast } = useToast()
@@ -928,8 +1019,14 @@ function PerformanceSettings({
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [confirmingTypeDelete, setConfirmingTypeDelete] = useState<string | null>(null)
   const [typeSeq, setTypeSeq] = useState(0)
+  /** 極端な料金変更の確認待ち（R6・O-6）。null でない間は保存を止める */
+  const [pendingExtreme, setPendingExtreme] = useState<string[] | null>(null)
 
-  const touch = () => setSaved('')
+  const touch = () => {
+    setSaved('')
+    // 設定を触り直したら料金の確認待ちは解除する（再保存時に再判定される）
+    setPendingExtreme(null)
+  }
 
   const addType = () => {
     const next = typeSeq + 1
@@ -952,8 +1049,8 @@ function PerformanceSettings({
     touch()
   }
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleSave = async (e?: FormEvent, bypassExtreme = false) => {
+    e?.preventDefault()
     // 保存エラーはフォーム内表示に加えてトーストでも出す（画面外でも気づけるように）
     const fail = (message: string) => {
       setError(message)
@@ -998,6 +1095,15 @@ function PerformanceSettings({
       }
       ticketTypes.push({ id: draft.id, name: draft.name.trim(), price: priceNum })
     }
+    // 極端な料金変更は、確認を挟まない限り保存しない（R6・O-6）
+    if (!bypassExtreme) {
+      const extremes = findExtremePriceChanges(perf.ticketTypes, ticketTypes)
+      if (extremes.length > 0) {
+        setError('')
+        setPendingExtreme(extremes)
+        return
+      }
+    }
     const next: Performance = {
       name: name.trim(),
       date,
@@ -1011,6 +1117,7 @@ function PerformanceSettings({
     try {
       await saveSettings(next, deadline ? deadline : null)
       setError('')
+      setPendingExtreme(null)
       setSaved('公演設定を保存しました')
     } catch (e) {
       // 保存できなかった場合は成功表示を出さず、理由のあるエラーだけを出す（R5-2）
@@ -1075,13 +1182,17 @@ function PerformanceSettings({
                 onChange={(e) => updateType(draft.id, { name: e.target.value })}
               />
               <span className="type-editor-price">
+                {/* 料金欄は text + 数値キーボードにする（R6・O-6）:
+                    type=number ではフォーカス時の全選択が効かず、既存値の
+                    後ろに桁を足す事故（2,000→20,002,500）が起きやすいため。
+                    検証は保存時に整数チェックで行う */}
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   aria-label="料金（円）"
-                  min={0}
-                  step={100}
                   value={draft.price}
                   onChange={(e) => updateType(draft.id, { price: e.target.value })}
+                  onFocus={(e) => e.currentTarget.select()}
                 />
                 <span className="yen-unit">円</span>
               </span>
@@ -1197,12 +1308,48 @@ function PerformanceSettings({
         </label>
         {error && <p className="error-text">{error}</p>}
         {saved && <p className="success-text">{saved}</p>}
+        {pendingExtreme && (
+          <div className="price-extreme-confirm" data-price-extreme-confirm>
+            <p className="error-text">
+              料金が大きく変わります。入力間違いではないか確認してください。
+            </p>
+            <ul className="price-extreme-list">
+              {pendingExtreme.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-danger btn-small"
+                data-price-extreme-ok
+                onClick={() => {
+                  setPendingExtreme(null)
+                  void handleSave(undefined, true)
+                }}
+              >
+                この金額で保存する
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setPendingExtreme(null)}
+              >
+                やめる
+              </button>
+            </div>
+          </div>
+        )}
         <button type="submit" className="btn btn-primary btn-block">
           保存する
         </button>
       </form>
       <hr className="divider" />
-      <PasscodeSettings changePasscode={changePasscode} onChanged={onPasscodeChanged} />
+      <PasscodeSettings
+        changePasscode={changePasscode}
+        onChanged={onPasscodeChanged}
+        verifyPasscode={verifyPasscode}
+      />
       {mode === 'local' && (
         <>
           <hr className="divider" />
@@ -1248,10 +1395,14 @@ function PerformanceSettings({
 function PasscodeSettings({
   changePasscode,
   onChanged,
+  verifyPasscode,
 }: {
   changePasscode: (newPasscode: string) => Promise<void>
   onChanged?: (next: string) => void
+  /** 現在のパスコードの照合（R6・O-7）。未指定なら照合を省略する */
+  verifyPasscode?: (candidate: string) => Promise<boolean>
 }) {
+  const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -1264,9 +1415,28 @@ function PasscodeSettings({
       setError('新しいパスコードを入力してください')
       return
     }
+    // 入室済み端末を第三者に触られても変えられないよう、
+    // 変更には現在のパスコードの入力を必須にする（R6・O-7）
+    if (verifyPasscode) {
+      if (!current) {
+        setError('現在のパスコードを入力してください')
+        return
+      }
+      let ok = false
+      try {
+        ok = await verifyPasscode(current)
+      } catch {
+        ok = false
+      }
+      if (!ok) {
+        setError('現在のパスコードが違います')
+        return
+      }
+    }
     try {
       await changePasscode(next.trim())
       onChanged?.(next.trim())
+      setCurrent('')
       setNext('')
       setMessage('パスコードを変更しました')
     } catch {
@@ -1278,6 +1448,18 @@ function PasscodeSettings({
     <>
       <h4>スタッフパスコード</h4>
       <form onSubmit={handleChange}>
+        <label className="field">
+          <span>現在のパスコード</span>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            data-passcode-current
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            placeholder="現在のパスコード"
+          />
+        </label>
         <label className="field">
           <span>新しいパスコード</span>
           <input

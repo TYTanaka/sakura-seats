@@ -204,4 +204,32 @@ describe('CloudApi（モック RPC クライアント）', () => {
       new CloudApi(weirdClient.client).cancelReservation('SK-0001', '09000000000'),
     ).rejects.toThrow('通信に失敗しました')
   })
+
+  it('staffUncancelReservation は result を返し、RPC 未適用は専用エラーになる（R6・O-1）', async () => {
+    const okClient = fakeClient(() => ({ ok: true, result: 'OK', code: 'SK-0001' }))
+    await expect(
+      new CloudApi(okClient.client).staffUncancelReservation('1234', 'SK-0001'),
+    ).resolves.toBe('OK')
+    expect(okClient.rpc).toHaveBeenCalledWith('staff_uncancel_reservation', {
+      p_passcode: '1234',
+      p_code: 'SK-0001',
+    })
+    const takenClient = fakeClient(() => ({ ok: false, result: 'SEAT_TAKEN' }))
+    await expect(
+      new CloudApi(takenClient.client).staffUncancelReservation('1234', 'SK-0001'),
+    ).resolves.toBe('SEAT_TAKEN')
+    // migration_sakura_r6 未適用の DB: PostgREST の「関数が見つからない」を専用文面へ
+    const missingClient = fakeClient(() => {
+      throw new Error(
+        'Could not find the function public.staff_uncancel_reservation(p_code, p_passcode) in the schema cache',
+      )
+    })
+    await expect(
+      new CloudApi(missingClient.client).staffUncancelReservation('1234', 'SK-0001'),
+    ).rejects.toThrow('migration_sakura_r6')
+    const weirdClient = fakeClient(() => ({ ok: false, result: 'SOMETHING_ELSE' }))
+    await expect(
+      new CloudApi(weirdClient.client).staffUncancelReservation('1234', 'SK-0001'),
+    ).rejects.toThrow('通信に失敗しました')
+  })
 })

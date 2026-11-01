@@ -236,6 +236,19 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         })
         await refreshAll()
       },
+      uncancelReservation: async (reservationId) => {
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target) return 'NOT_FOUND'
+        try {
+          const result = await api().staffUncancelReservation(staffPasscode(), target.id)
+          // 成功・失敗どちらの場合も最新の占有状態を取り直す
+          await refreshAll()
+          return result
+        } catch (e) {
+          void refreshWithRetry()
+          throw e
+        }
+      },
       setCheckedIn: async (reservationId, value) => {
         const target = dataRef.current.reservations.find((r) => r.id === reservationId)
         if (!target?.cloudId) throw new Error('予約が見つかりません')

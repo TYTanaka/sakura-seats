@@ -189,6 +189,15 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     )
   }
 
+  /** 受付完了の成功トースト（R6・O-2、受付一覧と同じ文面に揃える） */
+  const handleComplete = (target: Reservation) => {
+    void completeReception(target.id)
+      .then(() => showToast(`${target.id} を受付完了にしました`, 'info'))
+      .catch(() =>
+        showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+      )
+  }
+
   const scanNext = () => {
     setFoundId(null)
     setNotFoundCode('')
@@ -309,7 +318,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
                     type="button"
                     data-action="complete"
                     className="toggle-btn complete-btn"
-                    onClick={() => runAction(() => completeReception(res.id))}
+                    onClick={() => handleComplete(res)}
                   >
                     受付完了（支払い＋来場）
                   </button>

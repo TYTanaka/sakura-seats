@@ -1,5 +1,5 @@
 import { seatById } from '../data/seats'
-import { formatYen, reservationTypeSummary, type Reservation } from './logic'
+import { reservationTypeSummary, type Reservation } from './logic'
 
 /**
  * 予約一覧の CSV を生成する（Excel で文字化けしないよう BOM 付き UTF-8）。
@@ -16,7 +16,8 @@ const HEADERS = [
   '支払い',
   '来場',
   '種別',
-  '日時',
+  '販売者',
+  '申込日時',
 ] as const
 
 function csvCell(value: string): string {
@@ -41,10 +42,14 @@ export function reservationsToCsv(reservations: Reservation[]): string {
         r.phone,
         r.seatIds.map((id) => seatById(id).label).join('、'),
         reservationTypeSummary(r),
-        formatYen(r.amount),
+        // 金額は「3,000円」のような文字列ではなく数値そのものにする。
+        // 表計算ソフトでそのまま合計できるようにするため（R6・O-4）
+        String(r.amount),
         r.paid ? '支払済' : '未払い',
         r.checkedIn ? '来場済' : '',
         r.source === 'door' ? '当日販売' : '予約',
+        // 販売者別内訳と突き合わせできるよう販売者列を出す（R6・O-4）
+        r.seller ?? '',
         formatDateTime(r.createdAt),
       ]
         .map(csvCell)

@@ -34,7 +34,7 @@ export function buildGmailUrl(perf: Performance, reservation: Reservation): stri
     `合計: ${formatYen(reservation.amount)}（当日現金払い）`,
     '',
     '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
-    '変更・キャンセルは主催者までご連絡ください。',
+    '変更は主催者までご連絡ください。キャンセルは『予約確認』からもできます。',
   ].join('\n')
   return `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
@@ -115,7 +115,7 @@ export function buildSnapshotGmailUrl(snap: LastReservationSnapshot): string {
     `合計: ${formatYen(snap.amount)}（当日現金払い）`,
     '',
     '当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。',
-    '変更・キャンセルは主催者までご連絡ください。',
+    '変更は主催者までご連絡ください。キャンセルは『予約確認』からもできます。',
   ].join('\n')
   return `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }

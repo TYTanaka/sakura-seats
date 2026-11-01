@@ -93,10 +93,13 @@ function TopHeader({
   perf,
   onLookup,
   onStaff,
+  compact = false,
 }: {
   perf: Performance
   onLookup: () => void
   onStaff: () => void
+  /** スタッフ表示中は1行程度の簡略ヘッダーにする（R6・D-1） */
+  compact?: boolean
 }) {
   const { data } = useStore()
   // 締切ピルも時刻の経過に追随させる（開いたまま締切を跨いだら表示を切り替える・R4-1）
@@ -104,6 +107,28 @@ function TopHeader({
   const available = ALL_SEATS.filter((s) => seatStatus(data, s.id) === 'available').length
   const bookingClosed = isBookingClosed(data, new Date(nowMs))
   const showDeadline = data.bookingDeadline !== null && !bookingClosed
+  if (compact) {
+    // スタッフは開いてすぐ受付リストを見たい。当日運用では大きな
+    // お客様用ヒーローは邪魔になるため、公演名・日時だけの細い帯にする
+    return (
+      <header className="site-header is-compact" data-compact-header>
+        <div className="compact-content">
+          <p className="compact-title">
+            {perf.name}
+            <span className="compact-when">{formatPerformanceWhen(perf)}</span>
+          </p>
+          <div className="header-actions">
+            <button type="button" className="staff-link" onClick={onLookup}>
+              予約確認
+            </button>
+            <button type="button" className="staff-link" onClick={onStaff}>
+              スタッフ用
+            </button>
+          </div>
+        </div>
+      </header>
+    )
+  }
   return (
     <header className="site-header">
       <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
@@ -130,7 +155,8 @@ function TopHeader({
         </h1>
         <p className="site-when">{formatPerformanceWhen(perf)}</p>
         <p className="site-meta">
-          料金：{formatTicketTypes(perf)}（当日現金払い） ／ 空席 {available}席
+          料金：{formatTicketTypes(perf)}（当日現金払い） ／{' '}
+          <span className="meta-available">空席 {available}席</span>
         </p>
         {showDeadline && (
           <p className="site-deadline" data-booking-deadline-display>
@@ -349,6 +375,8 @@ function SavedReservations({ onLookup }: { onLookup: () => void }) {
 function Shell() {
   const { data, mode, ready, loadError, retryLoad, storageWarning, syncState } = useStore()
   const [view, setView] = useState<View>('book')
+  /** 予約完了画面の表示中か（AudienceBook から通知を受ける・R6・C-2） */
+  const [bookingDone, setBookingDone] = useState(false)
   const perf = data.performance
 
   if (mode === 'cloud' && loadError) {
@@ -390,6 +418,7 @@ function Shell() {
       )}
       <TopHeader
         perf={perf}
+        compact={view === 'staff'}
         onLookup={() => setView('lookup')}
         onStaff={() => setView('staff')}
       />
@@ -400,8 +429,18 @@ function Shell() {
           </p>
         )}
         {view === 'book' && perf.date === localDateString() && <TodayCard perf={perf} />}
-        {view === 'book' && <SavedReservations onLookup={() => setView('lookup')} />}
-        {view === 'book' && <AudienceBook perf={perf} />}
+        {/* 完了画面の表示中は控え一覧を完了カードの下へ回す（R6・C-2）:
+            「予約が完了しました」と予約番号がファーストビューに入り、
+            QR・共有ボタンも完了カード側に一本化されて見える */}
+        {view === 'book' && !bookingDone && (
+          <SavedReservations onLookup={() => setView('lookup')} />
+        )}
+        {view === 'book' && (
+          <AudienceBook perf={perf} onBookingDoneChange={setBookingDone} />
+        )}
+        {view === 'book' && bookingDone && (
+          <SavedReservations onLookup={() => setView('lookup')} />
+        )}
         {view === 'lookup' && <Lookup onBack={() => setView('book')} />}
         {view === 'staff' && <Staff onExit={() => setView('book')} />}
       </main>

@@ -37,6 +37,18 @@ import ReservationQr from './ReservationQr'
 type Step = 'omakase' | 'form' | 'confirm' | 'done'
 
 /**
+ * 候補の位置を言葉で表す（R6・C-3）: ミニ座席表は候補の前後数列だけに
+ * 切り取るため、ホール全体の中での位置はこちらで補う。
+ * サイド席など列を持たない候補では空文字（言葉では表さない）。
+ */
+function candidatePositionText(cand: OmakaseCandidate): string {
+  const seat = cand.seatIds.map(seatById).find((s) => s.kind === 'normal')
+  if (!seat || seat.row === null) return ''
+  if (seat.floor === 1) return `全16列中の${seat.row}列め`
+  return `2階 全3列中の${seat.row - 20}列め`
+}
+
+/**
  * 申込フォームの下書き（R3-8）: 入力途中でリロードしても消えないよう
  * 端末内に保持する。予約が完了したら破棄する。
  * おまかせ化に伴い、人数と階の希望も一緒に保持する。
@@ -98,7 +110,14 @@ function clearDraft() {
   }
 }
 
-export default function AudienceBook({ perf }: { perf: Performance }) {
+export default function AudienceBook({
+  perf,
+  onBookingDoneChange,
+}: {
+  perf: Performance
+  /** 完了画面の表示状態を親へ伝える（R6・C-2: 完了中は控え一覧を完了カードの下へ回すため） */
+  onBookingDoneChange?: (done: boolean) => void
+}) {
   const { data, reserve } = useStore()
   const [initialDraft] = useState<BookingDraft | null>(loadDraft)
   // 下書きがあれば、入力途中のステップから再開する（席が無ければ候補えらびから）
@@ -199,6 +218,11 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
       // 保存できなくても画面操作は継続する
     }
   }, [name, phone, note, selected, typeBySeat, step, partySize, floorPref])
+
+  // 完了画面の表示中かどうかを親へ伝える（控え一覧の配置切り替え用・C-2）
+  useEffect(() => {
+    onBookingDoneChange?.(step === 'done')
+  }, [step, onBookingDoneChange])
 
   // 候補は現在の占有状態から都度計算する（誰かが予約すれば即座に反映される）。
   // お客様に見せるのは最初の1組（最大3候補）だけ。気に入らなければ
@@ -349,7 +373,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
         </dl>
         <div className="notice-box">
           <p>当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。</p>
-          <p>変更・キャンセルは主催者までご連絡ください。</p>
+          <p>変更は主催者までご連絡ください。キャンセルは『予約確認』からもできます。</p>
         </div>
         <div className="share-actions">
           <a
@@ -555,6 +579,16 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                           <p className="candidate-seats" data-candidate-summary>
                             {cand.summary}
                           </p>
+                          {candidatePositionText(cand) && (
+                            <p className="candidate-position" data-candidate-position>
+                              {candidatePositionText(cand)}
+                            </p>
+                          )}
+                          <p className="candidate-price" data-candidate-price>
+                            {defaultTicketType(perf).name}料金で{' '}
+                            {formatYen(defaultTicketType(perf).price * partySize)}
+                            〜（{partySize}名分の目安・券種で変わります）
+                          </p>
                           {([...new Set(cand.seatIds.map((id) => seatById(id).floor))] as (
                             | 1
                             | 2
@@ -579,12 +613,15 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                         </article>
                       ))}
                     </div>
+                    <p className="muted small candidate-hint" data-candidate-hint>
+                      人数や階の希望を変えると、候補も変わります
+                    </p>
                   </>
                 )}
               </div>
             )}
             <p className="muted small omakase-note">
-              車椅子席・親子室をご希望の方は、申込フォームの備考欄にご記入ください
+              車椅子席・親子室をご希望の方は、申込フォームの備考欄にご記入ください（スタッフが席をご用意します）
             </p>
             <p className="muted small">
               全{ALL_SEATS.length}席（1階・2階・サイド席・車椅子席・親子室）
@@ -685,7 +722,7 @@ export default function AudienceBook({ perf }: { perf: Performance }) {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                placeholder="例：車椅子席の付き添いです、など"
+                placeholder="例：車椅子席を利用します、車椅子席の付き添いです、など"
               />
             </label>
             {error && <p className="error-text">{error}</p>}

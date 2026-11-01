@@ -4,6 +4,7 @@ import {
   type Performance,
   type Reservation,
   type SelfCancelResult,
+  type UncancelResult,
 } from './logic'
 
 /**
@@ -127,6 +128,16 @@ export function mapLookupResult(raw: unknown): Reservation | null {
 
 function rpcErrorToMessage(error: { message: string }): Error {
   const msg = error.message ?? ''
+  // R6 の RPC が未適用の DB では PostgREST が「関数が見つからない」を返す。
+  // 汎用の通信エラーではなく、更新が必要なことが分かる文面にする
+  if (
+    msg.includes('staff_uncancel_reservation') &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      'キャンセルの取り消しは、サーバ更新（migration_sakura_r6 の適用）後に使えるようになります',
+    )
+  }
   if (msg.includes('SEAT_TAKEN')) {
     return new Error('選択された座席の一部が、ほかの方に予約されてしまいました。座席を選び直してください')
   }
@@ -233,6 +244,24 @@ export class CloudApi {
     ]
     if (typeof result === 'string' && (known as string[]).includes(result)) {
       return result as SelfCancelResult
+    }
+    throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
+  }
+
+  /**
+   * キャンセルの取り消し（staff_uncancel_reservation RPC・R6）。
+   * 業務結果は例外ではなく JSON { ok, result } で返るので result をそのまま返す。
+   * RPC 自体が未適用の DB では call が上記の専用エラーを投げる。
+   */
+  async staffUncancelReservation(passcode: string, code: string): Promise<UncancelResult> {
+    const raw = await this.call<unknown>('staff_uncancel_reservation', {
+      p_passcode: passcode,
+      p_code: code,
+    })
+    const result = (raw as { result?: unknown } | null)?.result
+    const known: UncancelResult[] = ['OK', 'NOT_FOUND', 'NOT_CANCELLED', 'SEAT_TAKEN']
+    if (typeof result === 'string' && (known as string[]).includes(result)) {
+      return result as UncancelResult
     }
     throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
   }

@@ -19,12 +19,14 @@ import {
   setCheckedIn,
   setPaid,
   toggleBlocked,
+  uncancelReservation as applyUncancelReservation,
   updatePerformance,
   type AppData,
   type NewReservationInput,
   type Performance,
   type Reservation,
   type SelfCancelResult,
+  type UncancelResult,
 } from './logic'
 import { cloudEnabled } from './config'
 import { isStaleRevision, nextRevision, parseRevision } from './revision'
@@ -57,6 +59,13 @@ export interface Store {
   syncState: 'ok' | 'reconnecting' | 'offline'
   reserve: (input: NewReservationInput) => Promise<Reservation>
   cancel: (reservationId: string) => Promise<void>
+  /**
+   * キャンセルの取り消し（スタッフ操作）。結果コードを返す。
+   * クラウド: staff_uncancel_reservation RPC が判定する（未適用の環境では
+   * 分かりやすいエラーを投げる）。
+   * ローカル: uncancelReservation（logic）と同じ規則で判定する。
+   */
+  uncancelReservation: (reservationId: string) => Promise<UncancelResult>
   setCheckedIn: (reservationId: string, value: boolean) => Promise<void>
   setPaid: (reservationId: string, value: boolean) => Promise<void>
   /** 受付完了ワンタップ: 支払い済み＋来場済みを一度に設定する */
@@ -261,6 +270,13 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
       },
       cancel: async (reservationId) => {
         mutate((prev) => cancelReservation(prev, reservationId))
+      },
+      uncancelReservation: async (reservationId) => {
+        // 他タブの更新を取り込んでから判定し直す（席の占有は最新状態で見る）
+        refreshIfStale()
+        const { data: next, result } = applyUncancelReservation(dataRef.current, reservationId)
+        if (result === 'OK') commit(next)
+        return result
       },
       setCheckedIn: async (reservationId, value) => {
         mutate((prev) => setCheckedIn(prev, reservationId, value))

@@ -274,6 +274,22 @@ export function summarizeSeatIds(seatIds: string[]): string {
   return parts.join('、')
 }
 
+/**
+ * 2階候補の理由文への補足（R6・D-4）: 2階の列番号は会場の実番号で21列から
+ * 始まるため、初見では「22列＝後ろの方？」と誤読しやすい。実番号である
+ * ことが分かるよう一言添える。ミニ座席表の位置表示と併せて距離感を伝える。
+ */
+const FLOOR2_ROW_NOTE = '（2階の列番号は21列から始まります）'
+
+function reasonWithFloorNote(base: string, seatIds: string[], restricted: boolean): string {
+  const isFloor2 = seatById(seatIds[0])?.floor === 2
+  return (
+    base +
+    (isFloor2 ? FLOOR2_ROW_NOTE : '') +
+    (restricted ? '（見切れ席＝舞台の一部が見えにくい席を含みます）' : '')
+  )
+}
+
 function toCandidate(w: Window, split: boolean): OmakaseCandidate {
   const text = CLASS_TEXT[w.areaClass]
   return {
@@ -281,9 +297,7 @@ function toCandidate(w: Window, split: boolean): OmakaseCandidate {
     groups: [w.seatIds],
     areaClass: w.areaClass,
     label: text.label,
-    reason:
-      text.reason +
-      (w.restricted ? '（見切れ席＝舞台の一部が見えにくい席を含みます）' : ''),
+    reason: reasonWithFloorNote(text.reason, w.seatIds, w.restricted),
     split,
     restricted: w.restricted,
     summary: summarizeSeatIds(w.seatIds),
@@ -364,10 +378,11 @@ function findSplitCandidate(
     groups,
     areaClass,
     label: text.label,
-    reason:
-      '連続した席がご用意できず、2か所に分かれる候補です。' +
-      text.reason +
-      (restricted ? '（見切れ席＝舞台の一部が見えにくい席を含みます）' : ''),
+    reason: reasonWithFloorNote(
+      '連続した席がご用意できず、2か所に分かれる候補です。' + text.reason,
+      seatIds,
+      restricted,
+    ),
     split: true,
     restricted,
     summary: summarizeSeatIds(seatIds),

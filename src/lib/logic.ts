@@ -576,6 +576,41 @@ export function cancelReservation(data: AppData, reservationId: string): AppData
   return updateReservation(data, reservationId, { cancelled: true })
 }
 
+/**
+ * キャンセルの取り消し（スタッフ操作）の結果コード。
+ * クラウドの staff_uncancel_reservation RPC の契約と同一。
+ * - OK: 取り消しできた（元の予約番号・電話・備考・金額のまま復旧）
+ * - NOT_FOUND: その予約番号の予約がない
+ * - NOT_CANCELLED: キャンセル済みではない（取り消す対象でない）
+ * - SEAT_TAKEN: 席の一部が別の有効な予約に取られているため復旧できない
+ */
+export type UncancelResult = 'OK' | 'NOT_FOUND' | 'NOT_CANCELLED' | 'SEAT_TAKEN'
+
+/**
+ * キャンセルを取り消し、予約を元の内容のまま復旧する（純粋関数）。
+ * ローカルモードの実行判定に使う。クラウドモードでは同じ規則を
+ * サーバ（staff_uncancel_reservation RPC）が判定する。
+ * 席が他の有効な予約に使われていたら復旧せず SEAT_TAKEN を返す。
+ */
+export function uncancelReservation(
+  data: AppData,
+  reservationId: string,
+): { data: AppData; result: UncancelResult } {
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) return { data, result: 'NOT_FOUND' }
+  if (!target.cancelled) return { data, result: 'NOT_CANCELLED' }
+  const seatTaken = target.seatIds.some((seatId) =>
+    activeReservations(data).some(
+      (r) => r.id !== target.id && r.seatIds.includes(seatId),
+    ),
+  )
+  if (seatTaken) return { data, result: 'SEAT_TAKEN' }
+  return {
+    data: updateReservation(data, reservationId, { cancelled: false }),
+    result: 'OK',
+  }
+}
+
 export function setCheckedIn(data: AppData, reservationId: string, value: boolean): AppData {
   return updateReservation(data, reservationId, { checkedIn: value })
 }
