@@ -232,4 +232,97 @@ describe('CloudApi（モック RPC クライアント）', () => {
       new CloudApi(weirdClient.client).staffUncancelReservation('1234', 'SK-0001'),
     ).rejects.toThrow('通信に失敗しました')
   })
+
+  it('bookSeats は R7 適用後の token をそのまま返し、未適用なら undefined（R7）', async () => {
+    const token = 'abcdefghij0123456789AB' // base64url 22文字
+    const withToken = fakeClient(() => ({ code: 'SK-0009', amount: 2000, token }))
+    await expect(
+      new CloudApi(withToken.client).bookSeats({
+        name: 'a',
+        phone: '0',
+        note: '',
+        items: [{ seatId: '1F-5-6', typeId: 'adult' }],
+      }),
+    ).resolves.toEqual({ code: 'SK-0009', amount: 2000, token })
+    // R7 未適用の DB（token キー自体が返らない）→ undefined で graceful に落とす
+    const withoutToken = fakeClient(() => ({ code: 'SK-0009', amount: 2000 }))
+    const res = await new CloudApi(withoutToken.client).bookSeats({
+      name: 'a',
+      phone: '0',
+      note: '',
+      items: [{ seatId: '1F-5-6', typeId: 'adult' }],
+    })
+    expect(res.token).toBeUndefined()
+    // 形式外の token は採用しない
+    const garbage = fakeClient(() => ({ code: 'SK-0009', amount: 2000, token: 'SK-0009' }))
+    const res2 = await new CloudApi(garbage.client).bookSeats({
+      name: 'a',
+      phone: '0',
+      note: '',
+      items: [{ seatId: '1F-5-6', typeId: 'adult' }],
+    })
+    expect(res2.token).toBeUndefined()
+  })
+
+  it('staffCheckIn は result と要約を返し、RPC 未適用は専用エラーになる（R7）', async () => {
+    const summary = {
+      ok: true,
+      result: 'OK',
+      code: 'SK-0001',
+      name: '検証 太郎',
+      items: [{ seatId: '1F-5-12', typeId: 'adult', typeName: '大人', price: 2000 }],
+      amount: 2000,
+      kind: 'online',
+      paid: false,
+      checkedInAt: '2026-12-19T12:45:00+09:00',
+      perfDate: '2026-12-19',
+      perfName: 'サンプル公演',
+    }
+    const okClient = fakeClient(() => summary)
+    const out = await new CloudApi(okClient.client).staffCheckIn('1234', 'token-value')
+    expect(out.result).toBe('OK')
+    expect(out.checkedInAt).toBe('2026-12-19T12:45:00+09:00')
+    expect(out.reservation?.id).toBe('SK-0001')
+    expect(out.reservation?.seatIds).toEqual(['1F-5-12'])
+    expect(out.reservation?.checkedIn).toBe(true)
+    expect(okClient.rpc).toHaveBeenCalledWith('staff_check_in', {
+      p_passcode: '1234',
+      p_token: 'token-value',
+    })
+    // 偽造トークン: NOT_FOUND は例外でなく result で返る（要約なし）
+    const nfClient = fakeClient(() => ({ ok: false, result: 'NOT_FOUND' }))
+    const nf = await new CloudApi(nfClient.client).staffCheckIn('1234', 'forged')
+    expect(nf.result).toBe('NOT_FOUND')
+    expect(nf.reservation).toBeNull()
+    // 使用済み: ALREADY_CHECKED_IN + 元の受付日時
+    const alreadyClient = fakeClient(() => ({
+      ...summary,
+      ok: false,
+      result: 'ALREADY_CHECKED_IN',
+    }))
+    const already = await new CloudApi(alreadyClient.client).staffCheckIn('1234', 't')
+    expect(already.result).toBe('ALREADY_CHECKED_IN')
+    expect(already.checkedInAt).toBe('2026-12-19T12:45:00+09:00')
+    // migration_sakura_r7 未適用の DB → 専用文面（cloudStore が SERVER_PENDING に分岐）
+    const missingClient = fakeClient(() => {
+      throw new Error(
+        'Could not find the function public.staff_check_in(p_passcode, p_token) in the schema cache',
+      )
+    })
+    await expect(
+      new CloudApi(missingClient.client).staffCheckIn('1234', 't'),
+    ).rejects.toThrow('migration_sakura_r7')
+    // パスコード違いは従来どおり
+    const unauthClient = fakeClient(() => {
+      throw new Error('UNAUTHORIZED: パスコードが違います')
+    })
+    await expect(
+      new CloudApi(unauthClient.client).staffCheckIn('9999', 't'),
+    ).rejects.toThrow('パスコードが違います')
+    // 未知の result は通信エラーにする
+    const weirdClient = fakeClient(() => ({ ok: false, result: 'SOMETHING_ELSE' }))
+    await expect(
+      new CloudApi(weirdClient.client).staffCheckIn('1234', 't'),
+    ).rejects.toThrow('通信に失敗しました')
+  })
 })

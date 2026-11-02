@@ -12,6 +12,8 @@
  * 折りたたみ状態は予約番号ごとに端末へ保存し、リロード後も保たれる。
  */
 
+import { isQrToken } from './qrToken'
+
 export interface LastReservationSnapshot {
   code: string
   performanceName: string
@@ -28,6 +30,12 @@ export interface LastReservationSnapshot {
   perfDate?: string
   /** 開演時刻（HH:mm）。perfDate と同じ扱い */
   perfTime?: string
+  /**
+   * 受付用 QR トークン（R7）。控えの QR はこのトークンから作り直す。
+   * この項目が追加される前に保存された控えには無いため任意項目とし、
+   * 無い場合は QR ではなく予約番号を表示する。
+   */
+  qrToken?: string
 }
 
 /**
@@ -76,6 +84,7 @@ export function parseLastReservationSnapshot(rec: unknown): LastReservationSnaps
     ...(typeof r.perfTime === 'string' && TIME_RE.test(r.perfTime)
       ? { perfTime: r.perfTime }
       : {}),
+    ...(isQrToken(r.qrToken) ? { qrToken: r.qrToken } : {}),
   }
 }
 

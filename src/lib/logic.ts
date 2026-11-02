@@ -1,4 +1,5 @@
 import { ALL_SEATS, SEAT_BY_ID, type Floor } from '../data/seats'
+import { generateQrToken, isQrToken } from './qrToken'
 
 /**
  * 予約・販売ロジック（純粋関数群）。
@@ -74,6 +75,18 @@ export interface Reservation {
    * Web予約や販売者を選ばなかった販売では未設定。
    */
   seller?: string
+  /**
+   * 受付用 QR トークン（R7）。予約ごとに発行する推測不能な値で、
+   * QR にはこのトークンだけを入れる（予約番号は入れない＝偽装防止）。
+   * この項目が追加される前に作られた予約・控えには無いため任意項目。
+   */
+  qrToken?: string
+  /** 受付（来場チェックイン）した日時 ISO。未受付は null/未設定 */
+  checkedInAt?: string | null
+  /** 予約時点の公演日スナップショット（YYYY-MM-DD）。QR受付の公演照合用 */
+  perfDate?: string
+  /** 予約時点の公演名スナップショット。QR受付の公演照合用 */
+  perfName?: string
 }
 
 export interface AppData {
@@ -310,6 +323,16 @@ export function normalizeReservation(
     createdAt: asString(rec.createdAt, new Date().toISOString()),
     seller:
       typeof rec.seller === 'string' && rec.seller.trim() ? rec.seller.trim() : undefined,
+    // QRトークンは形式が正しいものだけ引き継ぐ（旧データには無い）
+    ...(isQrToken(rec.qrToken) ? { qrToken: rec.qrToken } : {}),
+    checkedInAt:
+      typeof rec.checkedInAt === 'string' && rec.checkedInAt ? rec.checkedInAt : null,
+    ...(typeof rec.perfDate === 'string' && rec.perfDate
+      ? { perfDate: rec.perfDate }
+      : {}),
+    ...(typeof rec.perfName === 'string' && rec.perfName
+      ? { perfName: rec.perfName }
+      : {}),
   }
 }
 
@@ -550,6 +573,11 @@ export function createReservation(
     paid: input.source === 'door',
     cancelled: false,
     createdAt: new Date().toISOString(),
+    // 受付QR用トークンを発行し、公演のスナップショットを記録する（R7）。
+    // クラウドモードではサーバ発行のトークンで上書きされる（cloudStore）。
+    qrToken: generateQrToken(),
+    perfDate: data.performance.date,
+    perfName: data.performance.name,
     // 販売者は当日販売（手売り含む）でのみ記録する（Web予約には付けない）
     seller:
       input.source === 'door' && input.seller?.trim() ? input.seller.trim() : undefined,
@@ -612,7 +640,64 @@ export function uncancelReservation(
 }
 
 export function setCheckedIn(data: AppData, reservationId: string, value: boolean): AppData {
-  return updateReservation(data, reservationId, { checkedIn: value })
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) return data
+  // 受付日時は「使用済み」表示の根拠になるため、来場フラグと一緒に保つ（R7）
+  const checkedInAt = value
+    ? (target.checkedInAt ?? new Date().toISOString())
+    : null
+  return updateReservation(data, reservationId, { checkedIn: value, checkedInAt })
+}
+
+/* ---------------- QR受付（トークン検証・R7） ---------------- */
+
+/**
+ * QR受付の結果コード。クラウドの staff_check_in RPC の契約と同一。
+ * 判定の優先順位も RPC と揃える:
+ * NOT_FOUND → WRONG_PERFORMANCE → CANCELLED → ALREADY_CHECKED_IN → OK
+ */
+export type CheckInResult =
+  | 'OK'
+  | 'ALREADY_CHECKED_IN'
+  | 'CANCELLED'
+  | 'WRONG_PERFORMANCE'
+  | 'NOT_FOUND'
+
+/**
+ * トークンで受付する（ローカルモードの検証・状態機械。純粋関数）。
+ * クラウドモードでは同じ規則をサーバ（staff_check_in RPC）が判定する。
+ * - トークンが一致する予約が無ければ NOT_FOUND（偽造・改ざんはここに落ちる）
+ * - 予約時点の公演スナップショットが現在の公演設定と違えば WRONG_PERFORMANCE
+ *   （スナップショットを持たない旧予約は照合できないため対象外）
+ * - OK のときだけ data を更新して返す（checkedIn + checkedInAt を記録）
+ */
+export function checkInByToken(
+  data: AppData,
+  token: string,
+  now: Date = new Date(),
+): { data: AppData; result: CheckInResult; reservation: Reservation | null } {
+  const target = data.reservations.find((r) => r.qrToken && r.qrToken === token)
+  if (!target) return { data, result: 'NOT_FOUND', reservation: null }
+  if (
+    target.perfDate !== undefined &&
+    target.perfName !== undefined &&
+    (target.perfDate !== data.performance.date || target.perfName !== data.performance.name)
+  ) {
+    return { data, result: 'WRONG_PERFORMANCE', reservation: target }
+  }
+  if (target.cancelled) return { data, result: 'CANCELLED', reservation: target }
+  if (target.checkedIn) {
+    return { data, result: 'ALREADY_CHECKED_IN', reservation: target }
+  }
+  const next = updateReservation(data, target.id, {
+    checkedIn: true,
+    checkedInAt: now.toISOString(),
+  })
+  return {
+    data: next,
+    result: 'OK',
+    reservation: next.reservations.find((r) => r.id === target.id) ?? null,
+  }
 }
 
 /** 支払い済みにすると、その予約の席は「支払済（販売済）」状態になる */
@@ -763,6 +848,60 @@ export function reservationDisplayName(reservation: Reservation): string {
     return '当日販売（購入者名なし）'
   }
   return `${reservation.name} 様`
+}
+
+/**
+ * 席リストの圧縮表記（スタッフ表示用）。
+ * 同じ階・同じ列の連続席を範囲にまとめ、「1階 3列 11〜13番・15番」の形にする。
+ * 個別ラベルを「、」で並べると1予約で何行も折り返して読みにくいため、
+ * スタッフ画面（受付一覧・QR受付・当日販売・集計印刷）ではこちらを使う。
+ * 列・番号を持たない席（車椅子席・親子室）はラベルそのままで末尾に並べる。
+ */
+export function formatSeatList(seatIds: string[]): string {
+  const groups = new Map<string, { floor: number; row: number; numbers: number[] }>()
+  const specials: string[] = []
+  for (const id of seatIds) {
+    const seat = SEAT_BY_ID.get(id)
+    if (!seat) {
+      specials.push(id)
+      continue
+    }
+    if (seat.row === null || seat.number === null) {
+      specials.push(seat.label)
+      continue
+    }
+    const key = `${seat.floor}-${seat.row}`
+    let group = groups.get(key)
+    if (!group) {
+      group = { floor: seat.floor, row: seat.row, numbers: [] }
+      groups.set(key, group)
+    }
+    group.numbers.push(seat.number)
+  }
+  const parts: string[] = []
+  for (const group of [...groups.values()].sort(
+    (a, b) => a.floor - b.floor || a.row - b.row,
+  )) {
+    const nums = [...new Set(group.numbers)].sort((a, b) => a - b)
+    const runs: string[] = []
+    let start = nums[0]
+    let prev = nums[0]
+    const flush = () => {
+      runs.push(start === prev ? `${start}番` : `${start}〜${prev}番`)
+    }
+    for (let i = 1; i < nums.length; i++) {
+      if (nums[i] === prev + 1) {
+        prev = nums[i]
+      } else {
+        flush()
+        start = nums[i]
+        prev = nums[i]
+      }
+    }
+    flush()
+    parts.push(`${group.floor}階 ${group.row}列 ${runs.join('・')}`)
+  }
+  return [...parts, ...specials].join('、')
 }
 
 /** 予約の券種内訳を「大人×2・子供×1」の形で返す（受付表示用） */

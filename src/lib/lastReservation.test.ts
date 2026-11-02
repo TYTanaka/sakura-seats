@@ -145,6 +145,24 @@ describe('公演日・開演時刻（カレンダー導線用）の読み取り'
   })
 })
 
+describe('QRトークン（R7）の読み取り', () => {
+  it('形式が正しい qrToken は引き継がれる', () => {
+    const withToken = { ...SNAP_A, qrToken: 'abcdefghij0123456789AB' }
+    expect(parseLastReservations(JSON.stringify([withToken]))).toEqual([withToken])
+  })
+
+  it('形式が崩れた qrToken（予約番号など）は「無し」として落とされる', () => {
+    const broken = { ...SNAP_A, qrToken: 'SK-0001' }
+    const [parsed] = parseLastReservations(JSON.stringify([broken]))
+    expect(parsed?.qrToken).toBeUndefined()
+  })
+
+  it('追加前に保存された控え（項目なし）はそのまま読める', () => {
+    const [parsed] = parseLastReservations(JSON.stringify([SNAP_A]))
+    expect(parsed?.qrToken).toBeUndefined()
+  })
+})
+
 describe('折りたたみ状態の保存', () => {
   it('折りたたみ→読み戻しで往復できる（広げ直しも）', () => {
     stubStorage()

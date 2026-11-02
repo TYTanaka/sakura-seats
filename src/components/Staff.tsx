@@ -5,7 +5,6 @@ import {
   SIDE_L_SEATS,
   SIDE_R_SEATS,
   WHEELCHAIR_SEATS,
-  seatById,
   seatIdsOfRow,
   type Floor,
   type SeatDef,
@@ -14,11 +13,10 @@ import {
   activeReservations,
   defaultTicketType,
   doorsOpenBeforeStart,
+  formatSeatList,
   formatYen,
   normalizePhone,
   normalizeSellerNames,
-  reservationDisplayName,
-  reservationTotal,
   reservationTypeSummary,
   seatStatus,
   totals,
@@ -37,6 +35,7 @@ import SeatMap, {
 } from './SeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import QrReception from './QrReception'
+import ReservationCard from './ReservationCard'
 
 type StaffTab = 'reception' | 'door' | 'settings' | 'summary' | 'perf'
 const ALL_SEAT_IDS = ALL_SEATS.map((s) => s.id)
@@ -274,7 +273,6 @@ function Reception() {
   const [showCancelled, setShowCancelled] = useState(false)
   const [unpaidOnly, setUnpaidOnly] = useState(false)
   const [qrMode, setQrMode] = useState(false)
-  const [confirmingCancel, setConfirmingCancel] = useState<string | null>(null)
 
   // 失敗はトーストでその場に出す（一覧上部の表示だとスクロール中に気づけない・R4-4）
   const runAction = (fn: () => Promise<void>) => {
@@ -389,103 +387,14 @@ function Reception() {
       <ul className="reservation-list">
         {list.map((res) => (
           <li key={res.id} className={`reservation-item${res.cancelled ? ' is-cancelled' : ''}`}>
-            <div className="reservation-main">
-              <p className="reservation-title">
-                <span className="reservation-code-small">{res.id}</span>
-                <span className="reservation-name">{reservationDisplayName(res)}</span>
-                <span className={`source-badge source-${res.source}`}>
-                  {res.source === 'door' ? '当日販売' : '予約'}
-                </span>
-                {res.cancelled && <span className="source-badge source-cancelled">キャンセル済</span>}
-              </p>
-              <p className="muted small">
-                {res.seatIds.map((id) => seatById(id).label).join('、')}
-              </p>
-              <p className="muted small">
-                <span data-type-breakdown>{reservationTypeSummary(res)}</span>
-                {' ／ '}電話：{res.phone || '（未入力）'} ／ 合計 {formatYen(reservationTotal(res))}
-                {res.seller && (
-                  <>
-                    {' ／ '}販売者：<span data-seller-name>{res.seller}</span>
-                  </>
-                )}
-                {res.note && <> ／ 備考：{res.note}</>}
-              </p>
-            </div>
-            {!res.cancelled && (
-              <div className="reservation-actions">
-                {!(res.paid && res.checkedIn) && (
-                  <button
-                    type="button"
-                    data-action="complete"
-                    className="toggle-btn complete-btn"
-                    onClick={() => handleComplete(res)}
-                  >
-                    受付完了（支払い＋来場）
-                  </button>
-                )}
-                <button
-                  type="button"
-                  data-action="checkin"
-                  aria-pressed={res.checkedIn}
-                  className={`toggle-btn${res.checkedIn ? ' on' : ''}`}
-                  onClick={() => runAction(() => setCheckedIn(res.id, !res.checkedIn))}
-                >
-                  {res.checkedIn ? '✓ 来場済み' : '来場チェックイン'}
-                </button>
-                <button
-                  type="button"
-                  data-action="pay"
-                  aria-pressed={res.paid}
-                  className={`toggle-btn${res.paid ? ' on' : ''}`}
-                  onClick={() => runAction(() => setPaid(res.id, !res.paid))}
-                >
-                  {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
-                </button>
-                {confirmingCancel === res.id ? (
-                  <span className="cancel-confirm">
-                    キャンセルしますか？
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-small"
-                      onClick={() => {
-                        runAction(() => cancel(res.id))
-                        setConfirmingCancel(null)
-                      }}
-                    >
-                      キャンセルする
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-small"
-                      onClick={() => setConfirmingCancel(null)}
-                    >
-                      やめる
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-small"
-                    onClick={() => setConfirmingCancel(res.id)}
-                  >
-                    予約キャンセル
-                  </button>
-                )}
-              </div>
-            )}
-            {res.cancelled && (
-              <div className="reservation-actions">
-                <button
-                  type="button"
-                  data-action="uncancel"
-                  className="toggle-btn"
-                  onClick={() => handleUncancel(res)}
-                >
-                  キャンセルを取り消す
-                </button>
-              </div>
-            )}
+            <ReservationCard
+              res={res}
+              onComplete={handleComplete}
+              onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
+              onTogglePaid={(r) => runAction(() => setPaid(r.id, !r.paid))}
+              onCancel={(r) => runAction(() => cancel(r.id))}
+              onUncancel={handleUncancel}
+            />
           </li>
         ))}
       </ul>
@@ -611,7 +520,7 @@ function DoorSales() {
         seller: effectiveSeller || undefined,
       })
       setMessage(
-        `販売を記録しました（${res.id}：${res.seatIds.map((id) => seatById(id).label).join('、')} ／ ${formatYen(res.amount)}・支払済）`,
+        `販売を記録しました（${res.id}：${formatSeatList(res.seatIds)} ／ ${formatYen(res.amount)}・支払済）`,
       )
       setSelected([])
       setTypeBySeat({})
@@ -630,7 +539,7 @@ function DoorSales() {
       <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
       {selected.length > 0 && (
         <p className="door-selection-bar" data-door-selection-bar>
-          選択中：{selected.map((id) => seatById(id).label).join('、')}
+          選択中：{formatSeatList(selected)}
         </p>
       )}
       {selected.length > 0 && (
@@ -860,7 +769,7 @@ function Summary() {
                 <td>{r.id}</td>
                 <td>{r.name}</td>
                 <td>{r.phone}</td>
-                <td>{r.seatIds.map((id) => seatById(id).label).join('、')}</td>
+                <td>{formatSeatList(r.seatIds)}</td>
                 <td>{reservationTypeSummary(r)}</td>
                 <td>{formatYen(r.amount)}</td>
                 <td>{r.paid ? '支払済' : '未払い'}</td>

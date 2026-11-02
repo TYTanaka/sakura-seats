@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   normalizePerformance,
+  type CheckInResult,
   type Performance,
   type Reservation,
   type SelfCancelResult,
   type UncancelResult,
 } from './logic'
+import { isQrToken } from './qrToken'
 
 /**
  * Supabase RPC のクライアント層。
@@ -55,6 +57,17 @@ interface RawReservationRow {
   createdAt: string
   /** 販売者（staff_get_all のみが返す。lookup 等では含まれない） */
   seller?: string | null
+  /**
+   * 受付用 QR トークン（R7・migration_sakura_r7）。
+   * 本人確認済みの経路（book_seats の返却・lookup_reservation）でのみ返る。
+   * staff_get_all には含めない（受付はトークン提示→RPC検証で完結するため）。
+   */
+  qrToken?: string | null
+  /** 受付日時（staff_get_all が返す。未受付は null） */
+  checkedInAt?: string | null
+  /** 予約時点の公演スナップショット（公演照合用） */
+  perfDate?: string | null
+  perfName?: string | null
 }
 
 /** DB行 → クライアントの Reservation への変換 */
@@ -76,6 +89,11 @@ export function mapReservationRow(row: RawReservationRow): Reservation {
     createdAt: row.createdAt,
     seller:
       typeof row.seller === 'string' && row.seller.trim() ? row.seller.trim() : undefined,
+    qrToken: isQrToken(row.qrToken) ? row.qrToken : undefined,
+    checkedInAt:
+      typeof row.checkedInAt === 'string' && row.checkedInAt ? row.checkedInAt : null,
+    perfDate: typeof row.perfDate === 'string' && row.perfDate ? row.perfDate : undefined,
+    perfName: typeof row.perfName === 'string' && row.perfName ? row.perfName : undefined,
   }
 }
 
@@ -138,6 +156,16 @@ function rpcErrorToMessage(error: { message: string }): Error {
       'キャンセルの取り消しは、サーバ更新（migration_sakura_r6 の適用）後に使えるようになります',
     )
   }
+  // R7 の RPC が未適用の DB では QR 受付だけがこの文面になる。
+  // 呼び出し側（cloudStore）はこの文面を見て「サーバ更新待ち」に分岐する
+  if (
+    msg.includes('staff_check_in') &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      'QR受付は、サーバ更新（migration_sakura_r7 の適用）後に使えるようになります',
+    )
+  }
   if (msg.includes('SEAT_TAKEN')) {
     return new Error('選択された座席の一部が、ほかの方に予約されてしまいました。座席を選び直してください')
   }
@@ -184,14 +212,22 @@ export class CloudApi {
     phone: string
     note: string
     items: { seatId: string; typeId: string }[]
-  }): Promise<{ code: string; amount: number }> {
-    const raw = await this.call<{ code: string; amount: number }>('book_seats', {
-      p_name: input.name,
-      p_phone: input.phone,
-      p_note: input.note,
-      p_items: input.items,
-    })
-    return { code: raw.code, amount: raw.amount }
+  }): Promise<{ code: string; amount: number; token?: string }> {
+    const raw = await this.call<{ code: string; amount: number; token?: unknown }>(
+      'book_seats',
+      {
+        p_name: input.name,
+        p_phone: input.phone,
+        p_note: input.note,
+        p_items: input.items,
+      },
+    )
+    // R7 未適用の DB では token が返らない（undefined のまま＝QRは番号表示に落とす）
+    return {
+      code: raw.code,
+      amount: raw.amount,
+      token: isQrToken(raw.token) ? raw.token : undefined,
+    }
   }
 
   async lookupReservation(code: string, phone: string): Promise<Reservation | null> {
@@ -212,15 +248,22 @@ export class CloudApi {
     name: string,
     items: { seatId: string; typeId: string }[],
     seller?: string,
-  ): Promise<{ code: string; amount: number }> {
+  ): Promise<{ code: string; amount: number; token?: string }> {
     // 販売者対応の4引数オーバーロードを呼ぶ（未選択は null → サーバ側で NULL 記録）
-    const raw = await this.call<{ code: string; amount: number }>('staff_sell', {
-      p_passcode: passcode,
-      p_name: name,
-      p_items: items,
-      p_seller: seller?.trim() ? seller.trim() : null,
-    })
-    return { code: raw.code, amount: raw.amount }
+    const raw = await this.call<{ code: string; amount: number; token?: unknown }>(
+      'staff_sell',
+      {
+        p_passcode: passcode,
+        p_name: name,
+        p_items: items,
+        p_seller: seller?.trim() ? seller.trim() : null,
+      },
+    )
+    return {
+      code: raw.code,
+      amount: raw.amount,
+      token: isQrToken(raw.token) ? raw.token : undefined,
+    }
   }
 
   /**
@@ -264,6 +307,71 @@ export class CloudApi {
       return result as UncancelResult
     }
     throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
+  }
+
+  /**
+   * QR受付（staff_check_in RPC・R7）。トークンをサーバで検証し、受付を記録する。
+   * 業務結果は例外ではなく JSON { ok, result } で返るので result をそのまま返す。
+   * 予約が見つかった場合は画面表示用の要約（Reservation 形式）も返す。
+   * RPC 自体が未適用の DB では call が専用エラー（migration_sakura_r7 案内）を投げる。
+   */
+  async staffCheckIn(
+    passcode: string,
+    token: string,
+  ): Promise<{
+    result: CheckInResult
+    reservation: Reservation | null
+    checkedInAt: string | null
+  }> {
+    const raw = (await this.call<unknown>('staff_check_in', {
+      p_passcode: passcode,
+      p_token: token,
+    })) as {
+      result?: unknown
+      code?: unknown
+      name?: unknown
+      items?: unknown
+      amount?: unknown
+      kind?: unknown
+      paid?: unknown
+      checkedInAt?: unknown
+      perfDate?: unknown
+      perfName?: unknown
+    } | null
+    const known: CheckInResult[] = [
+      'OK',
+      'ALREADY_CHECKED_IN',
+      'CANCELLED',
+      'WRONG_PERFORMANCE',
+      'NOT_FOUND',
+    ]
+    const result = raw?.result
+    if (typeof result !== 'string' || !(known as string[]).includes(result)) {
+      throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
+    }
+    const checkedInAt =
+      typeof raw?.checkedInAt === 'string' && raw.checkedInAt ? raw.checkedInAt : null
+    let reservation: Reservation | null = null
+    if (typeof raw?.code === 'string' && Array.isArray(raw.items)) {
+      reservation = mapReservationRow({
+        id: '',
+        code: raw.code,
+        name: typeof raw.name === 'string' ? raw.name : '',
+        phone: '',
+        note: '',
+        items: raw.items as Reservation['items'],
+        amount: typeof raw.amount === 'number' ? raw.amount : 0,
+        kind: raw.kind === 'door' ? 'door' : 'online',
+        paid: raw.paid === true,
+        checkedIn: result === 'OK' || result === 'ALREADY_CHECKED_IN',
+        status: result === 'CANCELLED' ? 'cancelled' : 'active',
+        createdAt: '',
+        checkedInAt,
+        perfDate: typeof raw.perfDate === 'string' ? raw.perfDate : null,
+        perfName: typeof raw.perfName === 'string' ? raw.perfName : null,
+      })
+    }
+    return { result: result as CheckInResult, reservation, checkedInAt }
   }
 
   async staffUpdateReservation(

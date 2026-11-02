@@ -10,6 +10,7 @@ import {
 } from 'react'
 import {
   cancelReservation,
+  checkInByToken as applyCheckInByToken,
   createReservation,
   emptyData,
   findReservationByCodePhone,
@@ -22,6 +23,7 @@ import {
   uncancelReservation as applyUncancelReservation,
   updatePerformance,
   type AppData,
+  type CheckInResult,
   type NewReservationInput,
   type Performance,
   type Reservation,
@@ -38,6 +40,19 @@ import { isStaleRevision, nextRevision, parseRevision } from './revision'
  *   Supabase RPC 経由で全端末同期する（実装は cloudStore.tsx を動的 import）
  * 操作はどちらも Promise を返す形に統一し、画面側は await して使う。
  */
+
+/**
+ * QR受付（checkInByToken）の結果。
+ * result は logic の CheckInResult と同一の分類に、クラウドで RPC 自体が
+ * 未適用だった場合の 'SERVER_PENDING' を加えたもの。
+ */
+export interface CheckInOutcome {
+  result: CheckInResult | 'SERVER_PENDING'
+  /** 予約が特定できた場合の表示用予約（NOT_FOUND / SERVER_PENDING では null） */
+  reservation: Reservation | null
+  /** 受付日時 ISO（OK / ALREADY_CHECKED_IN のとき） */
+  checkedInAt: string | null
+}
 
 export interface Store {
   data: AppData
@@ -67,6 +82,12 @@ export interface Store {
    */
   uncancelReservation: (reservationId: string) => Promise<UncancelResult>
   setCheckedIn: (reservationId: string, value: boolean) => Promise<void>
+  /**
+   * QR受付: トークンを検証して受付する（R7）。
+   * クラウド: staff_check_in RPC がサーバ検証する（未適用なら SERVER_PENDING）。
+   * ローカル: checkInByToken（logic）と同じ規則で端末内検証する。
+   */
+  checkInByToken: (token: string) => Promise<CheckInOutcome>
   setPaid: (reservationId: string, value: boolean) => Promise<void>
   /** 受付完了ワンタップ: 支払い済み＋来場済みを一度に設定する */
   completeReception: (reservationId: string) => Promise<void>
@@ -280,6 +301,20 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
       },
       setCheckedIn: async (reservationId, value) => {
         mutate((prev) => setCheckedIn(prev, reservationId, value))
+      },
+      checkInByToken: async (token) => {
+        // 他タブの更新を取り込んでから判定し直す（二重受付の防止）
+        refreshIfStale()
+        const { data: next, result, reservation } = applyCheckInByToken(
+          dataRef.current,
+          token,
+        )
+        if (result === 'OK') commit(next)
+        return {
+          result,
+          reservation,
+          checkedInAt: reservation?.checkedInAt ?? null,
+        }
       },
       setPaid: async (reservationId, value) => {
         mutate((prev) => setPaid(prev, reservationId, value))

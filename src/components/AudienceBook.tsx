@@ -288,6 +288,8 @@ export default function AudienceBook({
         // 控えからカレンダー登録できるよう、公演日・開演時刻も一緒に残す
         perfDate: perf.date,
         perfTime: perf.time,
+        // 控えの QR を作り直せるよう、受付用トークンも一緒に残す（R7）
+        qrToken: reservation.qrToken,
       })
       setCompleted(reservation)
       setStep('done')
@@ -343,7 +345,7 @@ export default function AudienceBook({
         <p className="done-badge">予約が完了しました</p>
         <p className="done-lead">ご予約ありがとうございます。予約番号をお控えください。</p>
         <p className="reservation-code">{completed.id}</p>
-        <ReservationQr code={completed.id} />
+        <ReservationQr code={completed.id} token={completed.qrToken} />
         <dl className="detail-list">
           <div>
             <dt>公演</dt>

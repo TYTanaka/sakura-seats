@@ -29,6 +29,7 @@ import flyerUrl from './assets/flyer.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
 import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
+import { encodeQrPayload } from './lib/qrToken'
 import Staff from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
@@ -221,7 +222,9 @@ function TodayCard({ perf }: { perf: Performance }) {
 function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot }) {
   const [qrExpanded, setQrExpanded] = useState(false)
   const [folded, setFolded] = useState(() => loadFoldedCodes().has(snapshot.code))
-  const qrUrl = useReservationQrUrl(snapshot.code)
+  // QR は予約番号ではなくトークンから作る（R7）。トークンの無い旧い控えは番号表示
+  const qrPayload = snapshot.qrToken ? encodeQrPayload(snapshot.qrToken) : null
+  const qrUrl = useReservationQrUrl(qrPayload)
   const calendarUrl = buildSnapshotCalendarUrl(snapshot)
 
   const toggleFolded = () => {
@@ -273,8 +276,10 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
               width={64}
               height={64}
             />
-          ) : (
+          ) : qrPayload ? (
             <span className="last-res-qr-loading">QR準備中</span>
+          ) : (
+            <span className="last-res-qr-loading">番号で受付</span>
           )}
           <span className="last-res-qr-hint">{qrExpanded ? 'QRを閉じる' : 'QRを拡大'}</span>
         </button>
@@ -298,7 +303,7 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
           <p className="last-res-line">合計：{formatYen(snapshot.amount)}</p>
         </div>
       </div>
-      {qrExpanded && <ReservationQr code={snapshot.code} />}
+      {qrExpanded && <ReservationQr code={snapshot.code} token={snapshot.qrToken} />}
       <div className="last-res-share">
         <a
           className="last-res-share-btn is-line"

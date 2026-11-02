@@ -17,7 +17,7 @@ import {
   type Reservation,
 } from './logic'
 import { createCloudApi, type CloudApi } from './cloud'
-import { StoreContext, type Store } from './store'
+import { StoreContext, type CheckInOutcome, type Store } from './store'
 
 /**
  * クラウドモードのストア（Supabase RPC）。
@@ -179,6 +179,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       input: NewReservationInput,
       code: string,
       amount: number,
+      token?: string,
     ): Reservation => {
       // ローカルの純粋関数で明細スナップショット等の形を揃える（金額はサーバ値で上書き）
       const scratch: AppData = {
@@ -187,7 +188,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         seatStates: {},
       }
       const { reservation } = createReservation(scratch, input)
-      return { ...reservation, id: code, amount }
+      // QRトークンはサーバ発行が正。未適用の DB で返らなかった場合は
+      // ローカル生成値を持たせず、QR を出さない（番号表示に落とす）
+      return { ...reservation, id: code, amount, qrToken: token }
     }
 
     return {
@@ -207,7 +210,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
               input.seats.map((s) => ({ seatId: s.seatId, typeId: s.typeId })),
               input.seller,
             )
-            const reservation = buildReservation(input, res.code, res.amount)
+            const reservation = buildReservation(input, res.code, res.amount, res.token)
             await refreshAll()
             return reservation
           }
@@ -217,7 +220,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             note: input.note,
             items: input.seats.map((s) => ({ seatId: s.seatId, typeId: s.typeId })),
           })
-          const reservation = buildReservation(input, res.code, res.amount)
+          const reservation = buildReservation(input, res.code, res.amount, res.token)
           await refreshAll()
           return reservation
         } catch (e) {
@@ -245,6 +248,21 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           await refreshAll()
           return result
         } catch (e) {
+          void refreshWithRetry()
+          throw e
+        }
+      },
+      checkInByToken: async (token): Promise<CheckInOutcome> => {
+        try {
+          const outcome = await api().staffCheckIn(staffPasscode(), token)
+          // 受付状態が変わる（または既に変わっていた）ためスタッフデータを最新化する
+          await refreshStaff()
+          return outcome
+        } catch (e) {
+          // R7 の RPC が未適用の間は「サーバ更新待ち」として返す（行き止まりにしない）
+          if (e instanceof Error && e.message.includes('migration_sakura_r7')) {
+            return { result: 'SERVER_PENDING', reservation: null, checkedInAt: null }
+          }
           void refreshWithRetry()
           throw e
         }

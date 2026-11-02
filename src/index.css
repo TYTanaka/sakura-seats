@@ -1813,6 +1813,193 @@ button.seat-available:hover {
   margin-top: 4px;
 }
 
+/* R7: QR が無い予約（旧い控え等）の番号表示フォールバック */
+.qr-code-fallback {
+  margin: 6px 0 0;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+}
+
+/* R7: カメラが使えない理由ごとの案内パネル（再試行つき） */
+.qr-cam-panel {
+  border: 1.5px dashed #e0492f;
+  border-radius: 14px;
+  background: #fff7f5;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.qr-cam-panel .error-text {
+  margin-top: 0;
+}
+
+/* R7: スキャン結果バナー（受付完了 / 使用済み / 別公演 / キャンセル / 無効 …） */
+.qr-outcome {
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1.5px solid var(--line);
+  background: #f6f2ff;
+}
+
+.qr-outcome-title {
+  margin: 0 0 4px;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.qr-outcome p {
+  margin: 0 0 4px;
+}
+
+.qr-outcome-checked-in {
+  border-color: #2e9e5b;
+  background: #edf9f1;
+}
+
+.qr-outcome-checked-in .qr-outcome-title {
+  color: #1d7a43;
+}
+
+.qr-outcome-already,
+.qr-outcome-legacy {
+  border-color: #d99a17;
+  background: #fdf6e0;
+}
+
+.qr-outcome-already .qr-outcome-title,
+.qr-outcome-legacy .qr-outcome-title {
+  color: #8a5f05;
+}
+
+.qr-outcome-cancelled,
+.qr-outcome-wrong-performance,
+.qr-outcome-not-found,
+.qr-outcome-invalid,
+.qr-outcome-error {
+  border-color: #e0492f;
+  background: #fdeceb;
+}
+
+.qr-outcome-cancelled .qr-outcome-title,
+.qr-outcome-wrong-performance .qr-outcome-title,
+.qr-outcome-not-found .qr-outcome-title,
+.qr-outcome-invalid .qr-outcome-title,
+.qr-outcome-error .qr-outcome-title {
+  color: #b02a18;
+}
+
+.qr-outcome-server-pending {
+  border-color: #a678e0;
+  background: #f3edfd;
+}
+
+/* ---------------- R7: スタッフ予約カードの階層（受付一覧・QR受付） ---------------- */
+
+.reservation-item {
+  padding: 16px 0;
+}
+
+.reservation-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+}
+
+.reservation-head .reservation-title {
+  margin: 0;
+}
+
+.reservation-name {
+  font-size: 16.5px;
+}
+
+.reservation-head .reservation-code-small {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.reservation-chips {
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.state-chip {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 8px;
+  border: 1px solid;
+}
+
+.state-chip.is-paid {
+  background: var(--mint-pale);
+  color: #1e7a5a;
+  border-color: #a9dfc9;
+}
+
+.state-chip.is-unpaid {
+  background: #fdeeda;
+  color: #8a5a12;
+  border-color: #ecca8f;
+}
+
+.state-chip.is-checkedin {
+  background: #ece7fd;
+  color: #5b3ea8;
+  border-color: #c9b8f5;
+}
+
+.reservation-seats {
+  margin: 6px 0 2px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.reservation-meta {
+  line-height: 1.6;
+}
+
+.reservation-total {
+  color: var(--burgundy);
+  font-weight: 800;
+}
+
+/* 主アクションは全幅で1つだけ、副アクションは下段に小さくまとめる */
+.reservation-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.toggle-btn.complete-btn.reservation-primary {
+  width: 100%;
+  min-height: 48px;
+  font-size: 15px;
+  background: linear-gradient(135deg, #22a06b, #146c4c);
+  border-color: #146c4c;
+  color: #fff;
+}
+
+.reservation-subactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.toggle-btn.sub {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
 .qr-result .reservation-item {
   border-top: none;
   padding-top: 0;

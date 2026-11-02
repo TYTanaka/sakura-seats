@@ -1,39 +1,68 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { seatById } from '../data/seats'
-import {
-  formatYen,
-  reservationDisplayName,
-  reservationTotal,
-  reservationTypeSummary,
-  type Reservation,
-} from '../lib/logic'
+import type { Reservation } from '../lib/logic'
 import type { BarcodeDetectorLike } from '../lib/qr'
-import { useStore } from '../lib/store'
+import { parseQrPayload } from '../lib/qrToken'
+import { useStore, type CheckInOutcome } from '../lib/store'
 import { useToast } from '../lib/toast'
-
-type CamStatus = 'starting' | 'scanning' | 'manual'
+import ReservationCard, { formatCheckedInAt } from './ReservationCard'
 
 /**
- * QRで受付モード:
- * カメラで予約番号QRを読み取り、読み込んであるスタッフ用データから該当予約を表示する。
- * - 読み取りは BarcodeDetector（あれば）→ jsQR（動的 import）の順で試す
- * - カメラが使えない/許可されない場合は、手入力フォームにフォールバックする（ dead end にしない）
- * - 新しい RPC は足さず、スタッフ入室時に読み込んだ予約データから検索する
+ * カメラの状態。行き止まりを作らないため、使えない理由ごとに分ける（R7）。
+ * - requesting: 起動中
+ * - scanning: 読み取り中
+ * - denied: 許可されなかった（再試行ボタン＋許可の仕方を案内）
+ * - unavailable: カメラ自体が無い・掴めない（再試行ボタン＋手入力案内）
+ */
+type CamStatus = 'requesting' | 'scanning' | 'denied' | 'unavailable'
+
+/** 読み取り方式。BarcodeDetector が壊れていたら jsQR に切り替える */
+type Decoder = 'barcode-detector' | 'jsqr'
+
+/** スキャン結果の表示分類 */
+type ScanOutcome =
+  | { kind: 'checked-in'; outcome: CheckInOutcome }
+  | { kind: 'already'; outcome: CheckInOutcome }
+  | { kind: 'cancelled'; outcome: CheckInOutcome }
+  | { kind: 'wrong-performance'; outcome: CheckInOutcome }
+  | { kind: 'not-found' }
+  | { kind: 'server-pending' }
+  | { kind: 'legacy'; code: string }
+  | { kind: 'invalid' }
+  | { kind: 'error' }
+
+
+
+/**
+ * QRで受付モード（R7でサーバ検証式に刷新）:
+ * QR の中身は予約ごとのトークンだけ。読み取ったらストア経由で検証する
+ * （クラウド: staff_check_in RPC がサーバ検証 / ローカル: 端末内検証）。
+ * 連番の予約番号を信頼する旧方式は廃止し、偽造・改ざんは「無効なQR」になる。
+ * 旧形式（番号そのまま）の QR は、案内を出したうえで番号照合に回す。
+ *
+ * カメラ読み取りの頑健化（実機で BarcodeDetector が使えない事象への対処）:
+ * - BarcodeDetector があっても detect() が連続で失敗したら jsQR に切り替える
+ *   （API の有無だけで判断しない。サンドボックス検証は jsQR 経路のみだった）
+ * - 許可拒否・カメラ無し・起動中を状態として分け、再試行できるようにする
+ * - 手入力フォームは常時表示する
  */
 export default function QrReception({ onClose }: { onClose: () => void }) {
-  const { data, cancel, setCheckedIn, setPaid, completeReception } = useStore()
+  const { data, cancel, setCheckedIn, setPaid, completeReception, checkInByToken } =
+    useStore()
   const { showToast } = useToast()
-  const [status, setStatus] = useState<CamStatus>('starting')
-  const [camError, setCamError] = useState('')
+  const [status, setStatus] = useState<CamStatus>('requesting')
+  const [camMessage, setCamMessage] = useState('')
+  const [decoder, setDecoder] = useState<Decoder>('jsqr')
   const [manual, setManual] = useState('')
   const [foundId, setFoundId] = useState<string | null>(null)
   const [notFoundCode, setNotFoundCode] = useState('')
-  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const [outcome, setOutcome] = useState<ScanOutcome | null>(null)
+  const [verifying, setVerifying] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const detectorRef = useRef<BarcodeDetectorLike | null>(null)
+  const detectorFailuresRef = useRef(0)
   const timerRef = useRef<number | undefined>(undefined)
   const busyRef = useRef(false)
   const stoppedRef = useRef(true)
@@ -53,12 +82,12 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     if (videoRef.current) videoRef.current.srcObject = null
   }, [])
 
-  const handleCode = useCallback(
-    (raw: string) => {
-      const code = raw.trim().toUpperCase()
+  /** 予約番号での表示（手入力・旧形式QRのフォールバック共通） */
+  const showByCode = useCallback(
+    (rawCode: string) => {
+      const code = rawCode.trim().toUpperCase()
       if (!code) return
       stopCamera()
-      setStatus('manual')
       setManual('')
       const res =
         dataRef.current.reservations.find((r) => r.id.toUpperCase() === code) ?? null
@@ -72,19 +101,84 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     },
     [stopCamera],
   )
-  const handleCodeRef = useRef(handleCode)
-  handleCodeRef.current = handleCode
+
+  /** 読み取った文字列の振り分け: トークン検証 / 旧形式案内 / 無効 */
+  const handleScanned = useCallback(
+    async (raw: string) => {
+      const parsed = parseQrPayload(raw)
+      if (parsed.kind === 'legacy') {
+        stopCamera()
+        setOutcome({ kind: 'legacy', code: parsed.code })
+        setManual(parsed.code)
+        // 案内を出したうえで、番号照合で予約を表示する
+        const code = parsed.code
+        const res =
+          dataRef.current.reservations.find((r) => r.id.toUpperCase() === code) ?? null
+        if (res) {
+          setFoundId(res.id)
+          setNotFoundCode('')
+        } else {
+          setFoundId(null)
+          setNotFoundCode(code)
+        }
+        return
+      }
+      if (parsed.kind === 'invalid') {
+        stopCamera()
+        setOutcome({ kind: 'invalid' })
+        return
+      }
+      stopCamera()
+      setVerifying(true)
+      try {
+        const result = await checkInByToken(parsed.token)
+        switch (result.result) {
+          case 'OK':
+            setOutcome({ kind: 'checked-in', outcome: result })
+            if (result.reservation) {
+              setFoundId(result.reservation.id)
+              showToast(`${result.reservation.id} を受付にしました`, 'info')
+            }
+            break
+          case 'ALREADY_CHECKED_IN':
+            setOutcome({ kind: 'already', outcome: result })
+            if (result.reservation) setFoundId(result.reservation.id)
+            break
+          case 'CANCELLED':
+            setOutcome({ kind: 'cancelled', outcome: result })
+            if (result.reservation) setFoundId(result.reservation.id)
+            break
+          case 'WRONG_PERFORMANCE':
+            setOutcome({ kind: 'wrong-performance', outcome: result })
+            break
+          case 'SERVER_PENDING':
+            setOutcome({ kind: 'server-pending' })
+            break
+          default:
+            setOutcome({ kind: 'not-found' })
+            break
+        }
+      } catch {
+        setOutcome({ kind: 'error' })
+      } finally {
+        setVerifying(false)
+      }
+    },
+    [checkInByToken, showToast, stopCamera],
+  )
+  const handleScannedRef = useRef(handleScanned)
+  handleScannedRef.current = handleScanned
 
   const startCamera = useCallback(async () => {
     if (startingRef.current) return
     startingRef.current = true
     stoppedRef.current = false
-    setStatus('starting')
-    setCamError('')
+    setStatus('requesting')
+    setCamMessage('')
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setStatus('manual')
-        setCamError(
+        setStatus('unavailable')
+        setCamMessage(
           'この端末・ブラウザではカメラを利用できません。下の欄に予約番号を入力してください。',
         )
         return
@@ -95,14 +189,50 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
         })
-      } catch {
-        if (!stoppedRef.current) {
-          setStatus('manual')
-          setCamError(
-            'カメラを使えませんでした（許可されていないか、他のアプリが使用中です）。下の欄に予約番号を入力してください。',
-          )
+      } catch (firstError) {
+        // 背面カメラ指定で掴めない端末向けに、指定なしでもう一度試す
+        const firstName =
+          firstError instanceof DOMException ? firstError.name : ''
+        if (firstName === 'OverconstrainedError' || firstName === 'NotFoundError') {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            })
+          } catch (secondError) {
+            if (!stoppedRef.current) {
+              const name =
+                secondError instanceof DOMException ? secondError.name : ''
+              if (name === 'NotAllowedError' || name === 'SecurityError') {
+                setStatus('denied')
+                setCamMessage(
+                  'カメラの使用が許可されていません。ブラウザのアドレスバー左のアイコン（サイトの設定）からカメラを「許可」に変えてから、もう一度お試しください。',
+                )
+              } else {
+                setStatus('unavailable')
+                setCamMessage(
+                  'カメラを起動できませんでした（カメラが見つからないか、他のアプリが使用中です）。下の欄に予約番号を入力してください。',
+                )
+              }
+            }
+            return
+          }
+        } else if (!stoppedRef.current) {
+          if (firstName === 'NotAllowedError' || firstName === 'SecurityError') {
+            setStatus('denied')
+            setCamMessage(
+              'カメラの使用が許可されていません。ブラウザのアドレスバー左のアイコン（サイトの設定）からカメラを「許可」に変えてから、もう一度お試しください。',
+            )
+          } else {
+            setStatus('unavailable')
+            setCamMessage(
+              'カメラを起動できませんでした（他のアプリが使用中かもしれません）。下の欄に予約番号を入力してください。',
+            )
+          }
+          return
+        } else {
+          return
         }
-        return
       }
       if (stoppedRef.current) {
         stream.getTracks().forEach((t) => t.stop())
@@ -116,6 +246,8 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
         return
       }
       detectorRef.current = createBarcodeDetector()
+      detectorFailuresRef.current = 0
+      setDecoder(detectorRef.current ? 'barcode-detector' : 'jsqr')
       const video = videoRef.current
       if (video) {
         video.srcObject = stream
@@ -137,9 +269,21 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
             let code: string | null = null
             const detector = detectorRef.current
             if (detector) {
-              const results = await detector.detect(v)
-              code = results?.[0]?.rawValue ?? null
-            } else {
+              try {
+                const results = await detector.detect(v)
+                detectorFailuresRef.current = 0
+                code = results?.[0]?.rawValue ?? null
+              } catch {
+                // BarcodeDetector があるのに読み取り自体が壊れている端末では、
+                // 連続失敗を数えて jsQR に切り替える（無言で詰まらせない）
+                detectorFailuresRef.current += 1
+                if (detectorFailuresRef.current >= 3) {
+                  detectorRef.current = null
+                  setDecoder('jsqr')
+                }
+              }
+            }
+            if (!code && !detectorRef.current) {
               const canvas = canvasRef.current
               if (canvas) {
                 const scale = Math.min(1, 640 / v.videoWidth)
@@ -155,7 +299,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
               }
             }
             if (code && !stoppedRef.current) {
-              handleCodeRef.current(code)
+              void handleScannedRef.current(code)
               return
             }
           } catch {
@@ -165,10 +309,10 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
           }
         }
         if (!stoppedRef.current) {
-          timerRef.current = window.setTimeout(() => void tick(), 150)
+          timerRef.current = window.setTimeout(() => void tick(), 200)
         }
       }
-      timerRef.current = window.setTimeout(() => void tick(), 150)
+      timerRef.current = window.setTimeout(() => void tick(), 200)
     } finally {
       startingRef.current = false
     }
@@ -201,12 +345,14 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
   const scanNext = () => {
     setFoundId(null)
     setNotFoundCode('')
-    setConfirmingCancel(false)
+    setOutcome(null)
     void startCamera()
   }
 
+  const showCamera = !res && !notFoundCode && !outcome && !verifying
+
   return (
-    <div className="qr-reception" data-qr-reception>
+    <div className="qr-reception" data-qr-reception data-qr-decoder={decoder}>
       <div className="btn-row qr-reception-head">
         <h4 className="qr-reception-title">QRで受付</h4>
         <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>
@@ -214,42 +360,138 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <p className="muted small">
-        お客様の予約完了画面・予約確認画面にあるQRコードをカメラに映すと、その予約が表示されます。
+        お客様の予約完了画面・予約確認画面にあるQRコードをカメラに映してください。サーバで照合してから受付します。
       </p>
 
-      {!res && !notFoundCode && (
+      {showCamera && (
         <>
-          <div className="qr-video-wrap">
-            <video
-              ref={videoRef}
-              className="qr-video"
-              data-qr-video
-              playsInline
-              muted
-            />
-            {status !== 'scanning' && (
-              <div className="qr-video-overlay">
-                {status === 'starting' ? 'カメラを起動しています…' : 'カメラは使えません'}
-              </div>
-            )}
-          </div>
-          <canvas ref={canvasRef} hidden />
+          {(status === 'requesting' || status === 'scanning') && (
+            <div className="qr-video-wrap">
+              <video
+                ref={videoRef}
+                className="qr-video"
+                data-qr-video
+                playsInline
+                muted
+                autoPlay
+              />
+              {status === 'requesting' && (
+                <div className="qr-video-overlay">カメラを起動しています…</div>
+              )}
+            </div>
+          )}
           {status === 'scanning' && (
             <p className="qr-scan-note">QRコードをカメラに映してください…</p>
           )}
-          {camError && (
-            <p className="error-text" data-qr-error>
-              {camError}
-            </p>
+          {(status === 'denied' || status === 'unavailable') && (
+            <div className="qr-cam-panel" data-qr-cam-state={status}>
+              <p className="error-text" data-qr-error>
+                {camMessage}
+              </p>
+              <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                data-qr-cam-retry
+                onClick={() => void startCamera()}
+              >
+                カメラをもう一度試す
+              </button>
+            </div>
           )}
+          <canvas ref={canvasRef} hidden />
         </>
+      )}
+
+      {verifying && (
+        <p className="qr-scan-note" data-qr-verifying>
+          QRコードを照合しています…
+        </p>
+      )}
+
+      {outcome && (
+        <div
+          className={`qr-outcome qr-outcome-${outcome.kind}`}
+          data-qr-outcome={outcome.kind}
+        >
+          {outcome.kind === 'checked-in' && (
+            <p className="qr-outcome-title">✓ 受付が完了しました</p>
+          )}
+          {outcome.kind === 'already' && (
+            <>
+              <p className="qr-outcome-title">このQRは使用済みです</p>
+              <p className="small">
+                {formatCheckedInAt(outcome.outcome.checkedInAt)
+                  ? `${formatCheckedInAt(outcome.outcome.checkedInAt)} に受付済みです。二重受付はされません。`
+                  : 'すでに受付済みです。二重受付はされません。'}
+              </p>
+            </>
+          )}
+          {outcome.kind === 'cancelled' && (
+            <>
+              <p className="qr-outcome-title">この予約はキャンセル済みです</p>
+              <p className="small">受付はできません。お客様には主催者への連絡をご案内ください。</p>
+            </>
+          )}
+          {outcome.kind === 'wrong-performance' && (
+            <>
+              <p className="qr-outcome-title">別の公演のQRコードです</p>
+              <p className="small">
+                {outcome.outcome.reservation
+                  ? `この予約は「${outcome.outcome.reservation.perfName ?? ''}（${outcome.outcome.reservation.perfDate ?? ''}）」のものです。現在の公演設定と一致しないため受付できません。`
+                  : '現在の公演設定と一致しないため受付できません。'}
+              </p>
+            </>
+          )}
+          {outcome.kind === 'not-found' && (
+            <>
+              <p className="qr-outcome-title">無効なQRコードです</p>
+              <p className="small">
+                予約が見つかりませんでした。お客様の予約番号を確認して、下の欄から受付してください。
+              </p>
+            </>
+          )}
+          {outcome.kind === 'invalid' && (
+            <>
+              <p className="qr-outcome-title">無効なQRコードです</p>
+              <p className="small">
+                このアプリの受付用QRではないようです。お客様の予約番号を確認して、下の欄から受付してください。
+              </p>
+            </>
+          )}
+          {outcome.kind === 'server-pending' && (
+            <>
+              <p className="qr-outcome-title">QR受付はサーバ更新の準備中です</p>
+              <p className="small">
+                サーバ更新（migration_sakura_r7）が適用されるまで QR
+                受付は使えません。当面は下の欄に予約番号を入力して受付してください。
+              </p>
+            </>
+          )}
+          {outcome.kind === 'legacy' && (
+            <>
+              <p className="qr-outcome-title">旧形式のQRコードです</p>
+              <p className="small">
+                予約番号「{outcome.code}」で照合しました。以後の受付は新しいQRコード（予約確認画面で再表示できます）をご案内ください。
+              </p>
+            </>
+          )}
+          {outcome.kind === 'error' && (
+            <>
+              <p className="qr-outcome-title">照合に失敗しました</p>
+              <p className="small">
+                接続を確認してもう一度お試しいただくか、下の欄に予約番号を入力してください。
+              </p>
+            </>
+          )}
+        </div>
       )}
 
       <form
         className="qr-manual"
         onSubmit={(e) => {
           e.preventDefault()
-          handleCode(manual)
+          setOutcome(null)
+          showByCode(manual)
         }}
       >
         <label className="field">
@@ -288,96 +530,24 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
         <div className="qr-result" data-qr-result>
           <p className="success-text">予約が見つかりました</p>
           <div className="reservation-item">
-            <div className="reservation-main">
-              <p className="reservation-title">
-                <span className="reservation-code-small" data-qr-result-code>
-                  {res.id}
-                </span>
-                <span className="reservation-name">{reservationDisplayName(res)}</span>
-                <span className={`source-badge source-${res.source}`}>
-                  {res.source === 'door' ? '当日販売' : '予約'}
-                </span>
-                {res.cancelled && (
-                  <span className="source-badge source-cancelled">キャンセル済</span>
-                )}
-              </p>
-              <p className="muted small">
-                {res.seatIds.map((id) => seatById(id).label).join('、')}
-              </p>
-              <p className="muted small">
-                <span data-type-breakdown>{reservationTypeSummary(res)}</span>
-                {' ／ '}電話：{res.phone || '（未入力）'} ／ 合計{' '}
-                {formatYen(reservationTotal(res))}
-                {res.note && <> ／ 備考：{res.note}</>}
-              </p>
-            </div>
-            {!res.cancelled && (
-              <div className="reservation-actions">
-                {!(res.paid && res.checkedIn) && (
-                  <button
-                    type="button"
-                    data-action="complete"
-                    className="toggle-btn complete-btn"
-                    onClick={() => handleComplete(res)}
-                  >
-                    受付完了（支払い＋来場）
-                  </button>
-                )}
-                <button
-                  type="button"
-                  data-action="checkin"
-                  aria-pressed={res.checkedIn}
-                  className={`toggle-btn${res.checkedIn ? ' on' : ''}`}
-                  onClick={() => runAction(() => setCheckedIn(res.id, !res.checkedIn))}
-                >
-                  {res.checkedIn ? '✓ 来場済み' : '来場チェックイン'}
-                </button>
-                <button
-                  type="button"
-                  data-action="pay"
-                  aria-pressed={res.paid}
-                  className={`toggle-btn${res.paid ? ' on' : ''}`}
-                  onClick={() => runAction(() => setPaid(res.id, !res.paid))}
-                >
-                  {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
-                </button>
-                {confirmingCancel ? (
-                  <span className="cancel-confirm">
-                    キャンセルしますか？
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-small"
-                      onClick={() => {
-                        runAction(() => cancel(res.id))
-                        setConfirmingCancel(false)
-                      }}
-                    >
-                      キャンセルする
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-small"
-                      onClick={() => setConfirmingCancel(false)}
-                    >
-                      やめる
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-small"
-                    onClick={() => setConfirmingCancel(true)}
-                  >
-                    予約キャンセル
-                  </button>
-                )}
-              </div>
-            )}
+            <ReservationCard
+              res={res}
+              onComplete={handleComplete}
+              onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
+              onTogglePaid={(r) => runAction(() => setPaid(r.id, !r.paid))}
+              onCancel={(r) => runAction(() => cancel(r.id))}
+            />
           </div>
           <button type="button" className="btn btn-primary btn-block" onClick={scanNext}>
             次のQRを読み取る
           </button>
         </div>
+      )}
+
+      {!res && outcome && outcome.kind !== 'legacy' && (
+        <button type="button" className="btn btn-primary btn-block" onClick={scanNext}>
+          次のQRを読み取る
+        </button>
       )}
     </div>
   )

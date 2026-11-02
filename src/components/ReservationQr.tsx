@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react'
+import { encodeQrPayload, isQrToken } from '../lib/qrToken'
 
-/** 予約番号QRの画像URLを取得する（生成ライブラリは動的 import で遅延読み込み） */
-export function useReservationQrUrl(code: string): string {
+/**
+ * QR の中身（payload 文字列）から画像 URL を取得する。
+ * 生成ライブラリは動的 import で遅延読み込みする。payload が null なら生成しない。
+ */
+export function useReservationQrUrl(payload: string | null): string {
   const [url, setUrl] = useState('')
 
   useEffect(() => {
+    if (!payload) {
+      setUrl('')
+      return
+    }
     let cancelled = false
     import('../lib/qr')
-      .then((m) => m.reservationQrDataUrl(code))
+      .then((m) => m.reservationQrDataUrl(payload))
       .then((u) => {
         if (!cancelled) setUrl(u)
       })
@@ -15,20 +23,44 @@ export function useReservationQrUrl(code: string): string {
     return () => {
       cancelled = true
     }
-  }, [code])
+  }, [payload])
 
   return url
 }
 
 /**
- * 予約番号の QR コード表示（予約完了画面・予約確認結果で共用）。
- * QR 生成ライブラリは動的 import で遅延読み込みする。
+ * 受付用 QR コード表示（予約完了画面・予約確認結果・控えで共用）。
+ *
+ * R7: QR の中身は予約番号ではなく、予約ごとのトークン（`sk1:` 形式）。
+ * 連番の予約番号をそのまま入れると誰でも偽装できるため。
+ * トークンを持たない予約（この仕組みより前の予約・控え、または
+ * サーバ更新前のクラウド予約）では QR を出さず、予約番号の提示を案内する。
  */
-export default function ReservationQr({ code }: { code: string }) {
-  const url = useReservationQrUrl(code)
+export default function ReservationQr({
+  code,
+  token,
+}: {
+  code: string
+  token?: string | null
+}) {
+  const payload = isQrToken(token) ? encodeQrPayload(token) : null
+  const url = useReservationQrUrl(payload)
+
+  if (!payload) {
+    return (
+      <div className="reservation-qr" data-reservation-qr data-qr-token="absent">
+        <p className="qr-code-fallback">
+          予約番号 <strong>{code}</strong>
+        </p>
+        <p className="qr-caption">
+          当日は受付で予約番号をお伝えください（この予約にはQRコードがありません）
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div className="reservation-qr" data-reservation-qr>
+    <div className="reservation-qr" data-reservation-qr data-qr-token="present">
       {url ? (
         <img
           className="reservation-qr-img"

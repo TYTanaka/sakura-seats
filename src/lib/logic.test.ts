@@ -5,6 +5,7 @@ import {
   createReservation,
   doorsOpenBeforeStart,
   emptyData,
+  formatSeatList,
   normalizeAppData,
   normalizeSellerNames,
   reservationTypeSummary,
@@ -806,3 +807,35 @@ function defaultPerformanceRaw() {
     note: '',
   }
 }
+
+describe('formatSeatList（スタッフ表示の席リスト圧縮）', () => {
+  it('同じ列の連続席は範囲に圧縮する', () => {
+    expect(
+      formatSeatList(['1F-3-11', '1F-3-12', '1F-3-13', '1F-3-14', '1F-3-15', '1F-3-16']),
+    ).toBe('1階 3列 11〜16番')
+  })
+
+  it('単独席・離れた席はそのまま並べ、列が違えば列ごとに分ける', () => {
+    expect(formatSeatList(['1F-3-11'])).toBe('1階 3列 11番')
+    expect(formatSeatList(['1F-3-11', '1F-3-13'])).toBe('1階 3列 11番・13番')
+    expect(formatSeatList(['1F-3-11', '1F-3-12', '1F-5-1'])).toBe(
+      '1階 3列 11〜12番、1階 5列 1番',
+    )
+  })
+
+  it('入力順に依存せず、階→列→番号の順に整列する（重複は畳む）', () => {
+    expect(formatSeatList(['2F-21-8', '1F-3-12', '2F-21-7', '1F-3-11', '1F-3-11'])).toBe(
+      '1階 3列 11〜12番、2階 21列 7〜8番',
+    )
+  })
+
+  it('特殊席（車椅子・親子室・サイド席）はラベルのまま末尾に付ける', () => {
+    const mixed = formatSeatList(['1F-3-11', '1F-3-12', 'WC-L', '2F-SIDE-L-3'])
+    expect(mixed).toBe('1階 3列 11〜12番、車椅子席 L、2階 L席 3番')
+  })
+
+  it('空リストは空文字、未知のIDはそのまま出す', () => {
+    expect(formatSeatList([])).toBe('')
+    expect(formatSeatList(['UNKNOWN-1'])).toBe('UNKNOWN-1')
+  })
+})
