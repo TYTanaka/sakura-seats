@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react'
 import { seatById } from '../data/seats'
 import type { AppData } from '../lib/logic'
@@ -13,15 +14,29 @@ import {
   type ZoneAvailability,
   type ZoneId,
 } from '../lib/zones'
-import { buildZoneMap, zoneAnchors, type ZoneMapCell } from '../lib/zoneMap'
+import {
+  buildZoneMapLayout,
+  PLAN_H,
+  PLAN_W,
+  type ZoneMapLayoutCell,
+} from '../lib/zoneMap'
 
 /**
  * ゾーン選択（上から見た座席表）。
  *
- * ホール全体を実際の座席配置どおりに描き、席セルをゾーン色で塗る。
+ * ホール全体を公式座席表の図形どおりに1枚のプランで描き、席セルを
+ * ゾーン色で塗る（R13: 単一プラン化＋扇形レイアウト）。
  * お客様は「ここがいいな」と思ったエリアの席（またはバッジ）をタップして
  * ゾーンを選ぶ。席そのものを選ぶのではなく、選ばれるのはゾーンで、
  * 割当は従来どおりゾーン内自動割当（lib/zones.ts）に進む。
+ *
+ * 図形（lib/zoneMap.ts の絶対座標モデルが正）:
+ * - 舞台バーの右脇に非常用コーナー（R0）をハッチで描く。
+ * - 1階左右ブロックは列ごとに傾けた扇形。中央ブロックは水平。
+ * - 車椅子席は左ブロックと中央ブロックの間（11〜12列）の小箱の中。
+ * - 親子室は16列後方の室内ボックス。横通路は12列と13列の間。
+ * - 2階サイド席は後方の左右に立つ縦ボックスにダイヤを縦積み。
+ * - 2階後列（21〜23列）は最下段に後方ほど広い扇形。
  *
  * 表示の約束:
  * - 埋まっている席（予約済み・販売済み・販売しない）は暗く落とし、
@@ -54,6 +69,10 @@ interface PinchState {
   committed: boolean
 }
 
+/** プラン単位 → % 換算 */
+const px = (v: number) => `${(v / PLAN_W) * 100}%`
+const py = (v: number) => `${(v / PLAN_H) * 100}%`
+
 export default function ZoneSeatMap({
   data,
   availability,
@@ -65,8 +84,7 @@ export default function ZoneSeatMap({
   onPick: (zone: ZoneId) => void
   disabled?: boolean
 }) {
-  const floors = useMemo(() => buildZoneMap(data), [data])
-  const anchors = useMemo(() => zoneAnchors(floors), [floors])
+  const layout = useMemo(() => buildZoneMapLayout(data), [data])
 
   /** タップしたゾーンの一瞬のハイライト（割当できない案内時にも残る） */
   const [flash, setFlash] = useState<ZoneId | null>(null)
@@ -111,7 +129,7 @@ export default function ZoneSeatMap({
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [floors])
+  }, [layout])
 
   const startPinch = (touches: TouchList) => {
     const ct = contentRef.current
@@ -273,16 +291,32 @@ export default function ZoneSeatMap({
 
   /* ---------------- 描画 ---------------- */
 
-  const renderCell = (c: ZoneMapCell) => {
+  const cellStyle = (c: ZoneMapLayoutCell): CSSProperties => ({
+    left: px(c.cx - c.w / 2),
+    top: py(c.cy - c.h / 2),
+    width: px(c.w),
+    height: py(c.h),
+    transform: c.rotate !== 0 ? `rotate(${c.rotate}deg)` : undefined,
+  })
+
+  const renderCell = (c: ZoneMapLayoutCell) => {
     if (!c.zone) {
+      const seat = seatById(c.seatId)
+      const label =
+        seat.kind === 'wheelchair' || seat.kind === 'parentRoom'
+          ? seat.shortLabel
+          : undefined
       return (
         <span
           key={c.seatId}
-          className="zseat-cell is-neutral"
+          className="zseat-cell is-neutral zplan-cell"
+          style={cellStyle(c)}
           data-zone-seat={c.seatId}
           data-zone=""
           data-seat-status={c.status}
-        />
+        >
+          {label}
+        </span>
       )
     }
     const zone = c.zone
@@ -291,13 +325,16 @@ export default function ZoneSeatMap({
     const cls =
       `zseat-cell zc-${zone.toLowerCase()}` +
       (a.soldOut ? ' is-soldout' : taken ? ' is-taken' : ' is-free') +
-      (flash === zone ? ' is-flash' : '')
+      (flash === zone ? ' is-flash' : '') +
+      ' zplan-cell' +
+      (c.shape === 'diamond' ? ' is-diamond' : '')
     const seat = seatById(c.seatId)
     return (
       <button
         key={c.seatId}
         type="button"
         className={cls}
+        style={cellStyle(c)}
         data-zone-seat={c.seatId}
         data-zone={zone}
         data-seat-status={c.status}
@@ -347,76 +384,146 @@ export default function ZoneSeatMap({
               transformOrigin: '0 0',
             }}
           >
-            {floors.map((f) => (
-              <div className="zseat-floor" key={f.floor} data-zseat-floor={f.floor}>
-                <p className="zseat-floor-label">{f.floor}階</p>
-                <div className="zseat-grid">
-                  <div className="mini-stage">舞台</div>
-                  <div className="zseat-rows">
-                    {f.rows.map((row, ri) => (
-                      <div key={ri}>
-                        <div className={`zseat-row is-${row.kind}`}>
-                          <span className="zseat-row-label">
-                            {row.kind === 'normal'
-                              ? row.row
-                              : row.kind === 'side'
-                                ? 'サ'
-                                : '特'}
-                          </span>
-                          {row.blocks.map((block) => (
-                            <div
-                              className="zseat-block"
-                              key={block.block}
-                              style={
-                                row.kind === 'side'
-                                  ? undefined
-                                  : { flexGrow: block.cells.length }
-                              }
-                            >
-                              {block.cells.map(renderCell)}
-                            </div>
-                          ))}
-                        </div>
-                        {f.floor === 1 && row.row === 12 && (
-                          <div className="zseat-aisle" aria-hidden="true">
-                            ― 通路 ―
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {anchors
-                      .filter((an) => an.floor === f.floor)
-                      .map((an) => {
-                        const a = availability[an.zone]
-                        const def = ZONE_DEF_BY_ID.get(an.zone)!
-                        const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'
-                        return (
-                          <button
-                            key={an.zone}
-                            type="button"
-                            className={
-                              `zbadge zc-${an.zone.toLowerCase()} is-${state}` +
-                              (flash === an.zone ? ' is-flash' : '')
-                            }
-                            style={{ left: `${an.xPct}%`, top: `${an.yPct}%` }}
-                            data-zone-badge={an.zone}
-                            data-zone-state={state}
-                            data-zone-remaining={a.available}
-                            disabled={disabled || a.soldOut}
-                            onClick={() => handlePick(an.zone)}
-                            aria-label={`ゾーン${an.zone} ${def.name}（${a.soldOut ? '満席' : `残り${a.available}席`}）`}
-                          >
-                            <span className="zbadge-letter">{an.zone}</span>
-                            <span className="zbadge-count">
-                              {a.soldOut ? '満席' : `残り${a.available}席`}
-                            </span>
-                          </button>
-                        )
-                      })}
-                  </div>
+            <div className="zseat-grid">
+              <div
+                className="zplan"
+                data-zplan
+                style={{ aspectRatio: `${PLAN_W} / ${PLAN_H}` }}
+              >
+                {/* ホールの輪郭（扇形） */}
+                <svg
+                  className="zplan-outline"
+                  viewBox={`0 0 ${PLAN_W} ${PLAN_H}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <polygon points="196,50 804,50 890,622 110,622" />
+                  <rect x="112" y="712" width="776" height="210" />
+                  <polygon points="150,940 850,940 928,1048 72,1048" />
+                </svg>
+
+                {/* 舞台と非常用コーナー（R0） */}
+                <div
+                  className="zplan-stage"
+                  style={{ left: px(168), top: py(6), width: px(664), height: py(32) }}
+                >
+                  舞台
                 </div>
+                <div
+                  className="zplan-hatch"
+                  style={{ left: px(842), top: py(6), width: px(52), height: py(54) }}
+                  aria-hidden="true"
+                />
+                <span
+                  className="zplan-r0"
+                  style={{ left: px(902), top: py(16) }}
+                  aria-hidden="true"
+                >
+                  R0
+                </span>
+
+                {/* 横通路（12列と13列の間） */}
+                <div
+                  className="zplan-aisle"
+                  style={{ left: px(120), top: py(448), width: px(760), height: py(22) }}
+                  aria-hidden="true"
+                >
+                  ― 通路 ―
+                </div>
+
+                {/* 車椅子席の小箱 */}
+                <div
+                  className="zplan-box"
+                  style={{ left: px(278), top: py(380), width: px(118), height: py(68) }}
+                  aria-hidden="true"
+                >
+                  <span className="zplan-box-label is-bottom">車椅子席</span>
+                </div>
+
+                {/* 親子室 */}
+                <div
+                  className="zplan-box"
+                  style={{ left: px(296), top: py(606), width: px(408), height: py(64) }}
+                  aria-hidden="true"
+                >
+                  <span className="zplan-box-label is-side">親子室</span>
+                </div>
+                <span
+                  className="zplan-floor-label"
+                  style={{ left: px(500), top: py(690) }}
+                  aria-hidden="true"
+                >
+                  1階
+                </span>
+
+                {/* 2階サイド席の縦ボックス */}
+                <div
+                  className="zplan-box"
+                  style={{ left: px(6), top: py(712), width: px(90), height: py(210) }}
+                  aria-hidden="true"
+                >
+                  <span className="zplan-box-label">L</span>
+                </div>
+                <div
+                  className="zplan-box"
+                  style={{ left: px(904), top: py(712), width: px(90), height: py(210) }}
+                  aria-hidden="true"
+                >
+                  <span className="zplan-box-label">R</span>
+                </div>
+                <span
+                  className="zplan-floor-label"
+                  style={{ left: px(500), top: py(1064) }}
+                  aria-hidden="true"
+                >
+                  2階
+                </span>
+
+                {/* 列番号 */}
+                {layout.rowLabels.map((l) => (
+                  <span
+                    key={l.label}
+                    className="zplan-row-label"
+                    style={{ left: px(l.cx), top: py(l.cy) }}
+                    aria-hidden="true"
+                  >
+                    {l.label}
+                  </span>
+                ))}
+
+                {/* 全席セル */}
+                {layout.cells.map(renderCell)}
+
+                {/* ゾーンバッジ */}
+                {layout.anchors.map((an) => {
+                  const a = availability[an.zone]
+                  const def = ZONE_DEF_BY_ID.get(an.zone)!
+                  const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'
+                  return (
+                    <button
+                      key={an.zone}
+                      type="button"
+                      className={
+                        `zbadge zc-${an.zone.toLowerCase()} is-${state}` +
+                        (flash === an.zone ? ' is-flash' : '')
+                      }
+                      style={{ left: `${an.xPct}%`, top: `${an.yPct}%` }}
+                      data-zone-badge={an.zone}
+                      data-zone-state={state}
+                      data-zone-remaining={a.available}
+                      disabled={disabled || a.soldOut}
+                      onClick={() => handlePick(an.zone)}
+                      aria-label={`ゾーン${an.zone} ${def.name}（${a.soldOut ? '満席' : `残り${a.available}席`}）`}
+                    >
+                      <span className="zbadge-letter">{an.zone}</span>
+                      <span className="zbadge-count">
+                        {a.soldOut ? '満席' : `残り${a.available}席`}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>

@@ -2724,6 +2724,125 @@ button.zseat-cell:active {
   filter: brightness(1.45);
 }
 
+/* ===== R13: 公式図レイアウト（単一プラン・絶対配置） ===== */
+.zplan {
+  position: relative;
+  width: 100%;
+}
+.zplan-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.zplan-outline polygon,
+.zplan-outline rect {
+  fill: rgba(232, 222, 252, 0.03);
+  stroke: rgba(232, 222, 252, 0.28);
+  stroke-width: 2;
+}
+.zplan-cell {
+  position: absolute;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(23, 11, 61, 0.75);
+  line-height: 1;
+}
+.zplan-cell.is-diamond {
+  border-radius: 3px;
+}
+.zplan-cell.is-neutral {
+  color: rgba(232, 222, 252, 0.85);
+}
+.zplan-stage {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  padding-left: 0.4em;
+  color: var(--gold);
+  border: 1px solid rgba(245, 196, 81, 0.55);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+.zplan-hatch {
+  position: absolute;
+  border: 1px solid rgba(232, 222, 252, 0.35);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(232, 222, 252, 0.4) 0 2px,
+    transparent 2px 6px
+  );
+  box-sizing: border-box;
+}
+.zplan-r0 {
+  position: absolute;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: rgba(232, 222, 252, 0.6);
+}
+.zplan-aisle {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: rgba(232, 222, 252, 0.5);
+  border-top: 1px dashed rgba(232, 222, 252, 0.25);
+  border-bottom: 1px dashed rgba(232, 222, 252, 0.25);
+  box-sizing: border-box;
+}
+.zplan-box {
+  position: absolute;
+  border: 1px solid rgba(232, 222, 252, 0.4);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.zplan-box-label {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: rgba(232, 222, 252, 0.75);
+}
+.zplan-box-label.is-bottom {
+  top: auto;
+  bottom: 1px;
+  font-size: 8px;
+}
+.zplan-box-label.is-side {
+  top: 50%;
+  transform: translateY(-50%);
+  left: 6px;
+  right: auto;
+  text-align: left;
+}
+.zplan-floor-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
+  color: rgba(232, 222, 252, 0.85);
+}
+.zplan-row-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 8.5px;
+  color: rgba(232, 222, 252, 0.75);
+  text-align: center;
+}
+
 /* ゾーンバッジ: ゾーンの席の重心に重ねる小さな札（そのままボタン） */
 .zbadge {
   position: absolute;
