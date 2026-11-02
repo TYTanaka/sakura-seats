@@ -169,8 +169,8 @@ describe('ゾーンの仮選択（R14: resolveZoneTap）', () => {
     expect(resolveZoneTap('G', 'H', avail(78), 2)).toEqual({ kind: 'select', zone: 'H' })
   })
 
-  it('仮選択中のゾーンをもう一度タップすると解除になる', () => {
-    expect(resolveZoneTap('G', 'G', avail(24), 2)).toEqual({ kind: 'deselect' })
+  it('仮選択中のゾーンをもう一度タップしても解除されない（R16・C-3: 解除は「やめる」だけ）', () => {
+    expect(resolveZoneTap('G', 'G', avail(24), 2)).toEqual({ kind: 'select', zone: 'G' })
   })
 
   it('人数分を用意できないゾーンは仮選択せず案内になる（残り席数を返す）', () => {

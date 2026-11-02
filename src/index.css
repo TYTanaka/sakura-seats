@@ -99,8 +99,8 @@ textarea {
 .site-header {
   position: relative;
   overflow: hidden;
-  margin: 0 -12px 16px;
-  padding: 16px 18px 30px;
+  margin: 0 -12px 6px;
+  padding: 10px 18px 22px;
   text-align: center;
   color: #ffffff;
   background: linear-gradient(180deg, #0d0730 0%, #38197c 55%, #170b3d 100%);
@@ -189,7 +189,7 @@ textarea {
   font-size: 13px;
 }
 .sparkle.sp-2 {
-  bottom: 15px;
+  bottom: 12px;
   left: 21%;
   font-size: 9px;
   animation-delay: 0.7s;
@@ -213,7 +213,7 @@ textarea {
   animation-delay: 1.8s;
 }
 .sparkle.sp-6 {
-  bottom: 16px;
+  bottom: 11px;
   right: 5%;
   font-size: 10px;
   animation-delay: 2.2s;
@@ -259,7 +259,7 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   text-align: left;
 }
 
@@ -301,8 +301,8 @@ textarea {
 }
 
 .site-title {
-  margin: 0 0 8px;
-  font-size: 28px;
+  margin: 0 0 4px;
+  font-size: 25px;
   font-weight: 800;
   letter-spacing: 0.04em;
   word-break: keep-all;
@@ -313,7 +313,7 @@ textarea {
 }
 
 .site-when {
-  margin: 0 0 6px;
+  margin: 0 0 3px;
   font-size: 17px;
   font-weight: 800;
   word-break: keep-all;
@@ -324,6 +324,7 @@ textarea {
 .site-meta {
   margin: 0;
   font-size: 13px;
+  line-height: 1.35;
   font-weight: 700;
   color: #f2ecff;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
@@ -344,7 +345,7 @@ textarea {
 }
 
 .site-note {
-  margin: 10px auto 0;
+  margin: 6px auto 0;
   max-width: 560px;
   font-size: 12.5px;
   line-height: 1.6;
@@ -1714,7 +1715,7 @@ button.seat-available:hover {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .page-share .btn {
@@ -2490,14 +2491,24 @@ button.seat-available:hover {
 }
 
 /* ===== ゾーン制予約（ライブ会場方式） ===== */
+/* R16・C-6: ゾーン一覧の先頭がファーストビューに入るよう、ゾーンカード
+   まわりの余白を詰める（座席表そのものの大きさは変えない） */
+.zone-card {
+  padding-top: 12px;
+}
+.zone-card h3 {
+  margin-bottom: 6px;
+}
 .zone-lead {
-  margin: 2px 0 12px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .zone-controls {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 .party-row {
   display: flex;
@@ -2593,8 +2604,8 @@ button.seat-available:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 6px;
-  min-height: 26px;
+  margin-bottom: 4px;
+  min-height: 18px;
 }
 .zseat-hint {
   font-size: 11px;
@@ -2897,7 +2908,7 @@ button.zseat-cell:active {
 /* マップ下のコンパクトなゾーン一覧（説明文はこちらに置く） */
 .zonelist {
   list-style: none;
-  margin: 12px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;

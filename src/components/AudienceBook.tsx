@@ -9,6 +9,7 @@ import {
   isBookingClosed,
   isValidPhone,
   normalizePhone,
+  phoneErrorKind,
   reservationTypeSummary,
   type Performance,
   type Reservation,
@@ -196,6 +197,89 @@ export default function AudienceBook({
     null,
   )
 
+  /*
+   * ブラウザ履歴との連携（R16・C-5）: ステップを進めるたびに履歴を1つ積み、
+   * 端末の「戻る」で申込フローの1つ前のステップへ戻れるようにする。
+   * - ゾーン画面での「戻る」は何もしない（通常どおりアプリを離れる）
+   * - フォームからの「戻る」はゾーン画面へ（選んでいたゾーンの仮選択も復元・C-4）
+   * - 確認画面からの「戻る」はフォームへ（入力はそのまま残る）
+   * 「入力に戻る」「ゾーンを選び直す」ボタンも、積んだ履歴があるときは
+   * history.back() 経由にして、ボタンと端末の「戻る」の動きを揃える。
+   */
+  const stepRef = useRef(step)
+  stepRef.current = step
+  const zoneIdRef = useRef(zoneId)
+  zoneIdRef.current = zoneId
+  /** 自分で積んだ履歴エントリの残数 */
+  const flowDepthRef = useRef(0)
+  const historyInitRef = useRef(false)
+
+  const pushFlowEntry = (s: 'form' | 'confirm') => {
+    try {
+      window.history.pushState({ sakuraBookStep: s }, '')
+      flowDepthRef.current += 1
+    } catch {
+      // 履歴 API が使えない環境では通常のステップ遷移だけ行う
+    }
+  }
+
+  /** 前へ進む遷移（履歴を積む） */
+  const goForward = (next: 'form' | 'confirm') => {
+    setStep(next)
+    pushFlowEntry(next)
+  }
+
+  /** フォーム → ゾーン画面へ戻る（ボタン用。履歴があれば「戻る」と同じ経路） */
+  const backToZone = () => {
+    setError('')
+    if (flowDepthRef.current > 0) {
+      window.history.back()
+    } else {
+      setSelectedZone(zoneId)
+      setStep('zone')
+    }
+  }
+
+  /** 確認画面 → フォームへ戻る（ボタン用） */
+  const backToForm = () => {
+    if (flowDepthRef.current > 0) {
+      window.history.back()
+    } else {
+      setStep('form')
+    }
+  }
+
+  // 下書きからフォーム・確認画面で復元された場合は、履歴側も同じ段数だけ
+  // 積んでおく（リロード後でも「戻る」が効くように）
+  useEffect(() => {
+    if (historyInitRef.current) return
+    historyInitRef.current = true
+    const s = stepRef.current
+    if (s === 'form') {
+      pushFlowEntry('form')
+    } else if (s === 'confirm') {
+      pushFlowEntry('form')
+      pushFlowEntry('confirm')
+    }
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (flowDepthRef.current > 0) flowDepthRef.current -= 1
+      const s = stepRef.current
+      if (s === 'confirm') {
+        setStep('form')
+      } else if (s === 'form') {
+        // ゾーン画面へ戻るときは、選んでいたゾーンを仮選択に戻す（C-4）
+        setSelectedZone(zoneIdRef.current)
+        setStep('zone')
+      }
+      // ゾーン画面・完了画面では何もしない（通常の離脱に任せる）
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
   // 締切は「今」を定期的に再評価して判定する（開いたまま締切を跨いでも追随する）
   const nowMs = useNow(10000)
   const closed = isBookingClosed(data, new Date(nowMs))
@@ -301,10 +385,7 @@ export default function AudienceBook({
       return
     }
     setZoneError(null)
-    if (outcome.kind === 'deselect') {
-      setSelectedZone(null)
-      return
-    }
+    // 仮選択中のゾーンの再タップは選択維持（R16・C-3）。解除は「やめる」だけ
     setSelectedZone(outcome.zone)
     if (source === 'list') {
       const target =
@@ -333,7 +414,7 @@ export default function AudienceBook({
     setZoneError(null)
     setZoneId(selectedZone)
     setSelectedZone(null)
-    setStep('form')
+    goForward('form')
     window.scrollTo({ top: 0 })
   }
 
@@ -519,12 +600,12 @@ export default function AudienceBook({
             >
               LINEで送る
             </a>
-            <span className="muted small">家族や友だちに、この予約ページをLINEで共有できます</span>
+            <span className="muted small">家族や友だちにLINEで共有できます</span>
           </div>
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。タップするとそのゾーンが選ばれるので、座席表を見ながら確認して、画面下の「このゾーンで進む」ボタンで次へ進んでください。選んだゾーンの中で並んだ席をご用意します。座席番号は当日、受付でのお支払い時に確定します。
+              ゾーンをタップし、画面下の「このゾーンで進む」で決定。並んだ席をご用意します。座席番号はお支払い時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -710,15 +791,19 @@ export default function AudienceBook({
                 return
               }
               if (!isValidPhone(phone)) {
+                // R16・C-2: 形は合っているのに偽番号パターンで弾かれた場合は、
+                // 打ち直しても通らないので「別の番号で」と案内を分ける
                 setError(
-                  '電話番号の形式をご確認ください（携帯電話・固定電話などの番号を入力してください。全角数字やハイフンはそのまま使えます）',
+                  phoneErrorKind(phone) === 'fake'
+                    ? 'この番号は受付できません。スマートフォンの電話番号など、別の番号でお試しください（お持ちでない場合は主催者へご連絡ください）'
+                    : '電話番号の形式をご確認ください（携帯電話・固定電話などの番号を入力してください。全角数字やハイフンはそのまま使えます）',
                 )
                 return
               }
               // 確認画面・保存は正規化した数字のみの形に統一する
               setPhone(normalizePhone(phone))
               setError('')
-              setStep('confirm')
+              goForward('confirm')
             }}
           >
             <label className="field">
@@ -741,7 +826,7 @@ export default function AudienceBook({
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="例：090-0000-0000"
+                placeholder="例：090-1111-2222"
                 autoComplete="tel"
               />
             </label>
@@ -759,10 +844,7 @@ export default function AudienceBook({
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => {
-                  setError('')
-                  setStep('zone')
-                }}
+                onClick={backToZone}
               >
                 ゾーンを選び直す
               </button>
@@ -820,7 +902,7 @@ export default function AudienceBook({
           </p>
           {error && <p className="error-text">{error}</p>}
           <div className="btn-row">
-            <button type="button" className="btn btn-ghost" onClick={() => setStep('form')}>
+            <button type="button" className="btn btn-ghost" onClick={backToForm}>
               入力に戻る
             </button>
             <button

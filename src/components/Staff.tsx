@@ -448,10 +448,20 @@ function Reception() {
   }, [data.reservations, query, showCancelled, unpaidOnly])
 
   const active = activeReservations(data)
+  // 絞り込み中は「全N件中 M件を表示」と見出しに出す（R16・S-1）。
+  // N はキャンセル表示の有無まで反映した母数、M は実際に並んでいる件数
+  const baseCount = data.reservations.filter(
+    (r) => showCancelled || !r.cancelled,
+  ).length
+  const filtering = query.trim() !== '' || unpaidOnly
 
   return (
     <section className="card">
-      <h3>受付（{active.length}件の予約）</h3>
+      <h3 data-reception-heading>
+        {filtering
+          ? `受付（全${baseCount}件中 ${list.length}件を表示）`
+          : `受付（${active.length}件の予約）`}
+      </h3>
       <label className="field">
         <span>検索（名前・予約番号・電話番号）</span>
         <input

@@ -463,17 +463,13 @@ function looksFakePhone(digits: string): boolean {
 }
 
 /**
- * 電話番号の形式チェック（R15: 厳格化）。正規化したうえで、
+ * 番号の「形」だけのチェック（桁数とプレフィックス）。
  * - 11桁: 携帯 070/080/090、IP電話 050
  * - 10桁: 固定電話・フリーダイヤル等（0 + [1-9] + 8桁）。
  *   ただし携帯/IPのプレフィックス（050/070/080/090）で始まる10桁は
  *   「桁落ち」とみなし不可。0800 フリーダイヤル（0800 + 6桁）は例外として可。
- * - 明らかな偽番号パターン（looksFakePhone）は桁数・形式が合っても不可。
- * サーバ側（sakura_valid_phone + INSERT トリガ）でも同じ規則で弾く。
  */
-export function isValidPhone(value: string): boolean {
-  const digits = normalizePhone(value)
-  if (looksFakePhone(digits)) return false
+function phoneShapeOk(digits: string): boolean {
   if (digits.length === 11) {
     return /^0(?:70|80|90)\d{8}$/.test(digits) || /^050\d{8}$/.test(digits)
   }
@@ -482,6 +478,34 @@ export function isValidPhone(value: string): boolean {
     return /^0[1-9]\d{8}$/.test(digits)
   }
   return false
+}
+
+/**
+ * 電話番号の形式チェック（R15: 厳格化）。正規化したうえで、
+ * 形（phoneShapeOk）が合っていて、明らかな偽番号パターン
+ * （looksFakePhone）にも当たらない番号だけを通す。
+ * サーバ側（sakura_valid_phone + INSERT トリガ）でも同じ規則で弾く。
+ */
+export function isValidPhone(value: string): boolean {
+  const digits = normalizePhone(value)
+  return phoneShapeOk(digits) && !looksFakePhone(digits)
+}
+
+/**
+ * 電話番号エラーの種別（R16・C-2）。規則自体は R15 から変えず、
+ * 「なぜ通らないか」を画面の文言で出し分けるために使う。
+ * - 'fake': 形は合っているのに偽番号パターン（全桁同一・0の連続・連番）で
+ *   弾かれた。入力ミスではなく「その番号自体を受け付けない」ケースなので、
+ *   別の番号を試してもらう案内を出す。
+ * - 'format': 桁数やプレフィックスなど形が合わない。打ち直せば通るケース。
+ * 通る番号は null。
+ */
+export type PhoneErrorKind = 'format' | 'fake'
+
+export function phoneErrorKind(value: string): PhoneErrorKind | null {
+  const digits = normalizePhone(value)
+  if (phoneShapeOk(digits) && !looksFakePhone(digits)) return null
+  return phoneShapeOk(digits) && looksFakePhone(digits) ? 'fake' : 'format'
 }
 
 /**

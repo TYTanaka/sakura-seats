@@ -334,6 +334,9 @@ export default function ZoneSeatMap({
     const zone = c.zone
     const a = availability[zone]
     const taken = c.status !== 'available'
+    // 満席ゾーンのセルは属性上も soldout として伝える（R16・C-7）。
+    // 見た目は従来どおりゾーン単位の is-soldout（黒）で表す
+    const seatStatus = a.soldOut ? 'soldout' : c.status
     const cls =
       `zseat-cell zc-${zone.toLowerCase()}` +
       (a.soldOut ? ' is-soldout' : taken ? ' is-taken' : ' is-free') +
@@ -355,11 +358,11 @@ export default function ZoneSeatMap({
         style={cellStyle(c)}
         data-zone-seat={c.seatId}
         data-zone={zone}
-        data-seat-status={c.status}
+        data-seat-status={seatStatus}
         disabled={disabled || a.soldOut}
         onClick={() => handlePick(zone, 'map')}
         aria-pressed={selectedZone === zone}
-        aria-label={`${seat.label}（ゾーン${zone}${taken ? '・この席は埋まっていますがエリアは選べます' : ''}）`}
+        aria-label={`${seat.label}（ゾーン${zone}${a.soldOut ? '・満席' : taken ? '・この席は埋まっていますがエリアは選べます' : ''}）`}
       />
     )
   }

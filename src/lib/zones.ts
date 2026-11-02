@@ -185,13 +185,14 @@ export function allZoneAvailability(data: AppData): Record<ZoneId, ZoneAvailabil
  * お客様はまず座席表の上でゾーンを「仮選択」し、座席表を見たまま
  * 画面下のバーで確定して初めて申込フォームへ進む。
  * - 別のゾーンをタップ → そのゾーンを仮選択（select）
- * - 仮選択中のゾーンをもう一度タップ → 仮選択を解除（deselect）
+ * - 仮選択中のゾーンをもう一度タップ → 仮選択を維持（select のまま。
+ *   R16・C-3: ダブルタップや押し直しで選択が無言で消えると「進めない」
+ *   状態になるため、解除は画面下バーの「やめる」だけに一本化した）
  * - 人数分を用意できないゾーン → 仮選択せず案内を出す（insufficient）
  * 満席ゾーンは UI 側でタップ自体を無効化しているため、ここでは扱わない。
  */
 export type ZoneTapOutcome =
   | { kind: 'select'; zone: ZoneId }
-  | { kind: 'deselect' }
   | { kind: 'insufficient'; zone: ZoneId; remaining: number }
 
 export function resolveZoneTap(
@@ -200,10 +201,11 @@ export function resolveZoneTap(
   availability: ZoneAvailability,
   partySize: number,
 ): ZoneTapOutcome {
-  if (tapped === selected) return { kind: 'deselect' }
   if (availability.available < partySize) {
     return { kind: 'insufficient', zone: tapped, remaining: availability.available }
   }
+  // 仮選択中のゾーンの再タップは選択維持（解除は「やめる」だけ）
+  if (tapped === selected) return { kind: 'select', zone: tapped }
   return { kind: 'select', zone: tapped }
 }
 

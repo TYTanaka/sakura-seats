@@ -607,6 +607,27 @@ describe('電話番号の厳格チェック（R15）', () => {
     const { isValidPhone } = await import('./logic')
     for (const v of INVALID) expect(isValidPhone(v), v).toBe(false)
   })
+
+  it('エラー種別: 形は合っているが偽番号パターンは fake、形が違うものは format（R16・C-2）', async () => {
+    const { phoneErrorKind } = await import('./logic')
+    // 通る番号は null
+    expect(phoneErrorKind('09011112222')).toBeNull()
+    expect(phoneErrorKind('0335451111')).toBeNull()
+    expect(phoneErrorKind('0800111222')).toBeNull()
+    // fake: 形は合っているが、全桁同一・0の連続・連番で弾かれる
+    expect(phoneErrorKind('09000000000')).toBe('fake') // 0の長い連続
+    expect(phoneErrorKind('09012345678')).toBe('fake') // 連番（昇順）
+    expect(phoneErrorKind('08098765432')).toBe('fake') // 連番（降順）
+    expect(phoneErrorKind('0312345678')).toBe('fake') // 固定電話の形だが連番（R15規則のまま）
+    expect(phoneErrorKind('0310000000')).toBe('fake') // 固定電話の形だが0の長い連続
+    // format: 桁数・プレフィックスなど形が合わない
+    expect(phoneErrorKind('0901112222')).toBe('format') // 携帯の桁落ち
+    expect(phoneErrorKind('1234567890')).toBe('format') // 0始まりでない
+    expect(phoneErrorKind('06011112222')).toBe('format') // 割当のないプレフィックス
+    expect(phoneErrorKind('090111122223')).toBe('format') // 12桁
+    expect(phoneErrorKind('0901234')).toBe('format') // 短すぎる
+    expect(phoneErrorKind('')).toBe('format') // 空
+  })
 })
 
 describe('開場時刻（本日開演カード）', () => {

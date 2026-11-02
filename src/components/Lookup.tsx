@@ -128,7 +128,7 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="例：090-0000-0000"
+            placeholder="例：090-1111-2222"
             autoComplete="tel"
           />
         </label>
