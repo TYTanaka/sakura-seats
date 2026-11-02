@@ -9,7 +9,7 @@
 | --- | --- |
 | プロジェクトの接続先 | GitHub リポジトリ `TYTanaka/sakura-seats` |
 | Production branch | `main` |
-| Root directory（Build settings の "Root directory"） | `app` |
+| Root directory（Build settings の "Root directory"） | （空欄＝リポジトリ直下。アプリは repo ルートにある。`app` はローカル作業フォルダ名であり、指定すると初回デプロイが失敗する — 2026-11-02 実績で修正済み） |
 | Build command | `npm run build` |
 | Build output directory | `dist` |
 | Node.js バージョン | 22（環境変数 `NODE_VERSION=22` を推奨） |
@@ -31,11 +31,15 @@
 
 ## 移行後にやること
 
-1. Cloudflare の URL（`*.pages.dev` または独自ドメイン）で表示・予約・スタッフ画面を確認。
-2. **Supabase 側の許可リストに Cloudflare の URL を追加**する:
-   Supabase ダッシュボード → Authentication → URL Configuration → Redirect URLs に
-   Cloudflare の URL（末尾 `/` まで）を追加。Google ログインの戻り先として必須。
-   あわせて Authentication → Providers → Google を有効化（Client ID / Secret は
-   Google Cloud 側で発行した Web クライアントのもの。Google Cloud 側の
-   「承認済みのリダイレクト URI」は `https://nsjcjvchqjahdnxoqdvl.supabase.co/auth/v1/callback`）。
-3. 問題なければ `REDIRECT_PLAN.md` の手順で GitHub Pages 側を誘導ページに切り替える。
+1. Cloudflare の URL（`*.pages.dev` または独自ドメイン）で表示・予約・スタッフ画面を確認。（表示確認は 2026-11-02 済み： https://sakura-seats.pages.dev/ で公開中）
+2. ~~**Supabase 側の許可リストに Cloudflare の URL を追加**する~~ **（2026-11-02 完了）**:
+   Supabase ダッシュボード → Authentication → URL Configuration → Redirect URLs は
+   `https://tytanaka.github.io/sakura-seats/` と `https://sakura-seats.pages.dev/` の2件。
+   Authentication → Providers → Google も有効化済み（Google Cloud プロジェクト
+   sakura-seats / ID master-booster-513504-v5 の Web クライアント。Google 側の
+   「承認済みのリダイレクト URI」は `https://nsjcjvchqjahdnxoqdvl.supabase.co/auth/v1/callback`、
+   JavaScript 生成元は github.io と pages.dev の両方）。なお OAuth 同意画面は
+   「テスト中」のまま（公開にはホームページ/プライバシーポリシーURLが必要）。
+   ログインできるのはテストユーザー登録済みのメールのみなので、スタッフ追加時は
+   Google Cloud 側のテストユーザーにも追加すること。
+3. 問題なければ `REDIRECT_PLAN.md` の手順で GitHub Pages 側を誘導ページに切り替える。（ユーザーのスマホ実機確認待ち）
