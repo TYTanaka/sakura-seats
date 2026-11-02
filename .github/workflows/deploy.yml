@@ -1,8 +1,9 @@
 name: Deploy to GitHub Pages
 
+# 2026-11-02: 本番は Cloudflare Pages（sakura-seats.pages.dev）へ移行済み。
+# GitHub Pages は gh-pages ブランチの移転案内スタブを配信する。
+# 切り戻す場合は push トリガを復活させて Pages の公開元を workflow に戻すこと。
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
