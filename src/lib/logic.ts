@@ -430,19 +430,58 @@ export function isBookingClosed(data: AppData, now: Date = new Date()): boolean 
 
 /**
  * 電話番号の正規化: 全角数字を半角にし、ハイフン・空白・括弧などの数字以外を
- * すべて取り除いて、数字だけの文字列にする。保存値・照会値・検索値は
- * すべてこの形で比較する（申込時はこの形で保存する）。
+ * すべて取り除いて、数字だけの文字列にする。国際形式（+81〜 = 81+10桁）は
+ * 国内形式（0〜）にそろえる。保存値・照会値・検索値はすべてこの形で比較する
+ * （申込時はこの形で保存する）。サーバ側 sakura_valid_phone の正規化と一致。
  */
 export function normalizePhone(value: string): string {
   const halfWidth = value.replace(/[０-９]/g, (c) =>
     String.fromCharCode(c.charCodeAt(0) - 0xfee0),
   )
-  return halfWidth.replace(/[^0-9]/g, '')
+  const digits = halfWidth.replace(/[^0-9]/g, '')
+  return /^81\d{10}$/.test(digits) ? `0${digits.slice(2)}` : digits
 }
 
-/** 電話番号の形式チェック: 正規化して10〜11桁の数字ならOK（英字などは弾く） */
+/** 8桁以上の連番（昇順・降順）。これを含む番号は実在しない入力とみなす */
+const SEQUENTIAL_RUNS = [
+  '01234567',
+  '12345678',
+  '23456789',
+  '98765432',
+  '87654321',
+  '76543210',
+]
+
+/**
+ * 明らかな偽番号パターン: 全桁同一、0が6桁以上連続、8桁以上の連番。
+ * サーバ側 sakura_valid_phone と同じ規則（片方だけ通す番号を作らない）。
+ */
+function looksFakePhone(digits: string): boolean {
+  if (/^(\d)\1+$/.test(digits)) return true
+  if (digits.includes('000000')) return true
+  return SEQUENTIAL_RUNS.some((run) => digits.includes(run))
+}
+
+/**
+ * 電話番号の形式チェック（R15: 厳格化）。正規化したうえで、
+ * - 11桁: 携帯 070/080/090、IP電話 050
+ * - 10桁: 固定電話・フリーダイヤル等（0 + [1-9] + 8桁）。
+ *   ただし携帯/IPのプレフィックス（050/070/080/090）で始まる10桁は
+ *   「桁落ち」とみなし不可。0800 フリーダイヤル（0800 + 6桁）は例外として可。
+ * - 明らかな偽番号パターン（looksFakePhone）は桁数・形式が合っても不可。
+ * サーバ側（sakura_valid_phone + INSERT トリガ）でも同じ規則で弾く。
+ */
 export function isValidPhone(value: string): boolean {
-  return /^\d{10,11}$/.test(normalizePhone(value))
+  const digits = normalizePhone(value)
+  if (looksFakePhone(digits)) return false
+  if (digits.length === 11) {
+    return /^0(?:70|80|90)\d{8}$/.test(digits) || /^050\d{8}$/.test(digits)
+  }
+  if (digits.length === 10) {
+    if (/^0(?:50|70|80|90)/.test(digits) && !digits.startsWith('0800')) return false
+    return /^0[1-9]\d{8}$/.test(digits)
+  }
+  return false
 }
 
 /**

@@ -711,7 +711,7 @@ export default function AudienceBook({
               }
               if (!isValidPhone(phone)) {
                 setError(
-                  '電話番号は10〜11桁の数字で入力してください（全角数字やハイフンはそのまま使えます）',
+                  '電話番号の形式をご確認ください（携帯電話・固定電話などの番号を入力してください。全角数字やハイフンはそのまま使えます）',
                 )
                 return
               }

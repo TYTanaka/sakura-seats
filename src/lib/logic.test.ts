@@ -546,13 +546,66 @@ describe('電話番号の正規化（R3-2）', () => {
 
   it('形式チェックは10〜11桁の数字のみ通す', async () => {
     const { isValidPhone } = await import('./logic')
-    expect(isValidPhone('090-1234-5678')).toBe(true)
-    expect(isValidPhone('０９０１２３４５６７８')).toBe(true)
-    expect(isValidPhone('03-1234-5678')).toBe(true)
+    expect(isValidPhone('090-1111-2222')).toBe(true)
+    expect(isValidPhone('０９０１１１１２２２２')).toBe(true)
+    expect(isValidPhone('03-3545-1111')).toBe(true)
     expect(isValidPhone('abc-def')).toBe(false)
     expect(isValidPhone('090-1234')).toBe(false)
     expect(isValidPhone('090-1234-56789')).toBe(false)
     expect(isValidPhone('')).toBe(false)
+  })
+
+  it('国際形式 +81 は国内形式にそろえて保存・判定する', async () => {
+    const { normalizePhone, isValidPhone } = await import('./logic')
+    expect(normalizePhone('+81-90-1111-2222')).toBe('09011112222')
+    expect(isValidPhone('+81-90-1111-2222')).toBe(true)
+  })
+})
+
+/**
+ * R15: 電話番号の厳格チェック用ベクタ表。サーバ側 sakura_valid_phone の
+ * 検証（verify-r15-local.mjs）と同じ表を使う（クライアント/サーバ一致）。
+ */
+describe('電話番号の厳格チェック（R15）', () => {
+  const VALID = [
+    '09011112222', // 携帯 090
+    '08033334444', // 携帯 080
+    '07055556666', // 携帯 070
+    '05011112222', // IP電話 050
+    '0335451111', // 固定電話（東京 03）
+    '0120111222', // フリーダイヤル 0120
+    '0800111222', // フリーダイヤル 0800
+    '090-1111-2222', // ハイフンあり
+    '０９０１１１１２２２２', // 全角
+    '+81-90-1111-2222', // 国際形式
+  ]
+  const INVALID = [
+    '09000000000', // 0の長い連続
+    '09012345678', // 8桁の連番（昇順）
+    '0312345678', // 固定電話の形だが連番を含む
+    '08098765432', // 8桁の連番（降順）
+    '11111111111', // 全桁同一
+    '0000000000', // 全桁同一
+    '0901112222', // 携帯 090 の桁落ち（10桁）
+    '0501112222', // IP 050 の桁落ち（10桁）
+    '0801112222', // 携帯 080 の桁落ち（10桁・0800ではない）
+    '1234567890', // 0始まりでない
+    '090111122223', // 12桁
+    '06011112222', // 11桁だが割当のないプレフィックス
+    '0310000000', // 固定電話の形だが0の長い連続
+    '0901234', // 短すぎる
+    '', // 空
+    'abcdefghij', // 英字のみ（数字ゼロ）
+  ]
+
+  it('正しい番号を通す', async () => {
+    const { isValidPhone } = await import('./logic')
+    for (const v of VALID) expect(isValidPhone(v), v).toBe(true)
+  })
+
+  it('実在しない・形式の違う番号を弾く', async () => {
+    const { isValidPhone } = await import('./logic')
+    for (const v of INVALID) expect(isValidPhone(v), v).toBe(false)
   })
 })
 

@@ -288,6 +288,11 @@ function rpcErrorToMessage(error: { message: string }): Error {
   }
   if (msg.includes('NAME_REQUIRED')) return new Error('お名前を入力してください')
   if (msg.includes('PHONE_REQUIRED')) return new Error('電話番号を入力してください')
+  // R15 の厳格チェック（サーバ側トリガ）。クライアント側でも同じ規則で
+  // 弾くため通常は届かないが、直接 RPC を叩かれた場合等の最終表示。
+  if (msg.includes('PHONE_INVALID')) {
+    return new Error('電話番号の形式が正しくないようです。番号をご確認ください')
+  }
   return new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
 }
 
