@@ -8,6 +8,7 @@ import {
   buildSnapshotGmailUrl,
   buildSnapshotLineUrl,
   SITE_URL,
+  siteUrlFrom,
 } from './share'
 
 const perf: Performance = {
@@ -35,6 +36,29 @@ const reservation: Reservation = {
   source: 'online',
   createdAt: '2026-11-01T00:00:00.000Z',
 }
+
+describe('siteUrlFrom（配信先に依存しないサイトURL導出）', () => {
+  it('GitHub Pages: origin + /sakura-seats/', () => {
+    expect(siteUrlFrom('https://tytanaka.github.io', '/sakura-seats/')).toBe(
+      'https://tytanaka.github.io/sakura-seats/',
+    )
+  })
+
+  it('Cloudflare Pages: origin + ルート', () => {
+    expect(siteUrlFrom('https://sakura-seats.pages.dev', '/')).toBe(
+      'https://sakura-seats.pages.dev/',
+    )
+  })
+
+  it('末尾スラッシュ無し・先頭スラッシュ無しでも正規化する', () => {
+    expect(siteUrlFrom('https://example.com', 'sakura-seats')).toBe(
+      'https://example.com/sakura-seats/',
+    )
+    expect(siteUrlFrom('http://localhost:4174', '/sakura-seats')).toBe(
+      'http://localhost:4174/sakura-seats/',
+    )
+  })
+})
 
 describe('LINE共有URL', () => {
   it('予約ページ共有は lineit/share で本番URLを指す', () => {

@@ -1,0 +1,18 @@
+# Cloudflare Pages 用セキュリティヘッダ（GitHub Pages では無視される）。
+# 各ディレクティブの根拠:
+# - script-src 'self': Vite ビルドは外部ファイルのみで、インラインスクリプトを使わない。
+# - style-src に 'unsafe-inline' と Google Fonts: React の style 属性と
+#   fonts.googleapis.com のスタイルシート読み込みに必要。
+# - font-src: fonts.gstatic.com（実フォント）と data:（埋め込みフォント用）。
+# - img-src data:/blob:: QRコード画像（data URL）と端末内画像のため。
+# - media-src blob:: カメラプレビュー（getUserMedia の srcObject）用に許可。
+# - connect-src: Supabase の REST/RPC（https）と Realtime（wss）のみ。
+#   Google OAuth はトップレベル遷移なので CSP の対象外。
+# - frame-ancestors 'self' + X-Frame-Options: クリックジャッキング対策。
+# - Permissions-Policy: カメラは自オリジンのみ（QR受付）、マイク・位置情報は不許可。
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'

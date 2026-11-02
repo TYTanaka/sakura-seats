@@ -25,6 +25,13 @@ import {
   type TicketType,
 } from '../lib/logic'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
+import {
+  authBadgeLabel,
+  googleDeniedMessage,
+  normalizeStaffEmail,
+  type StaffAllowlist,
+  type StaffAuthMethod,
+} from '../lib/staffAuth'
 import { useToast } from '../lib/toast'
 import { downloadReservationsCsv } from '../lib/csv'
 import SeatMap, {
@@ -90,7 +97,8 @@ function LocalModeBanner() {
 }
 
 export default function Staff({ onExit }: { onExit: () => void }) {
-  const { mode, staffUnlock } = useStore()
+  const { mode, staffUnlock, tryGoogleUnlock, signInWithGoogle, staffSignOut, staffSessionEmail } =
+    useStore()
   const [unlocked, setUnlocked] = useState(false)
   const [passcode, setPasscode] = useState('')
   const [passError, setPassError] = useState('')
@@ -98,29 +106,49 @@ export default function Staff({ onExit }: { onExit: () => void }) {
   const [tab, setTab] = useState<StaffTab>('reception')
   /** 入室に使ったパスコード（初期値のままかどうか・セッション保持の更新に使う） */
   const [sessionPasscode, setSessionPasscode] = useState('')
+  /** 入室に使った認証方式（R8） */
+  const [authMethod, setAuthMethod] = useState<StaffAuthMethod | null>(null)
+  /** Googleセッションの自動入室を試し終えたか（許可リスト外の案内表示に使う） */
+  const [googleChecked, setGoogleChecked] = useState(false)
+  /** Google入室が成立したときのメール（セッション喪失の検知用） */
+  const googleEmailRef = useRef<string | null>(null)
 
-  // 同じタブセッション内での再入室を省略する（保存済みパスコードで自動入室を試す）
+  // 再入室の省略: クラウドでは Google セッション（許可リスト照合）を先に試し、
+  // ダメなら同じタブセッション内の保存済みパスコードで自動入室を試す
   useEffect(() => {
-    const saved = loadStaffSession()
-    if (!saved) return
     let active = true
-    setChecking(true)
-    void staffUnlock(saved)
-      .then((ok) => {
+    const attempt = async () => {
+      setChecking(true)
+      try {
+        if (mode === 'cloud') {
+          const ok = await tryGoogleUnlock()
+          if (!active) return
+          setGoogleChecked(true)
+          if (ok) {
+            setAuthMethod('google')
+            setSessionPasscode('')
+            setUnlocked(true)
+            return
+          }
+        }
+        const saved = loadStaffSession()
+        if (!saved) return
+        const ok = await staffUnlock(saved)
         if (!active) return
         if (ok) {
+          setAuthMethod('passcode')
           setSessionPasscode(saved)
           setUnlocked(true)
         } else {
           clearStaffSession()
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) clearStaffSession()
-      })
-      .finally(() => {
+      } finally {
         if (active) setChecking(false)
-      })
+      }
+    }
+    void attempt()
     return () => {
       active = false
     }
@@ -128,8 +156,24 @@ export default function Staff({ onExit }: { onExit: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Google入室中にセッションが切れたら、スタッフ画面も閉じる
+  useEffect(() => {
+    if (authMethod === 'google' && staffSessionEmail) {
+      googleEmailRef.current = staffSessionEmail
+    }
+  }, [authMethod, staffSessionEmail])
+  useEffect(() => {
+    if (authMethod === 'google' && googleEmailRef.current && staffSessionEmail === null) {
+      handleLogout()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMethod, staffSessionEmail])
+
   const handleLogout = () => {
+    if (authMethod === 'google') void staffSignOut()
+    googleEmailRef.current = null
     clearStaffSession()
+    setAuthMethod(null)
     setSessionPasscode('')
     setPasscode('')
     setPassError('')
@@ -137,6 +181,11 @@ export default function Staff({ onExit }: { onExit: () => void }) {
   }
 
   if (!unlocked) {
+    // Googleログイン済みなのに自動入室できなかった = 許可リスト外（または未設定）
+    const deniedMessage = googleDeniedMessage(
+      staffSessionEmail,
+      googleChecked ? false : null,
+    )
     return (
       <section className="card staff-login">
         <button type="button" className="btn btn-ghost back-btn" onClick={onExit}>
@@ -144,14 +193,60 @@ export default function Staff({ onExit }: { onExit: () => void }) {
         </button>
         <h2>スタッフ用</h2>
         {mode === 'local' && <LocalModeBanner />}
-        <p className="muted">受付・当日販売・販売設定・集計・公演設定を行います。パスコードを入力してください。</p>
+        <p className="muted">受付・当日販売・販売設定・集計・公演設定を行います。</p>
+        {mode === 'cloud' && (
+          <div className="staff-google-box" data-google-box>
+            <button
+              type="button"
+              className="btn btn-google btn-block"
+              data-google-signin
+              disabled={checking}
+              onClick={async () => {
+                setPassError('')
+                try {
+                  await signInWithGoogle()
+                } catch {
+                  setPassError('Googleログインを開始できませんでした')
+                }
+              }}
+            >
+              <span className="google-g" aria-hidden="true">
+                G
+              </span>
+              Googleでログイン
+            </button>
+            <p className="muted small">
+              スタッフ許可リストに登録された Google アカウントで入室できます。
+            </p>
+            {deniedMessage && (
+              <p className="error-text" data-google-denied>
+                {deniedMessage}
+              </p>
+            )}
+            {staffSessionEmail && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                data-google-signout
+                onClick={() => void staffSignOut()}
+              >
+                Googleからログアウト
+              </button>
+            )}
+            <div className="gate-divider" aria-hidden="true">
+              <span>または</span>
+            </div>
+          </div>
+        )}
         <form
+          data-passcode-form
           onSubmit={async (e) => {
             e.preventDefault()
             setChecking(true)
             try {
               if (await staffUnlock(passcode)) {
                 saveStaffSession(passcode)
+                setAuthMethod('passcode')
                 setSessionPasscode(passcode)
                 setUnlocked(true)
                 setPassError('')
@@ -168,6 +263,9 @@ export default function Staff({ onExit }: { onExit: () => void }) {
             }
           }}
         >
+          {mode === 'cloud' && (
+            <p className="field-label">パスコードで入る（移行期間用）</p>
+          )}
           <label className="field">
             <span>パスコード</span>
             <input
@@ -210,7 +308,12 @@ export default function Staff({ onExit }: { onExit: () => void }) {
         ) : (
           <LocalModeBanner />
         )}
-        {sessionPasscode === DEFAULT_PASSCODE && (
+        {authBadgeLabel(authMethod, staffSessionEmail) && (
+          <p className="staff-auth-badge" data-staff-auth-badge>
+            {authBadgeLabel(authMethod, staffSessionEmail)}
+          </p>
+        )}
+        {authMethod !== 'google' && sessionPasscode === DEFAULT_PASSCODE && (
           <p className="passcode-warning" data-default-passcode-warning>
             <span>⚠ パスコードが初期値のままです</span>
             <button
@@ -252,7 +355,8 @@ export default function Staff({ onExit }: { onExit: () => void }) {
       {tab === 'summary' && <Summary />}
       {tab === 'perf' && (
         <PerformanceSettings
-          verifyPasscode={staffUnlock}
+          authMethod={authMethod}
+          verifyPasscode={authMethod === 'google' ? undefined : staffUnlock}
           onPasscodeChanged={(next) => {
             setSessionPasscode(next)
             saveStaffSession(next)
@@ -903,10 +1007,13 @@ function findExtremePriceChanges(before: TicketType[], after: TicketType[]): str
 function PerformanceSettings({
   onPasscodeChanged,
   verifyPasscode,
+  authMethod,
 }: {
   onPasscodeChanged?: (next: string) => void
   /** パスコード変更時の「現在のパスコード」照合用（スタッフ入室と同じ照合） */
   verifyPasscode?: (candidate: string) => Promise<boolean>
+  /** 入室に使った認証方式（R8。許可リスト設定の表示分岐に使う） */
+  authMethod?: StaffAuthMethod | null
 }) {
   const { data, mode, saveSettings, resetAll, changePasscode } = useStore()
   const { showToast } = useToast()
@@ -1259,6 +1366,12 @@ function PerformanceSettings({
         onChanged={onPasscodeChanged}
         verifyPasscode={verifyPasscode}
       />
+      {mode === 'cloud' && (
+        <>
+          <hr className="divider" />
+          <StaffAccessSettings googleStaff={authMethod === 'google'} />
+        </>
+      )}
       {mode === 'local' && (
         <>
           <hr className="divider" />
@@ -1387,5 +1500,222 @@ function PasscodeSettings({
         </button>
       </form>
     </>
+  )
+}
+
+/* ---------------- スタッフ許可リスト（R8・クラウドのみ） ---------------- */
+
+/**
+ * Googleログインで入室できるスタッフ（許可リスト）の管理と、
+ * パスコードログインの有効/無効の表示・切替。
+ * - 一覧・追加・削除はスタッフ認証済みなら可能（サーバ側 RPC が判定）。
+ * - パスコードログインの切替だけは、サーバ側で Google 許可スタッフに
+ *   限定されるため、UI でも Google 入室のときだけボタンを出す
+ *   （パスコード入室では現在値の表示のみ）。
+ * - 無効化は「Googleログイン側が壊れると締め出される」操作なので確認を挟む。
+ */
+function StaffAccessSettings({ googleStaff }: { googleStaff: boolean }) {
+  const { staffAllowlist, staffAllowlistAdd, staffAllowlistRemove, staffSetPasscodeLogin } =
+    useStore()
+  const { showToast } = useToast()
+  const [list, setList] = useState<StaffAllowlist | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [email, setEmail] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const [confirmingDisable, setConfirmingDisable] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    staffAllowlist()
+      .then((l) => {
+        if (active) setList(l)
+      })
+      .catch((e) => {
+        if (active) {
+          setLoadError(
+            e instanceof Error && e.message
+              ? e.message
+              : '許可リストを読み込めませんでした',
+          )
+        }
+      })
+    return () => {
+      active = false
+    }
+    // マウント時のみ読み込む
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const run = async (fn: () => Promise<StaffAllowlist>, doneMessage: string) => {
+    setBusy(true)
+    setActionError('')
+    try {
+      const next = await fn()
+      setList(next)
+      setConfirmingDisable(false)
+      showToast(doneMessage)
+    } catch (e) {
+      const message =
+        e instanceof Error && e.message ? e.message : '操作に失敗しました'
+      setActionError(message)
+      showToast(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleAdd = async (e: FormEvent) => {
+    e.preventDefault()
+    const normalized = normalizeStaffEmail(email)
+    if (!normalized) {
+      setActionError('メールアドレスの形式が正しくありません')
+      return
+    }
+    await run(() => staffAllowlistAdd(normalized, note.trim()), '許可リストに追加しました')
+    setEmail('')
+    setNote('')
+  }
+
+  return (
+    <div data-staff-allowlist>
+      <h4>スタッフ許可リスト（Googleログイン）</h4>
+      <p className="muted small">
+        ここに登録された Google アカウントだけが、Googleログインで入室できます。
+      </p>
+      {loadError && <p className="error-text">{loadError}</p>}
+      {!loadError && !list && <p className="muted">読み込み中…</p>}
+      {list && (
+        <>
+          <ul className="allowlist">
+            {list.entries.map((entry) => (
+              <li
+                key={entry.email}
+                className="allowlist-row"
+                data-allowlist-entry={entry.email}
+              >
+                <span className="allowlist-main">
+                  <span className="allowlist-email">{entry.email}</span>
+                  {entry.note && <span className="muted small">{entry.note}</span>}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-allowlist-remove={entry.email}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => staffAllowlistRemove(entry.email),
+                      '許可リストから削除しました',
+                    )
+                  }
+                >
+                  削除
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={handleAdd}>
+            <label className="field">
+              <span>メールアドレスを追加</span>
+              <input
+                type="email"
+                autoComplete="off"
+                data-allowlist-email-input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="例：staff@example.com"
+              />
+            </label>
+            <label className="field">
+              <span>メモ（任意）</span>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="例：受付担当"
+              />
+            </label>
+            <button
+              type="submit"
+              className="btn btn-ghost btn-small"
+              data-allowlist-add
+              disabled={busy}
+            >
+              追加する
+            </button>
+          </form>
+          <div className="field">
+            <span className="field-label">パスコードログイン</span>
+            <p className="muted" data-passcode-login-state>
+              現在：{list.passcodeLoginEnabled ? '有効' : '無効'}
+              {!googleStaff && '（変更はGoogleログインしたスタッフのみ行えます）'}
+            </p>
+            {googleStaff &&
+              (list.passcodeLoginEnabled ? (
+                confirmingDisable ? (
+                  <div className="price-extreme-confirm" data-passcode-login-confirm>
+                    <p className="error-text">
+                      パスコードログインを無効にすると、パスコードでは入室できなくなります。
+                      Googleログインが使えないとスタッフ画面に入れなくなるため、
+                      Googleログインで入室できることを確認してから無効にしてください。
+                    </p>
+                    <div className="btn-row">
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-small"
+                        data-passcode-login-disable-ok
+                        disabled={busy}
+                        onClick={() =>
+                          void run(
+                            () => staffSetPasscodeLogin(false),
+                            'パスコードログインを無効にしました',
+                          )
+                        }
+                      >
+                        無効にする
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-small"
+                        onClick={() => setConfirmingDisable(false)}
+                      >
+                        やめる
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    data-passcode-login-toggle
+                    disabled={busy}
+                    onClick={() => setConfirmingDisable(true)}
+                  >
+                    パスコードログインを無効にする
+                  </button>
+                )
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-passcode-login-toggle
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => staffSetPasscodeLogin(true),
+                      'パスコードログインを有効にしました',
+                    )
+                  }
+                >
+                  パスコードログインを有効にする
+                </button>
+              ))}
+          </div>
+          {actionError && <p className="error-text">{actionError}</p>}
+        </>
+      )}
+    </div>
   )
 }

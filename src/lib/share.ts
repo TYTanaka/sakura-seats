@@ -65,12 +65,29 @@ export function buildCalendarUrl(perf: Performance, reservation: Reservation): s
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
+/**
+ * サイトURLの組み立て（純粋関数）: origin + ベースパス（末尾スラッシュ付き）。
+ * 配信先（GitHub Pages / Cloudflare Pages）やパスが変わってもコードを
+ * 変えなくて済むよう、実行時の location と Vite の BASE_URL から導出する。
+ */
+export function siteUrlFrom(origin: string, base: string): string {
+  const withSlash = base.endsWith('/') ? base : `${base}/`
+  const path = withSlash.startsWith('/') ? withSlash : `/${withSlash}`
+  return `${origin}${path}`
+}
+
+/** 実行中ページのサイトURL（ブラウザ外では従来の本番URLにフォールバック） */
+export function currentSiteUrl(): string {
+  if (typeof window === 'undefined') return 'https://tytanaka.github.io/sakura-seats/'
+  return siteUrlFrom(window.location.origin, import.meta.env.BASE_URL)
+}
+
 /** 本番サイトのURL（LINEで送る「予約ページ」のリンク先） */
-export const SITE_URL = 'https://tytanaka.github.io/sakura-seats/'
+export const SITE_URL = currentSiteUrl()
 
 /** 予約ページURLを LINE で送る（LINE公式のシェアボタン用URL） */
 export function buildLineSharePageUrl(): string {
-  return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(SITE_URL)}`
+  return `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(currentSiteUrl())}`
 }
 
 /** 自分の予約内容（公演・日時・座席・予約番号）を LINE で送る */

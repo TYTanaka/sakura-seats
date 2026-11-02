@@ -8,6 +8,12 @@ import {
   type UncancelResult,
 } from './logic'
 import { isQrToken } from './qrToken'
+import {
+  mapAllowlist,
+  mapWhoami,
+  type StaffAllowlist,
+  type StaffWhoami,
+} from './staffAuth'
 
 /**
  * Supabase RPC のクライアント層。
@@ -40,6 +46,26 @@ export interface RpcClient {
     fn: string,
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: { message: string } | null }>
+}
+
+/** Auth が使う最小限のユーザー形状 */
+export interface AuthUserLike {
+  email?: string | null
+}
+
+/**
+ * Supabase Auth のアダプタ（R8・Googleログイン）。
+ * CloudApi はこの形越しにだけ Auth を触る（テストではモックを差す）。
+ */
+export interface AuthAdapter {
+  /** 現在のセッションのユーザー（未ログインは null） */
+  getSessionUser: () => Promise<AuthUserLike | null>
+  /** Google OAuth を開始する（成功時はブラウザごと遷移する） */
+  signInWithGoogle: (redirectTo: string) => Promise<void>
+  /** ログアウトする */
+  signOut: () => Promise<void>
+  /** セッションユーザーの変化を購読する。戻り値は解除関数 */
+  onUserChange: (cb: (user: AuthUserLike | null) => void) => () => void
 }
 
 interface RawReservationRow {
@@ -166,6 +192,26 @@ function rpcErrorToMessage(error: { message: string }): Error {
       'QR受付は、サーバ更新（migration_sakura_r7 の適用）後に使えるようになります',
     )
   }
+  // R8 の RPC が未適用の DB では Google ログイン・許可リストだけがこの文面になる
+  if (
+    (msg.includes('staff_whoami') ||
+      msg.includes('staff_allowlist') ||
+      msg.includes('staff_set_passcode_login')) &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      'Googleログインとスタッフ許可リストは、サーバ更新（migration_sakura_r8 の適用）後に使えるようになります',
+    )
+  }
+  if (msg.includes('LAST_STAFF')) {
+    return new Error('最後の1人は削除できません（スタッフが誰もいなくなってしまいます）')
+  }
+  if (msg.includes('INVALID_EMAIL')) {
+    return new Error('メールアドレスの形式が正しくありません')
+  }
+  if (msg.includes('JWT_REQUIRED')) {
+    return new Error('この操作はGoogleログインしたスタッフのみ行えます')
+  }
   if (msg.includes('SEAT_TAKEN')) {
     return new Error('選択された座席の一部が、ほかの方に予約されてしまいました。座席を選び直してください')
   }
@@ -191,9 +237,95 @@ function rpcErrorToMessage(error: { message: string }): Error {
 
 export class CloudApi {
   private client: RpcClient
+  private auth: AuthAdapter | null
 
-  constructor(client: RpcClient) {
+  constructor(client: RpcClient, auth: AuthAdapter | null = null) {
     this.client = client
+    this.auth = auth
+  }
+
+  /* ---------------- Auth（R8・Googleログイン） ---------------- */
+
+  /** Googleログイン中のメールアドレス（未ログイン・Auth未接続は null） */
+  async getSignedInEmail(): Promise<string | null> {
+    if (!this.auth) return null
+    const user = await this.auth.getSessionUser()
+    return typeof user?.email === 'string' && user.email ? user.email : null
+  }
+
+  /** Google OAuth を開始する（redirectTo へ戻る。画面は遷移する） */
+  async signInWithGoogle(redirectTo: string): Promise<void> {
+    if (!this.auth) throw new Error('クラウドへ接続できていません')
+    await this.auth.signInWithGoogle(redirectTo)
+  }
+
+  /** Googleからログアウトする */
+  async signOutGoogle(): Promise<void> {
+    if (!this.auth) return
+    await this.auth.signOut()
+  }
+
+  /** セッションユーザーの変化（メールアドレス or null）を購読する */
+  onSignedInEmailChange(cb: (email: string | null) => void): () => void {
+    if (!this.auth) return () => undefined
+    return this.auth.onUserChange((user) =>
+      cb(typeof user?.email === 'string' && user.email ? user.email : null),
+    )
+  }
+
+  /**
+   * staff_whoami: JWT のメールがスタッフ許可リストにあるかだけを返す。
+   * 未ログインでも例外にせず { ok:false } が返る設計（サーバ側）。
+   * R8 未適用の DB では call が専用エラー（migration_sakura_r8 案内）を投げる。
+   */
+  async staffWhoami(): Promise<StaffWhoami> {
+    const raw = await this.call<unknown>('staff_whoami', {})
+    return mapWhoami(raw)
+  }
+
+  /** スタッフ許可リストの取得（要スタッフ認証。passcode は現資格情報） */
+  async staffAllowlistList(passcode: string): Promise<StaffAllowlist> {
+    const raw = await this.call<unknown>('staff_allowlist_list', { p_passcode: passcode })
+    return mapAllowlist(raw)
+  }
+
+  /** 許可リストへメールアドレスを追加（既存はメモを更新）。最新のリストを返す */
+  async staffAllowlistAdd(
+    passcode: string,
+    email: string,
+    note: string,
+  ): Promise<StaffAllowlist> {
+    const raw = await this.call<unknown>('staff_allowlist_add', {
+      p_passcode: passcode,
+      p_email: email,
+      p_note: note,
+    })
+    return mapAllowlist(raw)
+  }
+
+  /** 許可リストからメールアドレスを削除（最後の1人はサーバが拒否）。最新のリストを返す */
+  async staffAllowlistRemove(passcode: string, email: string): Promise<StaffAllowlist> {
+    const raw = await this.call<unknown>('staff_allowlist_remove', {
+      p_passcode: passcode,
+      p_email: email,
+    })
+    return mapAllowlist(raw)
+  }
+
+  /**
+   * パスコードログインの有効/無効を切り替える。
+   * 変更はサーバ側で Google（JWT）許可スタッフのみに制限される
+   * （パスコードだけの資格情報では認証経路自体を変えさせない）。
+   */
+  async staffSetPasscodeLogin(
+    passcode: string,
+    enabled: boolean,
+  ): Promise<StaffAllowlist> {
+    const raw = await this.call<unknown>('staff_set_passcode_login', {
+      p_passcode: passcode,
+      p_enabled: enabled,
+    })
+    return mapAllowlist(raw)
   }
 
   private async call<T>(fn: string, args: Record<string, unknown>): Promise<T> {
@@ -423,7 +555,34 @@ export async function createCloudApi(): Promise<{
   const { SUPABASE_URL, SUPABASE_ANON_KEY } = await import('./config')
   const client: SupabaseClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
 
-  const api = new CloudApi(client as unknown as RpcClient)
+  const auth: AuthAdapter = {
+    getSessionUser: async () => {
+      const { data } = await client.auth.getSession()
+      return data.session?.user ?? null
+    },
+    signInWithGoogle: async (redirectTo) => {
+      const { error } = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) {
+        throw new Error(
+          'Googleログインを開始できませんでした。しばらくしてからもう一度お試しください',
+        )
+      }
+    },
+    signOut: async () => {
+      await client.auth.signOut()
+    },
+    onUserChange: (cb) => {
+      const { data } = client.auth.onAuthStateChange((_event, session) => {
+        cb(session?.user ?? null)
+      })
+      return () => data.subscription.unsubscribe()
+    },
+  }
+
+  const api = new CloudApi(client as unknown as RpcClient, auth)
 
   const subscribeSeatChanges = (onChange: () => void, onStatus?: (status: string) => void) => {
     const channel = client

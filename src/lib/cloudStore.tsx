@@ -17,6 +17,7 @@ import {
   type Reservation,
 } from './logic'
 import { createCloudApi, type CloudApi } from './cloud'
+import { currentSiteUrl } from './share'
 import { StoreContext, type CheckInOutcome, type Store } from './store'
 
 /**
@@ -47,7 +48,14 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   /** 接続状態（R4-3）: 'ok' 以外の間は「表示が古いかもしれない」ことを画面に出す */
   const [syncState, setSyncState] = useState<'ok' | 'reconnecting' | 'offline'>('ok')
+  /** Googleログイン中のメールアドレス（R8。セッションがあれば入る） */
+  const [staffEmail, setStaffEmail] = useState<string | null>(null)
   const bundleRef = useRef<CloudBundle | null>(null)
+  /**
+   * スタッフ資格情報。null = 未入室。
+   * Google入室のときは ''（空文字）を番兵にする: RPC には p_passcode='' で渡り、
+   * サーバ側 sakura_check_passcode が JWT の許可リストで認可する（R8）。
+   */
   const passcodeRef = useRef<string | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dataRef = useRef(data)
@@ -69,7 +77,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
   const refreshStaff = useCallback(async () => {
     const bundle = bundleRef.current
     const passcode = passcodeRef.current
-    if (!bundle || !passcode) return
+    // Google入室時は '' が入っている（falsy だが有効な資格情報）ため null で判定する
+    if (!bundle || passcode === null) return
     const staff = await bundle.api.staffGetAll(passcode)
     setData((prev) => ({
       ...prev,
@@ -82,7 +91,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshAll = useCallback(async () => {
     await refreshPublic()
-    if (passcodeRef.current) await refreshStaff()
+    if (passcodeRef.current !== null) await refreshStaff()
   }, [refreshPublic, refreshStaff])
 
   /**
@@ -129,13 +138,29 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
     [refreshWithRetry],
   )
 
+  /** クラウド接続一式を一度だけ作る（load と Google 入室の双方から使う） */
+  const ensureBundle = useCallback(async (): Promise<CloudBundle> => {
+    if (!bundleRef.current) {
+      bundleRef.current = await createCloudApi()
+      bundleRef.current.subscribeSeatChanges(scheduleRefresh, handleSubscriptionStatus)
+      // Googleセッションの変化を追随する（R8）: ログイン中メールを保持し、
+      // セッションが切れたら Google 入室の資格情報（''）も破棄する
+      bundleRef.current.api.onSignedInEmailChange((email) => {
+        setStaffEmail(email)
+        if (!email && passcodeRef.current === '') passcodeRef.current = null
+      })
+      void bundleRef.current.api
+        .getSignedInEmail()
+        .then((email) => setStaffEmail(email))
+        .catch(() => undefined)
+    }
+    return bundleRef.current
+  }, [scheduleRefresh, handleSubscriptionStatus])
+
   const load = useCallback(async () => {
     setLoadError(null)
     try {
-      if (!bundleRef.current) {
-        bundleRef.current = await createCloudApi()
-        bundleRef.current.subscribeSeatChanges(scheduleRefresh, handleSubscriptionStatus)
-      }
+      await ensureBundle()
       await refreshPublic()
       setReady(true)
     } catch {
@@ -143,7 +168,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         'サーバへ接続できませんでした。電波の良い場所で再読み込みしてください（クラウド機能の準備中の場合もあります）。',
       )
     }
-  }, [refreshPublic, scheduleRefresh, handleSubscriptionStatus])
+  }, [ensureBundle, refreshPublic])
 
   useEffect(() => {
     void load()
@@ -171,7 +196,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
     }
     const staffPasscode = (): string => {
       const p = passcodeRef.current
-      if (!p) throw new Error('スタッフ入室が必要です')
+      // Google入室時は ''（サーバが JWT で認可する）。未入室は null のみ
+      if (p === null) throw new Error('スタッフ入室が必要です')
       return p
     }
     /** RPC の結果（予約番号・サーバ計算金額）から表示用 Reservation を組み立てる */
@@ -358,13 +384,71 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           return false
         }
       },
+      staffSessionEmail: staffEmail,
+      tryGoogleUnlock: async () => {
+        try {
+          const bundle = await ensureBundle()
+          const email = await bundle.api.getSignedInEmail()
+          if (!email) return false
+          // 許可リスト照合はサーバ側（staff_whoami）。R8 未適用の DB では
+          // ここで例外になるため、静かに false を返してパスコード入室に落とす
+          const who = await bundle.api.staffWhoami()
+          if (!who.ok) return false
+          const staff = await bundle.api.staffGetAll('')
+          passcodeRef.current = ''
+          setStaffEmail(who.email ?? email)
+          setData((prev) => ({
+            ...prev,
+            performance: staff.performance,
+            blocked: staff.blockedSeats,
+            bookingDeadline: staff.bookingDeadline,
+            reservations: staff.reservations,
+          }))
+          return true
+        } catch {
+          return false
+        }
+      },
+      signInWithGoogle: async () => {
+        const bundle = await ensureBundle()
+        // 戻り先は今いるアプリのURLそのもの（配信先が変わっても追随する）
+        await bundle.api.signInWithGoogle(currentSiteUrl())
+      },
+      staffSignOut: async () => {
+        try {
+          const bundle = await ensureBundle()
+          await bundle.api.signOutGoogle()
+        } catch {
+          // ログアウト失敗でも端末側の資格情報は破棄する
+        }
+        if (passcodeRef.current === '') passcodeRef.current = null
+        setStaffEmail(null)
+      },
+      staffAllowlist: async () => api().staffAllowlistList(staffPasscode()),
+      staffAllowlistAdd: async (email, note) =>
+        api().staffAllowlistAdd(staffPasscode(), email, note),
+      staffAllowlistRemove: async (email) =>
+        api().staffAllowlistRemove(staffPasscode(), email),
+      staffSetPasscodeLogin: async (enabled) =>
+        api().staffSetPasscodeLogin(staffPasscode(), enabled),
       changePasscode: async (newPasscode) => {
         await api().staffChangePasscode(staffPasscode(), newPasscode)
         passcodeRef.current = newPasscode
       },
       resetAll: () => undefined,
     }
-  }, [data, ready, loadError, load, refreshAll, refreshStaff, refreshWithRetry, syncState])
+  }, [
+    data,
+    ready,
+    loadError,
+    load,
+    refreshAll,
+    refreshStaff,
+    refreshWithRetry,
+    syncState,
+    staffEmail,
+    ensureBundle,
+  ])
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
 }

@@ -4,6 +4,7 @@ import {
   mapLookupResult,
   mapPublicState,
   mapStaffData,
+  type AuthAdapter,
   type RpcClient,
 } from './cloud'
 import { defaultPerformance } from './logic'
@@ -324,5 +325,118 @@ describe('CloudApi（モック RPC クライアント）', () => {
     await expect(
       new CloudApi(weirdClient.client).staffCheckIn('1234', 't'),
     ).rejects.toThrow('通信に失敗しました')
+  })
+
+  describe('R8: Googleログイン・許可リスト', () => {
+    function fakeAuth(user: { email?: string | null } | null) {
+      const signInWithGoogle = vi.fn(async (_redirectTo: string) => undefined)
+      const signOut = vi.fn(async () => undefined)
+      return {
+        adapter: {
+          getSessionUser: async () => user,
+          signInWithGoogle,
+          signOut,
+          onUserChange: () => () => undefined,
+        } as AuthAdapter,
+        signInWithGoogle,
+        signOut,
+      }
+    }
+
+    const allowlistPayload = {
+      passcodeLoginEnabled: true,
+      entries: [
+        { email: 'yuuki20170731@gmail.com', note: 'オーナー', createdAt: '2026-11-02T00:00:00Z' },
+      ],
+    }
+
+    it('getSignedInEmail はセッションのメールを返し、未ログインは null', async () => {
+      const { client } = fakeClient(() => null)
+      const signed = new CloudApi(client, fakeAuth({ email: 'a@example.com' }).adapter)
+      expect(await signed.getSignedInEmail()).toBe('a@example.com')
+      const anon = new CloudApi(client, fakeAuth(null).adapter)
+      expect(await anon.getSignedInEmail()).toBeNull()
+      const noAuth = new CloudApi(client)
+      expect(await noAuth.getSignedInEmail()).toBeNull()
+    })
+
+    it('signInWithGoogle は redirectTo をそのまま Auth へ渡す', async () => {
+      const { client } = fakeClient(() => null)
+      const auth = fakeAuth(null)
+      const api = new CloudApi(client, auth.adapter)
+      await api.signInWithGoogle('https://tytanaka.github.io/sakura-seats/')
+      expect(auth.signInWithGoogle).toHaveBeenCalledWith(
+        'https://tytanaka.github.io/sakura-seats/',
+      )
+    })
+
+    it('staffWhoami は応答を変換する', async () => {
+      const { client, rpc } = fakeClient(() => ({ ok: true, email: 'a@example.com' }))
+      const api = new CloudApi(client)
+      expect(await api.staffWhoami()).toEqual({ ok: true, email: 'a@example.com' })
+      expect(rpc).toHaveBeenCalledWith('staff_whoami', {})
+    })
+
+    it('許可リスト list/add/remove は p_* 引数で呼び、応答を変換する', async () => {
+      const { client, rpc } = fakeClient(() => allowlistPayload)
+      const api = new CloudApi(client)
+      const list = await api.staffAllowlistList('')
+      expect(list.passcodeLoginEnabled).toBe(true)
+      expect(list.entries[0].email).toBe('yuuki20170731@gmail.com')
+      expect(rpc).toHaveBeenCalledWith('staff_allowlist_list', { p_passcode: '' })
+
+      await api.staffAllowlistAdd('1234', 'b@example.com', '受付')
+      expect(rpc).toHaveBeenCalledWith('staff_allowlist_add', {
+        p_passcode: '1234',
+        p_email: 'b@example.com',
+        p_note: '受付',
+      })
+
+      await api.staffAllowlistRemove('1234', 'b@example.com')
+      expect(rpc).toHaveBeenCalledWith('staff_allowlist_remove', {
+        p_passcode: '1234',
+        p_email: 'b@example.com',
+      })
+
+      await api.staffSetPasscodeLogin('', false)
+      expect(rpc).toHaveBeenCalledWith('staff_set_passcode_login', {
+        p_passcode: '',
+        p_enabled: false,
+      })
+    })
+
+    it('R8 未適用 DB のエラーは専用文面になる', async () => {
+      const { client } = fakeClient(() => {
+        throw new Error(
+          'Could not find the function public.staff_whoami() in the schema cache',
+        )
+      })
+      await expect(new CloudApi(client).staffWhoami()).rejects.toThrow(
+        'migration_sakura_r8',
+      )
+    })
+
+    it('LAST_STAFF / JWT_REQUIRED / INVALID_EMAIL は日本語文面になる', async () => {
+      const lastStaff = fakeClient(() => {
+        throw new Error('LAST_STAFF: 最後のスタッフは削除できません')
+      })
+      await expect(
+        new CloudApi(lastStaff.client).staffAllowlistRemove('1234', 'a@example.com'),
+      ).rejects.toThrow('最後の1人は削除できません')
+
+      const jwtRequired = fakeClient(() => {
+        throw new Error('JWT_REQUIRED: この操作はGoogleログインしたスタッフのみ行えます')
+      })
+      await expect(
+        new CloudApi(jwtRequired.client).staffSetPasscodeLogin('1234', false),
+      ).rejects.toThrow('Googleログインしたスタッフのみ')
+
+      const invalidEmail = fakeClient(() => {
+        throw new Error('INVALID_EMAIL: メールアドレスの形式が正しくありません')
+      })
+      await expect(
+        new CloudApi(invalidEmail.client).staffAllowlistAdd('1234', 'bad', ''),
+      ).rejects.toThrow('メールアドレスの形式が正しくありません')
+    })
   })
 })

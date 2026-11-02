@@ -32,6 +32,7 @@ import {
 } from './logic'
 import { cloudEnabled } from './config'
 import { isStaleRevision, nextRevision, parseRevision } from './revision'
+import type { StaffAllowlist } from './staffAuth'
 
 /**
  * ストアの共通インターフェース。
@@ -106,6 +107,28 @@ export interface Store {
   staffUnlock: (passcode: string) => Promise<boolean>
   changePasscode: (newPasscode: string) => Promise<void>
   resetAll: () => void
+  /* ---------------- R8: Googleログイン（クラウドモードのみ） ---------------- */
+  /**
+   * Googleログイン中のメールアドレス（セッションがある場合）。
+   * スタッフ許可リストに載っているかは別（tryGoogleUnlock / whoami で判定）。
+   * ローカルモードでは常に null。
+   */
+  staffSessionEmail: string | null
+  /**
+   * Googleセッション + 許可リスト照合でスタッフ入室を試す。
+   * 成功したらスタッフデータも読み込んで true。クラウド以外では false。
+   */
+  tryGoogleUnlock: () => Promise<boolean>
+  /** Googleログインを開始する（ブラウザが Google へ遷移する）。クラウドのみ */
+  signInWithGoogle: () => Promise<void>
+  /** Googleからログアウトし、スタッフ資格情報も破棄する。クラウドのみ */
+  staffSignOut: () => Promise<void>
+  /** スタッフ許可リストの取得（クラウドのみ。要スタッフ入室） */
+  staffAllowlist: () => Promise<StaffAllowlist>
+  staffAllowlistAdd: (email: string, note: string) => Promise<StaffAllowlist>
+  staffAllowlistRemove: (email: string) => Promise<StaffAllowlist>
+  /** パスコードログインの切替（クラウドのみ。サーバ側で Google 許可スタッフに限定） */
+  staffSetPasscodeLogin: (enabled: boolean) => Promise<StaffAllowlist>
 }
 
 export const StoreContext = createContext<Store | null>(null)
@@ -354,6 +377,25 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         return result
       },
       staffUnlock: async (candidate) => candidate === passcode,
+      // ローカルモードには Google ログインも許可リストも無い（画面側も出さない）
+      staffSessionEmail: null,
+      tryGoogleUnlock: async () => false,
+      signInWithGoogle: async () => {
+        throw new Error('ローカルモードではGoogleログインは使えません')
+      },
+      staffSignOut: async () => undefined,
+      staffAllowlist: async () => {
+        throw new Error('許可リストはクラウドモード専用です')
+      },
+      staffAllowlistAdd: async () => {
+        throw new Error('許可リストはクラウドモード専用です')
+      },
+      staffAllowlistRemove: async () => {
+        throw new Error('許可リストはクラウドモード専用です')
+      },
+      staffSetPasscodeLogin: async () => {
+        throw new Error('許可リストはクラウドモード専用です')
+      },
       changePasscode: async (newPasscode) => {
         setPasscode(newPasscode)
         try {
