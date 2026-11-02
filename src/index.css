@@ -2596,3 +2596,109 @@ button.seat-available:hover {
   font-weight: 800;
   color: #a02c1a;
 }
+
+/* ---------------- ホール全体オーバービュー（候補えらび） ----------------
+   全席を中立色で描く模式図。空き／埋まりは一切出さない読み取り専用の全体図で、
+   3候補の席だけを候補色（金／紫／ピンク）で示す。凡例の色見本と共通の
+   is-cand-N クラスで色をそろえる。 */
+.candidate-overview {
+  margin-bottom: 14px;
+}
+.candidate-overview-title {
+  margin: 0 0 2px;
+  font-size: 14.5px;
+  color: var(--burgundy);
+}
+.candidate-overview-note {
+  margin: 0 0 8px;
+}
+.overview-legend {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+}
+.overview-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+.overview-swatch {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+}
+.overview-floor + .overview-floor {
+  margin-top: 10px;
+}
+.overview-floor-label {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+.overview-grid {
+  background: linear-gradient(180deg, #241557, #170b3d);
+  border-radius: 12px;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.overview-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.overview-row-label {
+  width: 14px;
+  flex: none;
+  font-size: 8px;
+  color: rgba(232, 222, 252, 0.75);
+  text-align: right;
+}
+.overview-block {
+  display: flex;
+  gap: 2px;
+  flex-basis: 0;
+  min-width: 0;
+}
+.overview-seat {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 6px;
+  border-radius: 1.5px;
+  background: rgba(232, 222, 252, 0.32);
+}
+.overview-swatch.is-cand-0,
+.overview-seat.is-cand-0 {
+  background: linear-gradient(135deg, var(--gold), #ffb347);
+}
+.overview-swatch.is-cand-1,
+.overview-seat.is-cand-1 {
+  background: linear-gradient(135deg, #c39bff, #8a4bce);
+}
+.overview-swatch.is-cand-2,
+.overview-seat.is-cand-2 {
+  background: linear-gradient(135deg, #ff9ecf, #ef5da8);
+}
+.overview-seat.is-cand-0,
+.overview-seat.is-cand-1,
+.overview-seat.is-cand-2 {
+  height: 8px;
+}
+.overview-seat.is-cand-0 {
+  box-shadow: 0 0 0 1px rgba(245, 196, 81, 0.9), 0 0 5px rgba(245, 196, 81, 0.7);
+}
+.overview-seat.is-cand-1 {
+  box-shadow: 0 0 0 1px rgba(195, 155, 255, 0.9), 0 0 5px rgba(154, 107, 255, 0.7);
+}
+.overview-seat.is-cand-2 {
+  box-shadow: 0 0 0 1px rgba(255, 158, 207, 0.9), 0 0 5px rgba(239, 93, 168, 0.7);
+}

@@ -31,6 +31,7 @@ import {
 import flyerUrl from '../assets/flyer.webp'
 import flyerJpgUrl from '../assets/flyer.jpg'
 import MiniMap from './MiniMap'
+import OverviewMap from './OverviewMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import ReservationQr from './ReservationQr'
 
@@ -557,6 +558,13 @@ export default function AudienceBook({
                   </p>
                 ) : (
                   <>
+                    <div className="candidate-overview" data-candidate-overview>
+                      <h4 className="candidate-overview-title">ホール全体での位置</h4>
+                      <p className="muted small candidate-overview-note">
+                        色のついた席が、それぞれの候補の席です（空き状況は表示していません）
+                      </p>
+                      <OverviewMap candidates={candidates} />
+                    </div>
                     <div className="candidate-list" data-candidate-list>
                       {candidates.map((cand) => (
                         <article
