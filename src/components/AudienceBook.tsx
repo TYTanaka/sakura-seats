@@ -36,7 +36,7 @@ import flyerJpgUrl from '../assets/flyer.jpg'
 import OverviewMap from './OverviewMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import ReservationQr from './ReservationQr'
-import ZoneMap from './ZoneMap'
+import ZoneSeatMap from './ZoneSeatMap'
 
 type Step = 'zone' | 'result' | 'form' | 'confirm' | 'done'
 
@@ -477,7 +477,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              人数を選んで、エリア（ゾーン）をタップしてください。選んだゾーンの中で、並んだ席を自動でご用意します。
+              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。選んだゾーンの中で、並んだ席を自動でご用意します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -524,7 +524,8 @@ export default function AudienceBook({
               </p>
             ) : (
               <>
-                <ZoneMap
+                <ZoneSeatMap
+                  data={data}
                   availability={availability}
                   onPick={pickZone}
                   disabled={closed}

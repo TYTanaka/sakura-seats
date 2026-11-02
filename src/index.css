@@ -2568,84 +2568,278 @@ button.seat-available:hover {
   color: #8c2438;
 }
 
-/* ゾーン選択の模式図: 舞台を上に、ホールの形にゾーンタイルを並べる。
-   タイル自体がボタン（=ゾーンカード）で、残り席数・満席をタイル内に出す */
-.zone-map {
-  background: linear-gradient(180deg, #241557, #170b3d);
+/* ゾーン選択: 上から見た座席表（実際の座席配置・ゾーン色分け）。
+   席セル自体がゾーンへの入口で、埋まった席は暗く落とす。
+   満席ゾーンは黒く塗ってタップ不可にする（R10 のタイルと同じ約束）。 */
+.zc-a { --zc: #f5c451; }
+.zc-b { --zc: #9a6bff; }
+.zc-c { --zc: #ef5da8; }
+.zc-d { --zc: #35b5a6; }
+.zc-e { --zc: #3f8fe0; }
+.zc-f { --zc: #ff8a5c; }
+.zc-g { --zc: #c86dd7; }
+.zc-h { --zc: #6f7bd9; }
+.zc-i { --zc: #a8a4d8; }
+
+.zseat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  min-height: 26px;
+}
+.zseat-hint {
+  font-size: 11px;
+  color: var(--muted, #8a7f95);
+}
+.zseat-reset {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: rgba(245, 196, 81, 0.16);
+  color: var(--burgundy);
+  cursor: pointer;
+}
+/* 1本指のパン（ページスクロール・横スクロール）は許可し、ブラウザの
+   ピンチズームは無効化。2本指ピンチはコンポーネント側で自前処理する */
+.zseat-viewport {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  touch-action: pan-x pan-y;
   border-radius: 12px;
-  padding: 10px;
+}
+.zseat-viewport.is-zoomed {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.zseat-box {
+  position: relative;
+}
+.zseat-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
-.zone-grid {
-  display: grid;
-  gap: 8px;
-}
-.zone-grid-1f {
-  grid-template-columns: 1fr 1.45fr 1fr;
-  grid-template-areas:
-    'd a f'
-    'd b f'
-    'e c g';
-}
-.zone-grid-2f {
-  grid-template-columns: 3.4fr 1fr;
-  grid-template-areas: 'h i';
-}
-.zone-floor-label {
-  margin: 2px 0 0;
+.zseat-floor-label {
+  margin: 0 0 4px;
   font-size: 12.5px;
   font-weight: 800;
-  color: #e8defc;
+  color: var(--burgundy);
 }
-.zone-tile {
+.zseat-grid {
+  background: linear-gradient(180deg, #241557, #170b3d);
+  border-radius: 12px;
+  padding: 8px 10px 10px;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-  text-align: left;
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1.5px solid rgba(245, 196, 81, 0.45);
-  background: linear-gradient(180deg, rgba(138, 75, 206, 0.35), rgba(64, 32, 128, 0.45));
-  color: #f2ecff;
+  gap: 2px;
+}
+.zseat-rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.zseat-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.zseat-row-label {
+  width: 16px;
+  flex: none;
+  font-size: 8.5px;
+  color: rgba(232, 222, 252, 0.75);
+  text-align: right;
+}
+.zseat-block {
+  display: flex;
+  gap: 2px;
+  flex-basis: 0;
+  min-width: 0;
+}
+.zseat-row.is-side {
+  justify-content: space-between;
+}
+.zseat-row.is-side .zseat-block {
+  flex: none;
+}
+.zseat-row.is-side .zseat-cell {
+  flex: none;
+  width: 11px;
+}
+.zseat-aisle {
+  height: 7px;
+  line-height: 7px;
+  text-align: center;
+  font-size: 8px;
+  color: rgba(232, 222, 252, 0.5);
+}
+.zseat-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 9px;
+  border-radius: 2px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+button.zseat-cell {
   cursor: pointer;
-  min-height: 44px;
 }
-.zone-tile:active {
-  filter: brightness(1.25);
+button.zseat-cell:active {
+  filter: brightness(1.3);
 }
-.zone-tile-head {
+.zseat-cell.is-free {
+  background: var(--zc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+/* 埋まっている席は暗く落とし、残りの空き具合がそのまま見えるようにする */
+.zseat-cell.is-taken {
+  background: #2b2440;
+  box-shadow: inset 0 0 0 1px rgba(232, 222, 252, 0.08);
+}
+/* 満席ゾーンの席は黒く塗る */
+.zseat-cell.is-soldout {
+  background: #06060a;
+  cursor: default;
+}
+.zseat-cell.is-neutral {
+  background: rgba(232, 222, 252, 0.18);
+}
+.zseat-cell.is-flash {
+  filter: brightness(1.45);
+}
+
+/* ゾーンバッジ: ゾーンの席の重心に重ねる小さな札（そのままボタン） */
+.zbadge {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--zc);
+  background: rgba(10, 6, 28, 0.85);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.zbadge:active {
+  filter: brightness(1.35);
+}
+.zbadge-letter {
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--zc);
+}
+.zbadge-count {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+}
+.zbadge.is-low {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1.5px rgba(245, 196, 81, 0.55), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.zbadge.is-soldout {
+  background: #06060a;
+  border-color: rgba(255, 255, 255, 0.28);
+  cursor: default;
+}
+.zbadge.is-soldout .zbadge-letter {
+  color: rgba(255, 255, 255, 0.45);
+}
+.zbadge.is-soldout .zbadge-count {
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.14em;
+}
+.zbadge.is-flash {
+  filter: brightness(1.5);
+}
+
+/* マップ下のコンパクトなゾーン一覧（説明文はこちらに置く） */
+.zonelist {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.zonelist-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(138, 75, 206, 0.35);
+  background: linear-gradient(180deg, rgba(138, 75, 206, 0.1), rgba(64, 32, 128, 0.1));
+  color: var(--burgundy);
+  cursor: pointer;
+}
+.zonelist-item:active {
+  filter: brightness(1.12);
+}
+.zonelist-item.is-flash {
+  border-color: var(--gold);
+  filter: brightness(1.15);
+}
+.zonelist-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--zc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.zonelist-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.zonelist-head {
   display: flex;
   align-items: baseline;
   gap: 7px;
 }
-.zone-letter {
-  font-size: 19px;
+.zonelist-letter {
+  font-size: 16px;
   font-weight: 900;
-  color: var(--gold);
   line-height: 1;
+  color: var(--burgundy);
 }
-.zone-name {
+.zonelist-name {
   font-size: 13.5px;
   font-weight: 800;
-  line-height: 1.3;
 }
-.zone-desc {
+.zonelist-desc {
   font-size: 10.5px;
   line-height: 1.45;
-  color: rgba(232, 222, 252, 0.85);
+  color: var(--muted, #8a7f95);
 }
-.zone-remain {
-  margin-top: auto;
+.zonelist-remain {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 800;
-  color: #fff;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  align-items: center;
+  color: var(--burgundy);
 }
 .zone-low-badge {
   font-size: 10.5px;
@@ -2655,29 +2849,37 @@ button.seat-available:hover {
   background: var(--gold);
   color: #4a3200;
 }
-.zone-tile.is-low {
-  border-color: var(--gold);
-}
-/* 満席ゾーンは黒く塗って選べなくする */
-.zone-tile.is-soldout {
-  background: #06060a;
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(232, 222, 252, 0.45);
-  cursor: default;
-}
-.zone-tile.is-soldout .zone-letter {
-  color: rgba(232, 222, 252, 0.4);
-}
-.zone-tile:disabled:not(.is-soldout) {
-  opacity: 0.55;
-  cursor: default;
-}
-.zone-soldout-label {
-  margin-top: auto;
+.zonelist-soldout {
+  flex: none;
   font-size: 15px;
   font-weight: 900;
   letter-spacing: 0.3em;
   color: rgba(255, 255, 255, 0.75);
+}
+.zonelist-item.is-low {
+  border-color: var(--gold);
+}
+/* 満席ゾーンは黒く塗って選べなくする */
+.zonelist-item.is-soldout {
+  background: #06060a;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(232, 222, 252, 0.5);
+  cursor: default;
+}
+.zonelist-item.is-soldout .zonelist-letter,
+.zonelist-item.is-soldout .zonelist-name {
+  color: rgba(232, 222, 252, 0.45);
+}
+.zonelist-item.is-soldout .zonelist-desc {
+  color: rgba(232, 222, 252, 0.35);
+}
+.zonelist-item.is-soldout .zonelist-swatch {
+  background: rgba(232, 222, 252, 0.15);
+  box-shadow: none;
+}
+.zonelist-item:disabled:not(.is-soldout) {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* 割当結果 */
