@@ -370,6 +370,12 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       },
       staffUnlock: async (candidate) => {
         try {
+          // R9: 先に staff_login で失敗回数の記録とロック判定を行う
+          // （サーバ側スロットルの数える場所はここだけ）。
+          // false（間違い or ロック中）なら入室失敗として即座に返す。
+          // null（R9 未適用の DB 等）は判定を従来の staffGetAll に委ねる。
+          const login = await api().staffLogin(candidate)
+          if (login === false) return false
           const staff = await api().staffGetAll(candidate)
           passcodeRef.current = candidate
           setData((prev) => ({

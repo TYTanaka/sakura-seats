@@ -212,6 +212,14 @@ function rpcErrorToMessage(error: { message: string }): Error {
   if (msg.includes('JWT_REQUIRED')) {
     return new Error('この操作はGoogleログインしたスタッフのみ行えます')
   }
+  // R9 の予約フラッド防止（migration_sakura_r9）。どちらも通常の予約
+  // エラーとして扱い、再提案フローには乗せない（呼び出し側が文面を表示）
+  if (msg.includes('PHONE_LIMIT')) {
+    return new Error('この電話番号でのご予約が上限に達しています')
+  }
+  if (msg.includes('TOO_BUSY')) {
+    return new Error('ただいま混み合っています。少し時間をおいてお試しください')
+  }
   if (msg.includes('SEAT_TAKEN')) {
     return new Error('選択された座席の一部が、ほかの方に予約されてしまいました。座席を選び直してください')
   }
@@ -271,6 +279,31 @@ export class CloudApi {
     return this.auth.onUserChange((user) =>
       cb(typeof user?.email === 'string' && user.email ? user.email : null),
     )
+  }
+
+  /**
+   * staff_login（R9・migration_sakura_r9）: パスコードログイン専用 RPC。
+   * 成否を例外ではなく { ok } で返し、サーバ側はこの経路でのみ失敗回数を
+   * 数えてスロットルする（例外で終わる呼び出しは書き込みがロールバック
+   * されるため、staff_get_all 側では数えられない）。
+   * 戻り値: true = 成功 / false = 失敗（パスコード間違い、またはロック中。
+   * サーバは両者を見分けられない形で返す）
+   *         null = 判定不能（R9 未適用の DB で RPC が無い、通信エラー等）。
+   *         呼び出し側は従来フロー（staffGetAll の成否判定）へ落としてよい。
+   * この追加呼び出しのせいでログインが壊れないよう、RPC の失敗は握って
+   * null にする（最悪ケースは「失敗を数えない」だけで、成否判定は
+   * staffGetAll が従来どおり行う）。
+   */
+  async staffLogin(passcode: string): Promise<boolean | null> {
+    try {
+      const { data, error } = await this.client.rpc('staff_login', {
+        p_passcode: passcode,
+      })
+      if (error) return null
+      return (data as { ok?: unknown } | null)?.ok === true
+    } catch {
+      return null
+    }
   }
 
   /**

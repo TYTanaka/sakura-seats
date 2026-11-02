@@ -138,6 +138,41 @@ describe('CloudApi（モック RPC クライアント）', () => {
     ).rejects.toThrow('選び直してください')
   })
 
+  it('PHONE_LIMIT エラーは電話番号上限の文案に変換される（R9）', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('PHONE_LIMIT: この電話番号でのご予約が上限に達しています')
+    })
+    const api = new CloudApi(client)
+    await expect(
+      api.bookSeats({ name: 'a', phone: '090', note: '', items: [] }),
+    ).rejects.toThrow('この電話番号でのご予約が上限に達しています')
+  })
+
+  it('TOO_BUSY エラーは混雑の文案に変換される（R9）', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('TOO_BUSY: ただいま混み合っています。少し時間をおいてお試しください')
+    })
+    const api = new CloudApi(client)
+    await expect(
+      api.bookSeats({ name: 'a', phone: '090', note: '', items: [] }),
+    ).rejects.toThrow('ただいま混み合っています。少し時間をおいてお試しください')
+  })
+
+  it('staffLogin は { ok:true } を true、{ ok:false } を false に変換する（R9）', async () => {
+    const okApi = new CloudApi(fakeClient(() => ({ ok: true })).client)
+    await expect(okApi.staffLogin('1234')).resolves.toBe(true)
+    const ngApi = new CloudApi(fakeClient(() => ({ ok: false })).client)
+    await expect(ngApi.staffLogin('9999')).resolves.toBe(false)
+  })
+
+  it('staffLogin は RPC が無い・失敗する DB では null を返す（従来フローへ委ねる）', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('Could not find the function public.staff_login')
+    })
+    const api = new CloudApi(client)
+    await expect(api.staffLogin('1234')).resolves.toBeNull()
+  })
+
   it('staffUnlock 経路: UNAUTHORIZED はパスコード違いの文案になる', async () => {
     const { client } = fakeClient(() => {
       throw new Error('UNAUTHORIZED: パスコードが違います')
