@@ -2482,17 +2482,17 @@ button.seat-available:hover {
   margin-top: 10px;
 }
 
-/* ===== おまかせ予約（候補提示） ===== */
-.omakase-lead {
+/* ===== ゾーン制予約（ライブ会場方式） ===== */
+.zone-lead {
   margin: 2px 0 12px;
 }
-.omakase-controls {
+.zone-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
-.party-row,
-.floor-pref-row {
+.party-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2531,30 +2531,11 @@ button.seat-available:hover {
   font-weight: 800;
   color: var(--burgundy);
 }
-.floor-pref {
-  flex: 1;
-  justify-content: flex-end;
-}
-.omakase-remaining {
+.zone-price-note {
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  align-items: center;
 }
-.remaining-sep {
-  color: var(--line);
-}
-.omakase-results {
-  margin-top: 16px;
-}
-.omakase-soldout {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--pink-pale);
-  color: var(--burgundy);
-  font-weight: 700;
+.zone-note {
+  margin-top: 14px;
 }
 .seat-taken-notice {
   margin: 0 0 12px;
@@ -2565,26 +2546,13 @@ button.seat-available:hover {
   color: var(--burgundy);
   font-weight: 700;
 }
-.candidate-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.candidate-card {
-  border: 1.5px solid var(--line);
-  border-radius: 16px;
-  padding: 14px;
-  background: linear-gradient(180deg, #fffdf8, #f7f0fe);
-  box-shadow: var(--shadow-pink);
-}
-.candidate-label {
-  margin: 0 0 4px;
-  font-size: 16px;
+.zone-error {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--pink-pale);
   color: var(--burgundy);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  font-weight: 700;
 }
 .candidate-split-badge,
 .candidate-restricted-badge {
@@ -2599,22 +2567,150 @@ button.seat-available:hover {
   background: #f6d9de;
   color: #8c2438;
 }
-.candidate-reason {
-  margin: 0 0 4px;
-  font-size: 13px;
-  color: var(--muted);
+
+/* ゾーン選択の模式図: 舞台を上に、ホールの形にゾーンタイルを並べる。
+   タイル自体がボタン（=ゾーンカード）で、残り席数・満席をタイル内に出す */
+.zone-map {
+  background: linear-gradient(180deg, #241557, #170b3d);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.candidate-seats {
-  margin: 0 0 10px;
+.zone-grid {
+  display: grid;
+  gap: 8px;
+}
+.zone-grid-1f {
+  grid-template-columns: 1fr 1.45fr 1fr;
+  grid-template-areas:
+    'd a f'
+    'd b f'
+    'e c g';
+}
+.zone-grid-2f {
+  grid-template-columns: 3.4fr 1fr;
+  grid-template-areas: 'h i';
+}
+.zone-floor-label {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #e8defc;
+}
+.zone-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(245, 196, 81, 0.45);
+  background: linear-gradient(180deg, rgba(138, 75, 206, 0.35), rgba(64, 32, 128, 0.45));
+  color: #f2ecff;
+  cursor: pointer;
+  min-height: 44px;
+}
+.zone-tile:active {
+  filter: brightness(1.25);
+}
+.zone-tile-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.zone-letter {
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--gold);
+  line-height: 1;
+}
+.zone-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.zone-desc {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: rgba(232, 222, 252, 0.85);
+}
+.zone-remain {
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.zone-low-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #4a3200;
+}
+.zone-tile.is-low {
+  border-color: var(--gold);
+}
+/* 満席ゾーンは黒く塗って選べなくする */
+.zone-tile.is-soldout {
+  background: #06060a;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(232, 222, 252, 0.45);
+  cursor: default;
+}
+.zone-tile.is-soldout .zone-letter {
+  color: rgba(232, 222, 252, 0.4);
+}
+.zone-tile:disabled:not(.is-soldout) {
+  opacity: 0.55;
+  cursor: default;
+}
+.zone-soldout-label {
+  margin-top: auto;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 割当結果 */
+.result-zone {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--burgundy);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.result-zone-desc {
+  margin: 0 0 8px;
+}
+.result-seats {
+  margin: 0 0 4px;
+  font-size: 17px;
   font-weight: 800;
   color: var(--burgundy);
 }
-.candidate-card .btn {
-  margin-top: 10px;
-  min-height: 44px;
+.result-seat-labels {
+  margin: 0 0 8px;
 }
-.omakase-note {
-  margin-top: 14px;
+.result-price {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+.result-overview {
+  margin-bottom: 14px;
 }
 .chosen-seats {
   margin: 0 0 10px;
@@ -2625,15 +2721,7 @@ button.seat-available:hover {
   font-weight: 700;
 }
 
-/* ===== 候補カードのミニ座席表（読み取り専用・模式図） ===== */
-.mini-map {
-  background: linear-gradient(180deg, #241557, #170b3d);
-  border-radius: 12px;
-  padding: 8px 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
+/* ===== 模式図共通の舞台バー（ゾーン図・オーバービューで共用） ===== */
 .mini-stage {
   text-align: center;
   font-size: 10px;
@@ -2643,39 +2731,6 @@ button.seat-available:hover {
   border-radius: 6px;
   padding: 2px 0 2px 0.4em;
   margin-bottom: 4px;
-}
-.mini-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.mini-row-label {
-  width: 14px;
-  flex: none;
-  font-size: 8px;
-  color: rgba(232, 222, 252, 0.75);
-  text-align: right;
-}
-.mini-block {
-  display: flex;
-  gap: 2px;
-  flex-basis: 0;
-  min-width: 0;
-}
-.mini-seat {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 7px;
-  border-radius: 2px;
-  background: rgba(232, 222, 252, 0.4);
-}
-.mini-seat.is-taken {
-  background: rgba(232, 222, 252, 0.13);
-}
-.mini-seat.is-highlight {
-  background: linear-gradient(135deg, var(--gold), #ffb347);
-  box-shadow: 0 0 0 1.5px rgba(245, 196, 81, 0.9), 0 0 6px rgba(245, 196, 81, 0.8);
-  height: 9px;
 }
 
 /* ---------------- ラウンド6 ---------------- */
@@ -2737,25 +2792,6 @@ button.seat-available:hover {
   cursor: pointer;
 }
 
-/* 候補カード: 位置の言葉・金額の目安・条件変更のヒント（C-3 / C-4 / C-5） */
-.candidate-position {
-  margin: -6px 0 2px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.candidate-price {
-  margin: 0 0 8px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--burgundy);
-}
-
-.candidate-hint {
-  margin: 10px 0 0;
-  text-align: center;
-}
-
 /* 当日販売: 選択中席を大きな文字で確認するバー（O-3） */
 .door-selection-bar {
   margin: 10px 0;
@@ -2784,13 +2820,10 @@ button.seat-available:hover {
   color: #a02c1a;
 }
 
-/* ---------------- ホール全体オーバービュー（候補えらび） ----------------
+/* ---------------- ホール全体オーバービュー（割当結果） ----------------
    全席を中立色で描く模式図。空き／埋まりは一切出さない読み取り専用の全体図で、
-   3候補の席だけを候補色（金／紫／ピンク）で示す。凡例の色見本と共通の
+   割り当てられた席だけを色（金／紫／ピンク）で示す。凡例の色見本と共通の
    is-cand-N クラスで色をそろえる。 */
-.candidate-overview {
-  margin-bottom: 14px;
-}
 .candidate-overview-title {
   margin: 0 0 2px;
   font-size: 14.5px;
