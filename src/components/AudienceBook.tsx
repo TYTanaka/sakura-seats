@@ -18,6 +18,7 @@ import {
   ZONE_DEF_BY_ID,
   ZONE_IDS,
   allZoneAvailability,
+  resolveZoneTap,
   zoneAvailability,
   zoneLabel,
   type ZoneId,
@@ -163,8 +164,17 @@ export default function AudienceBook({
   })
   /** 人数（1〜8名） */
   const [partySize, setPartySize] = useState<number>(() => initialDraft?.partySize ?? 2)
-  /** 選んだゾーン */
+  /** 選んだゾーン（フォーム・確認画面で使う確定済みのゾーン） */
   const [zoneId, setZoneId] = useState<ZoneId | null>(() => initialDraft?.zoneId ?? null)
+  /**
+   * 仮選択中のゾーン（R14）。座席表の上で光らせ、画面下のバーで確定するまで
+   * フォームへは進まない。ゾーン画面で終わった下書きは、次回開いたときに
+   * そのゾーンを仮選択済みとして復元する。
+   */
+  const [selectedZone, setSelectedZone] = useState<ZoneId | null>(() => {
+    const s = initialDraft?.step
+    return s !== 'form' && s !== 'confirm' ? (initialDraft?.zoneId ?? null) : null
+  })
   /** 人ごとの券種指定（人数分。未指定はデフォルト券種） */
   const [typeIds, setTypeIds] = useState<string[]>(() =>
     fitTypeIds(
@@ -204,10 +214,13 @@ export default function AudienceBook({
   }, [closed, step])
 
   // 入力内容を下書きとして保持する（ステップ・人数・ゾーンも含める。全て空なら破棄）
+  // ゾーン画面では「仮選択中のゾーン」を下書きのゾーンとして保存し、
+  // 次回開いたときに仮選択済みの状態で復元できるようにする（R14）。
   useEffect(() => {
     if (step === 'done') return
+    const draftZoneId = step === 'zone' ? (selectedZone ?? zoneId) : zoneId
     try {
-      if (!name && !phone && !note && zoneId === null) {
+      if (!name && !phone && !note && draftZoneId === null) {
         localStorage.removeItem(DRAFT_KEY)
       } else {
         const draft: BookingDraft = {
@@ -217,14 +230,21 @@ export default function AudienceBook({
           typeIds,
           step: step === 'form' || step === 'confirm' ? step : 'zone',
           partySize,
-          zoneId,
+          zoneId: draftZoneId,
         }
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
       }
     } catch {
       // 保存できなくても画面操作は継続する
     }
-  }, [name, phone, note, typeIds, step, partySize, zoneId])
+  }, [name, phone, note, typeIds, step, partySize, zoneId, selectedZone])
+
+  // 「人数分を用意できない」案内は画面下に一時的に出す（数秒で自動で消える）
+  useEffect(() => {
+    if (!zoneError) return
+    const t = window.setTimeout(() => setZoneError(null), 6000)
+    return () => window.clearTimeout(t)
+  }, [zoneError])
 
   // 完了画面の表示中かどうかを親へ伝える（控え一覧の配置切り替え用）
   useEffect(() => {
@@ -258,18 +278,61 @@ export default function AudienceBook({
     setZoneError(null)
   }
 
-  /** ゾーンを選ぶ: 残席が人数分あればフォームへ進む（席はまだ確定しない） */
-  const pickZone = (zone: ZoneId) => {
+  /**
+   * ゾーンのタップ（R14: 2段階選択の1段目）。
+   * いきなりフォームへは進まず、座席表の上でゾーンを仮選択するだけにする。
+   * お客様は座席表を見たまま、画面下のバーで確認してから進む。
+   * - 座席表（セル・バッジ）からのタップではスクロールしない（見ている場所を保つ）
+   * - 一覧からのタップでは、そのゾーンのバッジが画面内に入るよう座席表へ寄せる
+   * - 人数分を用意できないゾーンは仮選択せず、画面下に案内を出す
+   */
+  const handleZoneTap = (zone: ZoneId, source: 'map' | 'list') => {
     if (closed) return
     setError('')
     setZoneFullNotice(false)
-    const avail = zoneAvailability(data, zone)
-    if (avail.available < partySize) {
-      setZoneError({ zone, remaining: avail.available })
+    const outcome = resolveZoneTap(
+      selectedZone,
+      zone,
+      zoneAvailability(data, zone),
+      partySize,
+    )
+    if (outcome.kind === 'insufficient') {
+      setZoneError({ zone: outcome.zone, remaining: outcome.remaining })
       return
     }
     setZoneError(null)
-    setZoneId(zone)
+    if (outcome.kind === 'deselect') {
+      setSelectedZone(null)
+      return
+    }
+    setSelectedZone(outcome.zone)
+    if (source === 'list') {
+      const target =
+        document.querySelector(`[data-zone-badge="${outcome.zone}"]`) ??
+        document.querySelector('[data-zone-map]')
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+
+  /** 仮選択の解除（画面下のバーの「やめる」） */
+  const clearSelection = () => setSelectedZone(null)
+
+  /**
+   * ゾーンの確定（2段階選択の2段目）: 残席を再確認してフォームへ進む。
+   * 仮選択のあいだに残席が減って人数分を割った場合は、案内を出して
+   * 仮選択を解き、ゾーン選び直しに留まる。
+   */
+  const confirmSelection = () => {
+    if (!selectedZone || closed) return
+    const avail = zoneAvailability(data, selectedZone)
+    if (avail.available < partySize) {
+      setZoneError({ zone: selectedZone, remaining: avail.available })
+      setSelectedZone(null)
+      return
+    }
+    setZoneError(null)
+    setZoneId(selectedZone)
+    setSelectedZone(null)
     setStep('form')
     window.scrollTo({ top: 0 })
   }
@@ -330,6 +393,7 @@ export default function AudienceBook({
     setError('')
     setCompleted(null)
     setZoneId(null)
+    setSelectedZone(null)
     setZoneError(null)
     setZoneFullNotice(false)
     setStep('zone')
@@ -428,7 +492,11 @@ export default function AudienceBook({
   }
 
   return (
-    <div className="book-flow">
+    <div
+      className={`book-flow${
+        step === 'zone' && (selectedZone || zoneError) ? ' has-floating-bar' : ''
+      }`}
+    >
       {step === 'zone' && (
         <>
           {deadlinePassed && (
@@ -456,7 +524,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。選んだゾーンの中で並んだ席をご用意します。座席番号は当日、受付でのお支払い時に確定します。
+              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。タップするとそのゾーンが選ばれるので、座席表を見ながら確認して、画面下の「このゾーンで進む」ボタンで次へ進んでください。選んだゾーンの中で並んだ席をご用意します。座席番号は当日、受付でのお支払い時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -506,15 +574,10 @@ export default function AudienceBook({
                 <ZoneSeatMap
                   data={data}
                   availability={availability}
-                  onPick={pickZone}
+                  onPick={handleZoneTap}
                   disabled={closed}
+                  selectedZone={selectedZone}
                 />
-                {zoneError && (
-                  <p className="zone-error" data-zone-error role="status">
-                    このゾーンでは{partySize}名分をご用意できません（残り
-                    {zoneError.remaining}席）。別のゾーンをお選びください
-                  </p>
-                )}
               </>
             )}
             {error && <p className="error-text">{error}</p>}
@@ -545,6 +608,60 @@ export default function AudienceBook({
             </a>
             <p className="poster-caption">劇団ツインリーブス 2027年5月公演</p>
           </section>
+
+          {/* 仮選択の確定バー（R14）: 座席表を見たまま決められるよう画面下に固定する */}
+          {selectedZone && !closed && (
+            <div className="zone-decision-bar" data-zone-decision-bar>
+              <div className="zdb-info">
+                <span className="zdb-zone" data-decision-zone>
+                  {zoneLabel(selectedZone)}
+                </span>
+                <span className="zdb-meta" data-decision-meta>
+                  残り{availability[selectedZone].available}席・{partySize}名で申込
+                </span>
+              </div>
+              <div className="zdb-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost zdb-btn"
+                  data-decision-cancel
+                  onClick={clearSelection}
+                >
+                  やめる
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary zdb-btn"
+                  data-decision-confirm
+                  onClick={confirmSelection}
+                >
+                  このゾーンで進む
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 人数分を用意できない案内（R14）: タップした場所によらず画面下に出す */}
+          {zoneError && (
+            <div
+              className={`zone-bottom-notice${selectedZone ? ' has-bar' : ''}`}
+              data-zone-error
+              role="alert"
+            >
+              <span>
+                このゾーンでは{partySize}名分をご用意できません（残り
+                {zoneError.remaining}席）。別のゾーンをお選びください
+              </span>
+              <button
+                type="button"
+                className="zbn-close"
+                aria-label="案内を閉じる"
+                onClick={() => setZoneError(null)}
+              >
+                ×
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -558,6 +675,17 @@ export default function AudienceBook({
           <p className="muted small" data-seats-undecided>
             {SEATS_UNDECIDED_NOTICE}（ゾーンの中で並んだ席をご用意します）
           </p>
+          {/* 選んだゾーンの位置を座席表でも確認できるようにする（操作できない静止画） */}
+          <div className="form-zone-map">
+            <ZoneSeatMap
+              data={data}
+              availability={availability}
+              onPick={() => {}}
+              disabled
+              mini
+              selectedZone={zoneId}
+            />
+          </div>
           <h4 className="form-subhead">人数と券種</h4>
           <PartyTypePicker
             perf={perf}

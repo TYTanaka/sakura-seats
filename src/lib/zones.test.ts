@@ -13,6 +13,7 @@ import {
   assignZoneSeats,
   countAvailableInZone,
   describeSelection,
+  resolveZoneTap,
   summarizeSeatIds,
   zoneAvailability,
   zoneOfSeat,
@@ -149,6 +150,45 @@ describe('ゾーン空き状況', () => {
     const data10 = onlyAvailable(keep10)
     expect(zoneAvailability(data10, 'I').available).toBe(10)
     expect(zoneAvailability(data10, 'I').low).toBe(true)
+  })
+})
+
+describe('ゾーンの仮選択（R14: resolveZoneTap）', () => {
+  const avail = (available: number) => ({
+    total: 24,
+    available,
+    soldOut: available === 0,
+    low: available > 0 && available <= LOW_STOCK_REMAINING,
+  })
+
+  it('未選択でタップすると仮選択になる', () => {
+    expect(resolveZoneTap(null, 'G', avail(24), 2)).toEqual({ kind: 'select', zone: 'G' })
+  })
+
+  it('別のゾーンをタップすると仮選択が切り替わる', () => {
+    expect(resolveZoneTap('G', 'H', avail(78), 2)).toEqual({ kind: 'select', zone: 'H' })
+  })
+
+  it('仮選択中のゾーンをもう一度タップすると解除になる', () => {
+    expect(resolveZoneTap('G', 'G', avail(24), 2)).toEqual({ kind: 'deselect' })
+  })
+
+  it('人数分を用意できないゾーンは仮選択せず案内になる（残り席数を返す）', () => {
+    expect(resolveZoneTap(null, 'B', avail(2), 3)).toEqual({
+      kind: 'insufficient',
+      zone: 'B',
+      remaining: 2,
+    })
+    // 仮選択があっても、切り替え先が不足なら案内が優先される
+    expect(resolveZoneTap('A', 'B', avail(1), 2)).toEqual({
+      kind: 'insufficient',
+      zone: 'B',
+      remaining: 1,
+    })
+  })
+
+  it('残り席数がちょうど人数分なら仮選択できる', () => {
+    expect(resolveZoneTap(null, 'B', avail(3), 3)).toEqual({ kind: 'select', zone: 'B' })
   })
 })
 

@@ -44,6 +44,9 @@ import {
  * - 満席のゾーンは席セルを黒く塗り、バッジは「満席」。タップしても何も起きない。
  * - 車椅子席・親子室は中立色で描き、タップ対象にしない（備考欄で受付）。
  * - 埋まった席をタップしても、そのゾーンは選べる（セルはエリアの入口）。
+ * - R14: タップは即決ではなく「仮選択」。仮選択中のゾーンはセル・バッジ・
+ *   一覧で光らせ、ほかのゾーンは少し落とす。確定は画面下のバーで行う
+ *   （AudienceBook 側）。mini 指定時は確認用の静止画として描く。
  *
  * 拡大はピンチ操作（2本指）で行う。ジェスチャ中は SeatMap と同じ方式で
  * transform を直接書き換え、指を離したときだけ倍率を確定する。
@@ -78,23 +81,30 @@ export default function ZoneSeatMap({
   availability,
   onPick,
   disabled = false,
+  selectedZone = null,
+  mini = false,
 }: {
   data: AppData
   availability: Record<ZoneId, ZoneAvailability>
-  onPick: (zone: ZoneId) => void
+  /** ゾーンのタップ。source は座席表（map）か下の一覧（list）か */
+  onPick: (zone: ZoneId, source: 'map' | 'list') => void
   disabled?: boolean
+  /** 仮選択中のゾーン（R14: 座席表の上で光らせる。確定はしていない） */
+  selectedZone?: ZoneId | null
+  /** 確認用の静止画モード（申込フォーム内のミニ座席表。操作・拡大・一覧なし） */
+  mini?: boolean
 }) {
   const layout = useMemo(() => buildZoneMapLayout(data), [data])
 
   /** タップしたゾーンの一瞬のハイライト（割当できない案内時にも残る） */
   const [flash, setFlash] = useState<ZoneId | null>(null)
   const flashTimerRef = useRef<number | undefined>(undefined)
-  const handlePick = (zone: ZoneId) => {
+  const handlePick = (zone: ZoneId, source: 'map' | 'list') => {
     if (disabled || availability[zone].soldOut) return
     setFlash(zone)
     window.clearTimeout(flashTimerRef.current)
     flashTimerRef.current = window.setTimeout(() => setFlash(null), 550)
-    onPick(zone)
+    onPick(zone, source)
   }
   useEffect(() => () => window.clearTimeout(flashTimerRef.current), [])
 
@@ -190,6 +200,8 @@ export default function ZoneSeatMap({
   useEffect(() => {
     const vp = viewportRef.current
     if (!vp) return
+    // ミニ座席表（確認用）では拡大ジェスチャを受け付けない
+    if (mini) return
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
@@ -326,6 +338,12 @@ export default function ZoneSeatMap({
       `zseat-cell zc-${zone.toLowerCase()}` +
       (a.soldOut ? ' is-soldout' : taken ? ' is-taken' : ' is-free') +
       (flash === zone ? ' is-flash' : '') +
+      // 仮選択中はそのゾーンを光らせ、ほかのゾーンを少し落として見分ける
+      (selectedZone === zone
+        ? ' is-selected'
+        : selectedZone
+          ? ' is-dimmed'
+          : '') +
       ' zplan-cell' +
       (c.shape === 'diamond' ? ' is-diamond' : '')
     const seat = seatById(c.seatId)
@@ -339,27 +357,30 @@ export default function ZoneSeatMap({
         data-zone={zone}
         data-seat-status={c.status}
         disabled={disabled || a.soldOut}
-        onClick={() => handlePick(zone)}
+        onClick={() => handlePick(zone, 'map')}
+        aria-pressed={selectedZone === zone}
         aria-label={`${seat.label}（ゾーン${zone}${taken ? '・この席は埋まっていますがエリアは選べます' : ''}）`}
       />
     )
   }
 
   return (
-    <div className="zseat" data-zone-map>
-      <div className="zseat-toolbar">
-        <span className="zseat-hint">2本指で広げると、座席表を拡大できます</span>
-        {scale > 1 && (
-          <button
-            type="button"
-            className="zseat-reset"
-            data-zseat-reset
-            onClick={() => setScale(1)}
-          >
-            全体表示に戻す
-          </button>
-        )}
-      </div>
+    <div className={`zseat${mini ? ' is-mini' : ''}`} data-zone-map>
+      {!mini && (
+        <div className="zseat-toolbar">
+          <span className="zseat-hint">2本指で広げると、座席表を拡大できます</span>
+          {scale > 1 && (
+            <button
+              type="button"
+              className="zseat-reset"
+              data-zseat-reset
+              onClick={() => setScale(1)}
+            >
+              全体表示に戻す
+            </button>
+          )}
+        </div>
+      )}
       <div
         className={`zseat-viewport${scale > 1 ? ' is-zoomed' : ''}`}
         ref={viewportRef}
@@ -505,14 +526,16 @@ export default function ZoneSeatMap({
                       type="button"
                       className={
                         `zbadge zc-${an.zone.toLowerCase()} is-${state}` +
-                        (flash === an.zone ? ' is-flash' : '')
+                        (flash === an.zone ? ' is-flash' : '') +
+                        (selectedZone === an.zone ? ' is-selected' : '')
                       }
                       style={{ left: `${an.xPct}%`, top: `${an.yPct}%` }}
                       data-zone-badge={an.zone}
                       data-zone-state={state}
                       data-zone-remaining={a.available}
                       disabled={disabled || a.soldOut}
-                      onClick={() => handlePick(an.zone)}
+                      onClick={() => handlePick(an.zone, 'map')}
+                      aria-pressed={selectedZone === an.zone}
                       aria-label={`ゾーン${an.zone} ${def.name}（${a.soldOut ? '満席' : `残り${a.available}席`}）`}
                     >
                       <span className="zbadge-letter">{an.zone}</span>
@@ -528,25 +551,28 @@ export default function ZoneSeatMap({
         </div>
       </div>
 
-      <ul className="zonelist">
-        {ZONE_IDS.map((z) => {
-          const def = ZONE_DEF_BY_ID.get(z)!
-          const a = availability[z]
-          const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'
-          return (
-            <li key={z}>
-              <button
-                type="button"
-                className={
-                  `zonelist-item zc-${z.toLowerCase()} is-${state}` +
-                  (flash === z ? ' is-flash' : '')
-                }
-                data-zone-tile={z}
-                data-zone-state={state}
-                data-zone-remaining={a.available}
-                disabled={disabled || a.soldOut}
-                onClick={() => handlePick(z)}
-              >
+      {!mini && (
+        <ul className="zonelist">
+          {ZONE_IDS.map((z) => {
+            const def = ZONE_DEF_BY_ID.get(z)!
+            const a = availability[z]
+            const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'
+            return (
+              <li key={z}>
+                <button
+                  type="button"
+                  className={
+                    `zonelist-item zc-${z.toLowerCase()} is-${state}` +
+                    (flash === z ? ' is-flash' : '') +
+                    (selectedZone === z ? ' is-selected' : '')
+                  }
+                  data-zone-tile={z}
+                  data-zone-state={state}
+                  data-zone-remaining={a.available}
+                  disabled={disabled || a.soldOut}
+                  onClick={() => handlePick(z, 'list')}
+                  aria-pressed={selectedZone === z}
+                >
                 <span className="zonelist-swatch" aria-hidden="true" />
                 <span className="zonelist-main">
                   <span className="zonelist-head">
@@ -555,19 +581,20 @@ export default function ZoneSeatMap({
                   </span>
                   <span className="zonelist-desc">{def.description}</span>
                 </span>
-                {a.soldOut ? (
-                  <span className="zonelist-soldout">満席</span>
-                ) : (
-                  <span className="zonelist-remain">
-                    残り{a.available}席
-                    {a.low && <span className="zone-low-badge">残りわずか</span>}
-                  </span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+                  {a.soldOut ? (
+                    <span className="zonelist-soldout">満席</span>
+                  ) : (
+                    <span className="zonelist-remain">
+                      残り{a.available}席
+                      {a.low && <span className="zone-low-badge">残りわずか</span>}
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

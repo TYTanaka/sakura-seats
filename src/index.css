@@ -3008,6 +3008,187 @@ button.zseat-cell:active {
   cursor: default;
 }
 
+/* ===== R14: 座席表を見ながら決める（仮選択＋画面下の確定バー） ===== */
+
+/* 仮選択中のゾーンのセルは光らせ、ほかのゾーンは少し落とす */
+.zseat-cell.is-selected {
+  filter: brightness(1.3);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--zc),
+    0 0 12px 2px var(--zc);
+  z-index: 1;
+  animation: zsel-pulse 1.8s ease-in-out infinite;
+}
+@keyframes zsel-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 4px var(--zc),
+      0 0 8px 1px var(--zc);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 4px var(--zc),
+      0 0 16px 4px var(--zc);
+  }
+}
+.zseat-cell.is-dimmed {
+  opacity: 0.35;
+}
+.zbadge.is-selected {
+  z-index: 3;
+  transform: translate(-50%, -50%) scale(1.12);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--zc),
+    0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.zonelist-item.is-selected {
+  border-color: var(--zc);
+  box-shadow:
+    0 0 0 1.5px var(--zc),
+    0 4px 14px rgba(23, 11, 61, 0.18);
+  background: linear-gradient(180deg, rgba(138, 75, 206, 0.2), rgba(64, 32, 128, 0.14));
+}
+
+/* 確定バー・案内が出ているあいだ、ページ末尾がバーに隠れないよう余白を足す */
+.book-flow.has-floating-bar {
+  padding-bottom: 128px;
+}
+
+/* 狭い画面ではバーを縦積みにして、ゾーン名を1行で読めるようにする */
+@media (max-width: 380px) {
+  .zone-decision-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .zdb-actions {
+    display: flex;
+  }
+  .zdb-btn {
+    flex: 1;
+  }
+}
+
+/* 仮選択の確定バー（画面下に固定。ポスターの夜空に浮かぶ藍のグラス＋金の縁） */
+.zone-decision-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(856px, calc(100% - 24px));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(46, 22, 104, 0.97));
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(245, 196, 81, 0.55);
+  border-radius: 20px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 28px rgba(13, 7, 40, 0.5);
+  animation: zdb-in 0.18s ease-out;
+}
+.zdb-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.zdb-zone {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+.zdb-meta {
+  color: #cfc2ee;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.zdb-actions {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+.zdb-btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* 人数分を用意できない案内（画面下に浮かせて、どこでタップしても見えるように） */
+.zone-bottom-notice {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(92vw, 560px);
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--pink-pale);
+  border: 1.5px solid rgba(201, 42, 126, 0.45);
+  color: var(--burgundy);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.55;
+  box-shadow: 0 8px 24px rgba(10, 6, 32, 0.35);
+  animation: zdb-in 0.18s ease-out;
+}
+/* 確定バーと同時に出るときはバーの上に重ねる */
+.zone-bottom-notice.has-bar {
+  bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+}
+.zbn-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1.5px solid #c3aef2;
+  background: #fff;
+  color: var(--burgundy);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@keyframes zdb-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zseat-cell.is-selected,
+  .zone-decision-bar,
+  .zone-bottom-notice {
+    animation: none;
+  }
+}
+
+/* 申込フォーム内のミニ座席表（選んだゾーンの位置確認用） */
+.form-zone-map {
+  margin: 2px 0 14px;
+}
+
 /* 割当結果 */
 .result-zone {
   margin: 0 0 4px;
