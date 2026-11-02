@@ -87,6 +87,13 @@ export interface Reservation {
   perfDate?: string
   /** 予約時点の公演名スナップショット。QR受付の公演照合用 */
   perfName?: string
+  /**
+   * ゾーン予約のゾーンID（R12・'A'〜'I'）。未設定は従来型の予約
+   * （席が予約時点で確定している予約・当日販売）。
+   * ゾーン予約は支払いまで明細の seatId が空文字＝席未確定で、
+   * 支払い時に席が割り当てられて初めて seatIds が入る。
+   */
+  zone?: string
 }
 
 export interface AppData {
@@ -107,6 +114,13 @@ export interface AppData {
    * （お客様画面では他人の予約明細を持たないため）。
    */
   seatStates?: Record<string, 'reserved' | 'sold'>
+  /**
+   * クラウドモード専用（R12）: ゾーンごとの「未割当ホールド人数」の集計。
+   * サーバの get_public_state が集計だけを返す（誰の予約かは含まない）。
+   * ゾーン残席の計算に使う。ローカルモードでは未設定で、
+   * reservations から同じ数を導出する（zones.ts の zoneAvailability）。
+   */
+  zoneHolds?: Record<string, number>
 }
 
 export type SeatStatus = 'available' | 'reserved' | 'paid' | 'blocked'
@@ -263,6 +277,10 @@ export function normalizeReservation(
   const id = asString(rec.id, '')
   if (!id) return null
 
+  /** R12: ゾーン予約のゾーンID（従来型の予約には無い） */
+  const zone =
+    typeof rec.zone === 'string' && rec.zone.trim() ? rec.zone.trim() : undefined
+
   const rawItems = Array.isArray(rec.items) ? rec.items : []
   const itemSeatIds: string[] = []
   const items: ReservationItem[] = []
@@ -271,7 +289,9 @@ export function normalizeReservation(
     const itemRec = asRecord(rawItem)
     const seatId = itemRec ? asString(itemRec.seatId, '') : ''
     const price = itemRec ? asPrice(itemRec.price) : null
-    if (!itemRec || !seatId || price === null) {
+    // seatId はゾーン予約（未割当）では空文字が正しい形なので、
+    // 空そのものは不正にしない（価格が読めない明細だけを不正とする）
+    if (!itemRec || price === null) {
       itemsValid = false
       break
     }
@@ -284,15 +304,28 @@ export function normalizeReservation(
     })
   }
 
-  const seatIds = Array.isArray(rec.seatIds)
-    ? rec.seatIds.filter((s): s is string => typeof s === 'string' && s.length > 0)
-    : itemSeatIds
-  if (seatIds.length === 0) return null
+  const seatIds = (
+    Array.isArray(rec.seatIds)
+      ? rec.seatIds.filter((s): s is string => typeof s === 'string' && s.length > 0)
+      : itemSeatIds
+  ).filter((s) => s.length > 0)
+
+  // R12: ゾーン予約で席がまだ割り当たっていない形（明細はあるが席が無い）
+  const isUnassignedZone =
+    zone !== undefined &&
+    seatIds.length === 0 &&
+    itemsValid &&
+    items.length > 0 &&
+    items.every((i) => i.seatId === '')
+  if (seatIds.length === 0 && !isUnassignedZone) return null
 
   const recordedAmount = asPrice(rec.amount)
   let finalItems: ReservationItem[]
   let amount: number
-  if (itemsValid && JSON.stringify(itemSeatIds) === JSON.stringify(seatIds)) {
+  if (isUnassignedZone) {
+    finalItems = items
+    amount = recordedAmount ?? items.reduce((sum, i) => sum + i.price, 0)
+  } else if (itemsValid && JSON.stringify(itemSeatIds) === JSON.stringify(seatIds)) {
     const itemsSum = items.reduce((sum, i) => sum + i.price, 0)
     if (recordedAmount !== null && recordedAmount !== itemsSum) {
       // 記録金額が正。明細合計とズレる場合は金額に合わせて明細を組み直す
@@ -333,6 +366,7 @@ export function normalizeReservation(
     ...(typeof rec.perfName === 'string' && rec.perfName
       ? { perfName: rec.perfName }
       : {}),
+    ...(zone ? { zone } : {}),
   }
 }
 
@@ -588,6 +622,120 @@ export function createReservation(
   }
 }
 
+/* ---------------- ゾーン予約（R12: 席は支払い時に確定） ---------------- */
+
+/** ゾーン予約かどうか（zone が記録されている予約） */
+export function isZoneBooking(reservation: Reservation): boolean {
+  return typeof reservation.zone === 'string' && reservation.zone.length > 0
+}
+
+/** 予約の人数（明細の件数）。ゾーン予約は席未確定でも人数は確定している */
+export function partySizeOf(reservation: Reservation): number {
+  return reservation.items.length
+}
+
+/** ゾーン予約で、まだ席が割り当たっていない状態か */
+export function isUnassignedZoneBooking(reservation: Reservation): boolean {
+  return isZoneBooking(reservation) && reservation.seatIds.length === 0
+}
+
+export interface NewZoneReservationInput {
+  /** ゾーンID（'A'〜'I'）。正当性は呼び出し側（zones.ts を知る層）が担保する */
+  zone: string
+  /** 人数分の券種ID（1人目から順に） */
+  typeIds: string[]
+  name: string
+  phone: string
+  note: string
+}
+
+/**
+ * ゾーン予約を作成する（ローカルモード用。純粋関数）。
+ * 席は割り当てない: 明細の seatId は空文字、seatIds は空。
+ * 券種名と料金は createReservation と同じくスナップショットで記録する。
+ * 収容可否（ゾーン残席）の判定は zones.ts を知る呼び出し側で行う
+ * （この層はゾーン定義を持たないため）。
+ */
+export function createZoneReservation(
+  data: AppData,
+  input: NewZoneReservationInput,
+): { data: AppData; reservation: Reservation } {
+  if (!input.zone) throw new Error('ゾーンが選択されていません')
+  if (input.typeIds.length === 0) throw new Error('人数が選択されていません')
+  if (input.typeIds.length > MAX_ONLINE_SEATS) {
+    throw new Error(`一度に申し込めるのは${MAX_ONLINE_SEATS}名までです`)
+  }
+  if (isBookingClosed(data)) {
+    throw new Error('予約受付は終了しました。当日券は会場受付でお求めください')
+  }
+  const items: ReservationItem[] = []
+  for (const typeId of input.typeIds) {
+    const type = findTicketType(data.performance, typeId)
+    if (!type) throw new Error('券種が見つかりません。公演設定を確認してください')
+    if (!Number.isInteger(type.price) || type.price < 0) {
+      throw new Error('券種の料金が正しく設定されていません')
+    }
+    items.push({ seatId: '', typeId: type.id, typeName: type.name, price: type.price })
+  }
+  const name = input.name.trim()
+  if (!name) throw new Error('お名前を入力してください')
+  const amount = items.reduce((sum, i) => sum + i.price, 0)
+  const seq = data.seq + 1
+  const reservation: Reservation = {
+    id: `SK-${String(seq).padStart(4, '0')}`,
+    seatIds: [],
+    items,
+    name,
+    phone: input.phone.trim(),
+    note: input.note.trim(),
+    source: 'online',
+    amount,
+    checkedIn: false,
+    paid: false,
+    cancelled: false,
+    createdAt: new Date().toISOString(),
+    qrToken: generateQrToken(),
+    perfDate: data.performance.date,
+    perfName: data.performance.name,
+    zone: input.zone,
+  }
+  return {
+    data: { ...data, seq, reservations: [...data.reservations, reservation] },
+    reservation,
+  }
+}
+
+/**
+ * 予約に席を割り当てる（支払い時の確定。ローカルモード用。純粋関数）。
+ * 明細の順序のまま席を割り当て、seatIds にも同じ順序で入れる。
+ * 席数が人数と一致しない場合は例外（呼び出し側は支払い済みにしない）。
+ */
+export function assignSeatsToReservation(
+  data: AppData,
+  reservationId: string,
+  seatIds: string[],
+): AppData {
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) throw new Error('予約が見つかりません')
+  if (seatIds.length !== target.items.length) {
+    throw new Error('席数が人数と一致しません')
+  }
+  const items = target.items.map((item, i) => ({ ...item, seatId: seatIds[i] }))
+  return updateReservation(data, reservationId, { items, seatIds: [...seatIds] })
+}
+
+/**
+ * 予約の席割当を解除する（ゾーン予約を未払いに戻すとき。ローカルモード用）。
+ * 明細の seatId を空文字に戻し、seatIds を空にする。支払い状態は触らない
+ * （呼び出し側が setPaid と組み合わせる）。
+ */
+export function clearReservationSeats(data: AppData, reservationId: string): AppData {
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) return data
+  const items = target.items.map((item) => ({ ...item, seatId: '' }))
+  return updateReservation(data, reservationId, { items, seatIds: [] })
+}
+
 function updateReservation(
   data: AppData,
   reservationId: string,
@@ -790,21 +938,25 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   for (const type of data.performance.ticketTypes) typeRow(type.name)
   const bySellerMap = new Map<string, SellerTotals>()
   for (const res of active) {
+    // 席数は明細の件数（＝人数）で数える。ゾーン予約は支払いまで席が
+    // 未確定（seatIds が空）でも、人数分の予約として数えるため（R12）。
+    // 従来型の予約では明細数と席数は常に一致する。
+    const party = res.items.length
     if (res.seller) {
       let row = bySellerMap.get(res.seller)
       if (!row) {
         row = { seller: res.seller, seatCount: 0, amount: 0 }
         bySellerMap.set(res.seller, row)
       }
-      row.seatCount += res.seatIds.length
+      row.seatCount += party
       row.amount += res.amount
     }
     // 集計は「記録された金額・券種スナップショット」で行う（後の設定変更に影響されない）
     if (res.paid) {
-      paidSeatCount += res.seatIds.length
+      paidSeatCount += party
       salesTotal += res.amount
     } else {
-      reservedSeatCount += res.seatIds.length
+      reservedSeatCount += party
       unpaidTotal += res.amount
     }
     for (const item of res.items) {

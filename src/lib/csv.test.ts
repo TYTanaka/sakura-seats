@@ -28,7 +28,28 @@ describe('reservationsToCsv', () => {
     const csv = reservationsToCsv(sampleReservations())
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     const header = csv.slice(1).split('\r\n')[0]
-    expect(header).toBe('予約番号,名前,電話,席,券種内訳,金額,支払い,来場,種別,販売者,申込日時')
+    expect(header).toBe('予約番号,名前,電話,ゾーン,席,券種内訳,金額,支払い,来場,種別,販売者,申込日時')
+  })
+
+  it('ゾーン予約はゾーン列に入り、席列は割当まで空欄（R12）', () => {
+    const zoneRes = {
+      ...createReservation(emptyData(), {
+        seats: [{ seatId: '1F-5-6', typeId: 'adult' }],
+        name: '佐藤',
+        phone: '09000000000',
+        note: '',
+        source: 'online',
+      }).reservation,
+      zone: 'B',
+      seatIds: [] as string[],
+      items: [{ seatId: '', typeId: 'adult', typeName: '大人', price: 2000 }],
+    }
+    const csv = reservationsToCsv([zoneRes])
+    const lines = csv.slice(1).split('\r\n').filter(Boolean)
+    const headers = lines[0].split(',')
+    const row = lines[1].split(',')
+    expect(row[headers.indexOf('ゾーン')]).toContain('ゾーンB')
+    expect(row[headers.indexOf('席')]).toBe('')
   })
 
   it('予約行に席ラベル・券種内訳・金額・種別が入る', () => {

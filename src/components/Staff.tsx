@@ -24,6 +24,7 @@ import {
   type Reservation,
   type TicketType,
 } from '../lib/logic'
+import { reservationSeatDisplay } from '../lib/zones'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
 import {
   authBadgeLabel,
@@ -379,9 +380,14 @@ function Reception() {
   const [qrMode, setQrMode] = useState(false)
 
   // 失敗はトーストでその場に出す（一覧上部の表示だとスクロール中に気づけない・R4-4）
+  // R12: 支払い時の席割当が失敗した場合は理由（空席不足など）をそのまま伝える
   const runAction = (fn: () => Promise<void>) => {
-    void fn().catch(() =>
-      showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+    void fn().catch((e: unknown) =>
+      showToast(
+        e instanceof Error && e.message
+          ? e.message
+          : '操作に失敗しました。接続を確認してもう一度お試しください',
+      ),
     )
   }
 
@@ -393,8 +399,12 @@ function Reception() {
   const handleComplete = (res: Reservation) => {
     void completeReception(res.id)
       .then(() => showToast(`${res.id} を受付完了にしました`, 'info'))
-      .catch(() =>
-        showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+      .catch((e: unknown) =>
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '操作に失敗しました。接続を確認してもう一度お試しください',
+        ),
       )
   }
 
@@ -873,7 +883,7 @@ function Summary() {
                 <td>{r.id}</td>
                 <td>{r.name}</td>
                 <td>{r.phone}</td>
-                <td>{formatSeatList(r.seatIds)}</td>
+                <td>{reservationSeatDisplay(r).text}</td>
                 <td>{reservationTypeSummary(r)}</td>
                 <td>{formatYen(r.amount)}</td>
                 <td>{r.paid ? '支払済' : '未払い'}</td>

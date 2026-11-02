@@ -474,4 +474,108 @@ describe('CloudApi（モック RPC クライアント）', () => {
       ).rejects.toThrow('メールアドレスの形式が正しくありません')
     })
   })
+
+describe('R12: ゾーン予約（席は支払い時に確定）', () => {
+  it('mapPublicState は zoneHolds 集計を取り込む（不正値は落とす）', () => {
+    const state = mapPublicState({
+      performance: PERF,
+      blockedSeats: [],
+      bookingDeadline: null,
+      seats: [],
+      zoneHolds: { B: 3, E: 0, X: 'many' },
+    })
+    expect(state.zoneHolds).toEqual({ B: 3 })
+    // R12 未適用の DB（キーなし）では空になる
+    expect(mapPublicState({ performance: PERF }).zoneHolds).toEqual({})
+  })
+
+  it('mapReservationRow はゾーン予約を受け、空 seatId を席として数えない', () => {
+    const staff = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [
+        rowFixture({
+          zone: 'B',
+          items: [
+            { seatId: '', typeId: 'adult', typeName: '大人', price: 2000 },
+            { seatId: '', typeId: 'child', typeName: '子供', price: 1000 },
+          ],
+        }),
+      ],
+    })
+    const r = staff.reservations[0]
+    expect(r.zone).toBe('B')
+    expect(r.seatIds).toEqual([])
+    expect(r.items).toHaveLength(2)
+    // 従来型の行（zone 無し）は zone 未設定のまま
+    const legacy = mapStaffData({
+      config: { performance: PERF, blockedSeats: [], bookingDeadline: null },
+      reservations: [rowFixture()],
+    })
+    expect(legacy.reservations[0].zone).toBeUndefined()
+  })
+
+  it('bookZone は p_zone / p_type_ids で RPC を呼び、code/amount/token を返す', async () => {
+    const { client, rpc } = fakeClient(() => ({
+      code: 'SK-0100',
+      amount: 3000,
+      token: 'a'.repeat(22),
+    }))
+    const api = new CloudApi(client)
+    const res = await api.bookZone({
+      name: '山田 花子',
+      phone: '090',
+      note: '',
+      zone: 'B',
+      typeIds: ['adult', 'child'],
+    })
+    expect(res.code).toBe('SK-0100')
+    expect(res.amount).toBe(3000)
+    expect(res.token).toBe('a'.repeat(22))
+    expect(rpc).toHaveBeenCalledWith('book_zone', {
+      p_name: '山田 花子',
+      p_phone: '090',
+      p_note: '',
+      p_zone: 'B',
+      p_type_ids: ['adult', 'child'],
+    })
+  })
+
+  it('ZONE_FULL エラーは満席の文面に変換される', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('ZONE_FULL: このゾーンは満席です')
+    })
+    const api = new CloudApi(client)
+    await expect(
+      api.bookZone({ name: 'a', phone: '0', note: '', zone: 'B', typeIds: ['adult'] }),
+    ).rejects.toThrow('満席')
+  })
+
+  it('R12 未適用 DB のエラーは専用文面になる', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error('Could not find the function public.book_zone in the schema cache')
+    })
+    const api = new CloudApi(client)
+    await expect(
+      api.bookZone({ name: 'a', phone: '0', note: '', zone: 'B', typeIds: ['adult'] }),
+    ).rejects.toThrow('migration_sakura_r12')
+  })
+
+  it('staffAssignAndPay / staffUnassignAndUnpay は引数を p_* 形式で渡す', async () => {
+    const { client, rpc } = fakeClient(() => ({ ok: true }))
+    const api = new CloudApi(client)
+    await api.staffAssignAndPay('1234', 'uuid-9', ['1F-5-6', '1F-5-7'], true)
+    expect(rpc).toHaveBeenCalledWith('staff_assign_and_pay', {
+      p_passcode: '1234',
+      p_id: 'uuid-9',
+      p_seat_ids: ['1F-5-6', '1F-5-7'],
+      p_checked_in: true,
+    })
+    await api.staffUnassignAndUnpay('1234', 'uuid-9')
+    expect(rpc).toHaveBeenCalledWith('staff_unassign_and_unpay', {
+      p_passcode: '1234',
+      p_id: 'uuid-9',
+    })
+  })
+})
+
 })

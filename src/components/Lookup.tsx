@@ -6,6 +6,7 @@ import {
   reservationTypeSummary,
   type Reservation,
 } from '../lib/logic'
+import { SEATS_UNDECIDED_NOTICE, zoneLabel } from '../lib/zones'
 import { useStore } from '../lib/store'
 import ReservationQr from './ReservationQr'
 
@@ -174,16 +175,33 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
               <dt>お名前</dt>
               <dd>{found.name} 様</dd>
             </div>
-            <div>
-              <dt>座席</dt>
-              <dd>
-                {found.items.map((item) => (
-                  <span key={item.seatId} className="detail-seat-line">
-                    {seatById(item.seatId).label}（{item.typeName} {formatYen(item.price)}）
+            {found.zone && found.seatIds.length === 0 ? (
+              <div>
+                <dt>ゾーン</dt>
+                <dd data-lookup-zone>
+                  {zoneLabel(found.zone)}／{found.items.length}名
+                  <span className="detail-seat-line" data-seats-undecided>
+                    {SEATS_UNDECIDED_NOTICE}
                   </span>
-                ))}
-              </dd>
-            </div>
+                </dd>
+              </div>
+            ) : (
+              <div>
+                <dt>座席</dt>
+                <dd data-lookup-seats>
+                  {found.items.map((item) => (
+                    <span key={item.seatId} className="detail-seat-line">
+                      {seatById(item.seatId).label}（{item.typeName} {formatYen(item.price)}）
+                    </span>
+                  ))}
+                  {found.zone && (
+                    <span className="detail-seat-line muted">
+                      （{zoneLabel(found.zone)}）
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt>券種内訳</dt>
               <dd>{reservationTypeSummary(found)}</dd>
@@ -204,7 +222,10 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
           <div className="self-cancel-area">
             {confirmingSelfCancel ? (
               <span className="cancel-confirm">
-                本当にキャンセルしますか？（席が解放されます）
+                本当にキャンセルしますか？
+                {found.zone && found.seatIds.length === 0
+                  ? '（ゾーンの確保が取り消されます）'
+                  : '（席が解放されます）'}
                 <button
                   type="button"
                   className="btn btn-danger btn-small"

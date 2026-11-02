@@ -36,6 +36,14 @@ export interface LastReservationSnapshot {
    * 無い場合は QR ではなく予約番号を表示する。
    */
   qrToken?: string
+  /**
+   * ゾーン予約の控え表示用（R12）: 「ゾーンB（1階中央・中央）」のような
+   * 整形済みゾーン名。ゾーン予約では seatLabels は空で、こちらと
+   * partySize で内容を表す。従来型の控えには無いため任意項目。
+   */
+  zoneLabel?: string
+  /** ゾーン予約の人数（R12）。zoneLabel と対で使う */
+  partySize?: number
 }
 
 /**
@@ -85,6 +93,10 @@ export function parseLastReservationSnapshot(rec: unknown): LastReservationSnaps
       ? { perfTime: r.perfTime }
       : {}),
     ...(isQrToken(r.qrToken) ? { qrToken: r.qrToken } : {}),
+    ...(typeof r.zoneLabel === 'string' && r.zoneLabel ? { zoneLabel: r.zoneLabel } : {}),
+    ...(typeof r.partySize === 'number' && Number.isFinite(r.partySize) && r.partySize > 0
+      ? { partySize: Math.floor(r.partySize) }
+      : {}),
   }
 }
 

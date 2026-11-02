@@ -9,6 +9,9 @@ import {
 import {
   createReservation,
   emptyData,
+  findTicketType,
+  isUnassignedZoneBooking,
+  isZoneBooking,
   normalizePhone,
   setBlockedForSeats as applyBlockedForSeats,
   toggleBlocked as applyToggleBlocked,
@@ -16,9 +19,15 @@ import {
   type NewReservationInput,
   type Reservation,
 } from './logic'
+import { assignZoneSeats, type ZoneId } from './zones'
 import { createCloudApi, type CloudApi } from './cloud'
 import { currentSiteUrl } from './share'
-import { StoreContext, type CheckInOutcome, type Store } from './store'
+import {
+  StoreContext,
+  type CheckInOutcome,
+  type Store,
+  type ZoneBookingInput,
+} from './store'
 
 /**
  * クラウドモードのストア（Supabase RPC）。
@@ -71,6 +80,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       blocked: pub.blockedSeats,
       bookingDeadline: pub.bookingDeadline,
       seatStates: pub.seatStates,
+      // R12: ゾーン別の未割当ホールド集計（残席計算に使う）
+      zoneHolds: pub.zoneHolds,
     }))
   }, [])
 
@@ -218,6 +229,41 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       // ローカル生成値を持たせず、QR を出さない（番号表示に落とす）
       return { ...reservation, id: code, amount, qrToken: token }
     }
+    /** ゾーン予約の RPC 結果から表示用 Reservation を組み立てる（席は未確定） */
+    const buildZoneReservation = (
+      input: ZoneBookingInput,
+      code: string,
+      amount: number,
+      token?: string,
+    ): Reservation => {
+      const perf = dataRef.current.performance
+      return {
+        id: code,
+        seatIds: [],
+        items: input.typeIds.map((typeId) => {
+          const type = findTicketType(perf, typeId)
+          return {
+            seatId: '',
+            typeId,
+            typeName: type?.name ?? '',
+            price: type?.price ?? 0,
+          }
+        }),
+        name: input.name.trim(),
+        phone: input.phone.trim(),
+        note: input.note.trim(),
+        source: 'online',
+        amount,
+        checkedIn: false,
+        paid: false,
+        cancelled: false,
+        createdAt: new Date().toISOString(),
+        qrToken: token,
+        perfDate: perf.date,
+        perfName: perf.name,
+        zone: input.zone,
+      }
+    }
 
     return {
       data,
@@ -251,6 +297,24 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           return reservation
         } catch (e) {
           // 失敗時は最新の占有状態を取り直してからエラーを返す
+          void refreshWithRetry()
+          throw e
+        }
+      },
+      reserveZone: async (input) => {
+        try {
+          const res = await api().bookZone({
+            name: input.name,
+            phone: input.phone,
+            note: input.note,
+            zone: input.zone,
+            typeIds: input.typeIds,
+          })
+          const reservation = buildZoneReservation(input, res.code, res.amount, res.token)
+          await refreshAll()
+          return reservation
+        } catch (e) {
+          // 失敗時（満席など）は最新の残席を取り直してからエラーを返す
           void refreshWithRetry()
           throw e
         }
@@ -306,6 +370,39 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       setPaid: async (reservationId, value) => {
         const target = dataRef.current.reservations.find((r) => r.id === reservationId)
         if (!target?.cloudId) throw new Error('予約が見つかりません')
+        // R12: ゾーン予約の支払い = 席の確定。ゾーン内の現在の空席から
+        // 詰めて割り当て、サーバ側で再検証して原子的に確定する。
+        // 割り当て・検証に失敗したら例外にし、支払い済みにはしない。
+        if (
+          isUnassignedZoneBooking(target) &&
+          value &&
+          !target.cancelled
+        ) {
+          const assignment = assignZoneSeats(
+            dataRef.current,
+            target.zone as ZoneId,
+            target.items.length,
+          )
+          if (!assignment) {
+            throw new Error(
+              'このゾーンに割り当てられる席がありません（空席が不足しています）。支払い済みにはしませんでした',
+            )
+          }
+          await api().staffAssignAndPay(
+            staffPasscode(),
+            target.cloudId,
+            assignment.seatIds,
+            false,
+          )
+          await refreshAll()
+          return
+        }
+        // R12: ゾーン予約を未払いに戻すと、割り当てた席も解放する
+        if (isZoneBooking(target) && !value && target.paid && target.seatIds.length > 0) {
+          await api().staffUnassignAndUnpay(staffPasscode(), target.cloudId)
+          await refreshAll()
+          return
+        }
         await api().staffUpdateReservation(staffPasscode(), target.cloudId, {
           paid: value,
           checkedIn: target.checkedIn,
@@ -346,6 +443,28 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       completeReception: async (reservationId) => {
         const target = dataRef.current.reservations.find((r) => r.id === reservationId)
         if (!target?.cloudId) throw new Error('予約が見つかりません')
+        // R12: 未割当のゾーン予約の受付完了は、席の割当＋支払い＋来場を
+        // staff_assign_and_pay（p_checked_in=true）で原子的に行う
+        if (isUnassignedZoneBooking(target) && !target.cancelled) {
+          const assignment = assignZoneSeats(
+            dataRef.current,
+            target.zone as ZoneId,
+            target.items.length,
+          )
+          if (!assignment) {
+            throw new Error(
+              'このゾーンに割り当てられる席がありません（空席が不足しています）。受付完了にはしませんでした',
+            )
+          }
+          await api().staffAssignAndPay(
+            staffPasscode(),
+            target.cloudId,
+            assignment.seatIds,
+            true,
+          )
+          await refreshAll()
+          return
+        }
         // staff_update_reservation は支払い・来場を同時に設定できるので1回の呼び出しで完結する
         await api().staffUpdateReservation(staffPasscode(), target.cloudId, {
           paid: true,

@@ -242,8 +242,11 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
       >
         <div className="last-res-folded">
           <p className="last-res-folded-line">
-            {snapshot.code} ／ {snapshot.performanceName} ／ {snapshot.seatLabels.length}席 ／{' '}
-            {formatYen(snapshot.amount)}
+            {snapshot.code} ／ {snapshot.performanceName} ／{' '}
+            {snapshot.zoneLabel
+              ? `${snapshot.zoneLabel} ${snapshot.partySize ?? ''}名`
+              : `${snapshot.seatLabels.length}席`}{' '}
+            ／ {formatYen(snapshot.amount)}
           </p>
           <button
             type="button"
@@ -299,7 +302,15 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
           <p className="last-res-line">
             {snapshot.performanceName} ／ {snapshot.whenText}
           </p>
-          <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
+          {snapshot.zoneLabel ? (
+            <p className="last-res-line">
+              ゾーン：{snapshot.zoneLabel}（{snapshot.partySize}名）
+              <br />
+              座席はお支払い後に確定します
+            </p>
+          ) : (
+            <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
+          )}
           <p className="last-res-line">合計：{formatYen(snapshot.amount)}</p>
         </div>
       </div>

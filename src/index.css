@@ -1382,6 +1382,13 @@ button.seat-available:hover {
   border-color: #ccc;
 }
 
+/* R12: ゾーン予約のバッジ（席未確定の間もゾーンが一目で分かるように） */
+.source-badge.source-zone {
+  background: #efe9fd;
+  color: #5b3ea8;
+  border-color: #c9b8f5;
+}
+
 .reservation-actions {
   display: flex;
   flex-wrap: wrap;

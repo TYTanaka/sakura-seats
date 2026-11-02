@@ -31,6 +31,12 @@ export interface PublicState {
   /** ISO文字列（timestamptz）。締切なしは null */
   bookingDeadline: string | null
   seatStates: Record<string, 'reserved' | 'sold'>
+  /**
+   * ゾーンごとの未割当ホールド人数（R12・migration_sakura_r12）。
+   * サーバが集計だけを返す（誰の予約かは含まない）。R12 未適用の DB では
+   * キー自体が返らないため、その場合は空オブジェクトになる。
+   */
+  zoneHolds: Record<string, number>
 }
 
 export interface StaffData {
@@ -94,6 +100,8 @@ interface RawReservationRow {
   /** 予約時点の公演スナップショット（公演照合用） */
   perfDate?: string | null
   perfName?: string | null
+  /** ゾーン予約のゾーンID（R12。従来型の予約・R12 未適用の DB では null/無し） */
+  zone?: string | null
 }
 
 /** DB行 → クライアントの Reservation への変換 */
@@ -102,7 +110,8 @@ export function mapReservationRow(row: RawReservationRow): Reservation {
   return {
     id: row.code,
     cloudId: row.id,
-    seatIds: items.map((i) => i.seatId),
+    // R12: ゾーン予約（未割当）は明細の seatId が空文字。席として数えない
+    seatIds: items.map((i) => i.seatId).filter((s) => typeof s === 'string' && s !== ''),
     items,
     name: row.name,
     phone: row.phone,
@@ -120,6 +129,7 @@ export function mapReservationRow(row: RawReservationRow): Reservation {
       typeof row.checkedInAt === 'string' && row.checkedInAt ? row.checkedInAt : null,
     perfDate: typeof row.perfDate === 'string' && row.perfDate ? row.perfDate : undefined,
     perfName: typeof row.perfName === 'string' && row.perfName ? row.perfName : undefined,
+    zone: typeof row.zone === 'string' && row.zone ? row.zone : undefined,
   }
 }
 
@@ -142,7 +152,7 @@ function mapConfig(raw: RawConfig): Omit<StaffData, 'reservations'> {
 
 /** get_public_state の戻り値 → PublicState */
 export function mapPublicState(raw: unknown): PublicState {
-  const rec = (raw ?? {}) as RawConfig & { seats?: unknown }
+  const rec = (raw ?? {}) as RawConfig & { seats?: unknown; zoneHolds?: unknown }
   const seatStates: Record<string, 'reserved' | 'sold'> = {}
   if (Array.isArray(rec.seats)) {
     for (const s of rec.seats as { seatId?: unknown; state?: unknown }[]) {
@@ -151,7 +161,15 @@ export function mapPublicState(raw: unknown): PublicState {
       }
     }
   }
-  return { ...mapConfig(rec), seatStates }
+  const zoneHolds: Record<string, number> = {}
+  if (rec.zoneHolds && typeof rec.zoneHolds === 'object') {
+    for (const [zone, count] of Object.entries(rec.zoneHolds as Record<string, unknown>)) {
+      if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
+        zoneHolds[zone] = Math.floor(count)
+      }
+    }
+  }
+  return { ...mapConfig(rec), seatStates, zoneHolds }
 }
 
 /** staff_get_all の戻り値 → StaffData */
@@ -202,6 +220,36 @@ function rpcErrorToMessage(error: { message: string }): Error {
     return new Error(
       'Googleログインとスタッフ許可リストは、サーバ更新（migration_sakura_r8 の適用）後に使えるようになります',
     )
+  }
+  // R12 の RPC が未適用の DB ではゾーン予約・支払い時割当だけがこの文面になる
+  if (
+    (msg.includes('book_zone') ||
+      msg.includes('staff_assign_and_pay') ||
+      msg.includes('staff_unassign_and_unpay')) &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      'ゾーン予約（席はお支払い後に確定）は、サーバ更新（migration_sakura_r12 の適用）後に使えるようになります',
+    )
+  }
+  // R12: ゾーン満席。呼び出し側（申込フロー）はこの文面を見てゾーン選び直しへ戻す
+  if (msg.includes('ZONE_FULL')) {
+    return new Error('このゾーンは満席です。他のゾーンをお選びください')
+  }
+  if (msg.includes('INVALID_ZONE')) {
+    return new Error('ゾーンが正しく選ばれていません。ゾーンを選び直してください')
+  }
+  if (msg.includes('SEAT_NOT_IN_ZONE')) {
+    return new Error('割り当てようとした席がゾーンの範囲外でした。もう一度お試しください')
+  }
+  if (msg.includes('SEAT_COUNT_MISMATCH')) {
+    return new Error('割り当てる席の数が人数と一致しませんでした。もう一度お試しください')
+  }
+  if (msg.includes('ALREADY_ASSIGNED')) {
+    return new Error('すでに別の席が割り当てられています。画面を更新して確認してください')
+  }
+  if (msg.includes('NOT_ZONE_BOOKING')) {
+    return new Error('この予約はゾーン予約ではありません')
   }
   if (msg.includes('LAST_STAFF')) {
     return new Error('最後の1人は削除できません（スタッフが誰もいなくなってしまいます）')
@@ -395,6 +443,66 @@ export class CloudApi {
     }
   }
 
+  /**
+   * ゾーン予約（book_zone RPC・R12）。席は割り当てず、ゾーン＋人数
+   * （券種IDの並び）だけを申し込む。金額はサーバ再計算の返却値が正。
+   * 満席なら ZONE_FULL のエラー（rpcErrorToMessage で文面化）になる。
+   */
+  async bookZone(input: {
+    name: string
+    phone: string
+    note: string
+    zone: string
+    typeIds: string[]
+  }): Promise<{ code: string; amount: number; token?: string }> {
+    const raw = await this.call<{ code: string; amount: number; token?: unknown }>(
+      'book_zone',
+      {
+        p_name: input.name,
+        p_phone: input.phone,
+        p_note: input.note,
+        p_zone: input.zone,
+        p_type_ids: input.typeIds,
+      },
+    )
+    return {
+      code: raw.code,
+      amount: raw.amount,
+      token: isQrToken(raw.token) ? raw.token : undefined,
+    }
+  }
+
+  /**
+   * 支払い確定＋座席割当（staff_assign_and_pay RPC・R12）。
+   * スタッフアプリが zones.ts で選んだ席を渡し、サーバが再検証してから
+   * paid=true と席を原子的に確定する。検証に失敗したら例外（支払い済みに
+   * ならない）。p_checked_in=true で受付完了（支払い＋来場）として扱う。
+   */
+  async staffAssignAndPay(
+    passcode: string,
+    cloudId: string,
+    seatIds: string[],
+    checkedIn: boolean,
+  ): Promise<void> {
+    await this.call('staff_assign_and_pay', {
+      p_passcode: passcode,
+      p_id: cloudId,
+      p_seat_ids: seatIds,
+      p_checked_in: checkedIn,
+    })
+  }
+
+  /**
+   * ゾーン予約を未払いに戻す（staff_unassign_and_unpay RPC・R12）。
+   * 割り当てた席を解放し、明細の seatId を空に戻す。
+   */
+  async staffUnassignAndUnpay(passcode: string, cloudId: string): Promise<void> {
+    await this.call('staff_unassign_and_unpay', {
+      p_passcode: passcode,
+      p_id: cloudId,
+    })
+  }
+
   async lookupReservation(code: string, phone: string): Promise<Reservation | null> {
     const raw = await this.call<unknown>('lookup_reservation', {
       p_code: code,
@@ -499,6 +607,7 @@ export class CloudApi {
       amount?: unknown
       kind?: unknown
       paid?: unknown
+      zone?: unknown
       checkedInAt?: unknown
       perfDate?: unknown
       perfName?: unknown
@@ -534,6 +643,7 @@ export class CloudApi {
         checkedInAt,
         perfDate: typeof raw.perfDate === 'string' ? raw.perfDate : null,
         perfName: typeof raw.perfName === 'string' ? raw.perfName : null,
+        zone: typeof raw.zone === 'string' ? raw.zone : null,
       })
     }
     return { result: result as CheckInResult, reservation, checkedInAt }

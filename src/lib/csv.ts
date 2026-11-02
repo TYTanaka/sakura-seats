@@ -1,15 +1,18 @@
 import { seatById } from '../data/seats'
 import { reservationTypeSummary, type Reservation } from './logic'
+import { zoneLabel } from './zones'
 
 /**
  * 予約一覧の CSV を生成する（Excel で文字化けしないよう BOM 付き UTF-8）。
  * キャンセル済みの予約は含めない。
+ * R12: ゾーン列を追加。ゾーン予約の席列は、割り当たるまで空欄になる。
  */
 
 const HEADERS = [
   '予約番号',
   '名前',
   '電話',
+  'ゾーン',
   '席',
   '券種内訳',
   '金額',
@@ -40,6 +43,7 @@ export function reservationsToCsv(reservations: Reservation[]): string {
         r.id,
         r.name,
         r.phone,
+        r.zone ? zoneLabel(r.zone) : '',
         r.seatIds.map((id) => seatById(id).label).join('、'),
         reservationTypeSummary(r),
         // 金額は「3,000円」のような文字列ではなく数値そのものにする。

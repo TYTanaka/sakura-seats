@@ -5,6 +5,7 @@ import {
   type Performance,
   type Reservation,
 } from './logic'
+import { zoneLabel } from './zones'
 import type { LastReservationSnapshot } from './lastReservation'
 
 /**
@@ -15,6 +16,10 @@ import type { LastReservationSnapshot } from './lastReservation'
  */
 
 function seatLines(reservation: Reservation): string {
+  // R12: ゾーン予約で席が未確定の間は、席番号ではなくゾーンと案内を出す
+  if (reservation.zone && reservation.seatIds.length === 0) {
+    return `${zoneLabel(reservation.zone)}・${reservation.items.length}名\n座席はお支払い後に確定します`
+  }
   return reservation.items
     .map((item) => `${seatById(item.seatId).label}（${item.typeName} ${formatYen(item.price)}）`)
     .join('\n')
@@ -116,6 +121,10 @@ export function buildLineShareReservationUrl(
  */
 
 function snapshotSeatLines(snap: LastReservationSnapshot): string {
+  // R12: ゾーン予約の控えは席番号を持たない（お支払い後に確定する）
+  if (snap.zoneLabel) {
+    return `${snap.zoneLabel}・${snap.partySize ?? ''}名\n座席はお支払い後に確定します`
+  }
   return snap.seatLabels.join('\n')
 }
 

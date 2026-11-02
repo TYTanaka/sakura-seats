@@ -328,8 +328,12 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     : null
 
   const runAction = (fn: () => Promise<void>) => {
-    void fn().catch(() =>
-      showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+    void fn().catch((e: unknown) =>
+      showToast(
+        e instanceof Error && e.message
+          ? e.message
+          : '操作に失敗しました。接続を確認してもう一度お試しください',
+      ),
     )
   }
 
@@ -337,8 +341,12 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
   const handleComplete = (target: Reservation) => {
     void completeReception(target.id)
       .then(() => showToast(`${target.id} を受付完了にしました`, 'info'))
-      .catch(() =>
-        showToast('操作に失敗しました。接続を確認してもう一度お試しください'),
+      .catch((e: unknown) =>
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '操作に失敗しました。接続を確認してもう一度お試しください',
+        ),
       )
   }
 

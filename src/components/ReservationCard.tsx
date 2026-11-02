@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import {
-  formatSeatList,
   formatYen,
   reservationDisplayName,
   reservationTotal,
   reservationTypeSummary,
   type Reservation,
 } from '../lib/logic'
+import { reservationSeatDisplay } from '../lib/zones'
 
 /** ISO日時を「12月19日 13:05」の形にする（受付済み時刻の表示用） */
 export function formatCheckedInAt(iso: string | null | undefined): string {
@@ -51,6 +51,9 @@ export default function ReservationCard({
 }: ReservationCardProps) {
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const receptionDone = res.paid && res.checkedIn
+  // R12: ゾーン予約は支払いまで席未確定（ゾーン名＋「席未確定」で表示し、
+  // 席番号は出さない）。支払い後に割り当たれば従来どおり席を表示する
+  const seatDisplay = reservationSeatDisplay(res)
 
   return (
     <>
@@ -66,6 +69,11 @@ export default function ReservationCard({
             <span className={`source-badge source-${res.source}`}>
               {res.source === 'door' ? '当日販売' : '予約'}
             </span>
+            {seatDisplay.isZone && (
+              <span className="source-badge source-zone" data-zone-badge>
+                ゾーン{res.zone}
+              </span>
+            )}
             {res.cancelled ? (
               <span className="source-badge source-cancelled">キャンセル済</span>
             ) : (
@@ -78,7 +86,12 @@ export default function ReservationCard({
             )}
           </p>
         </div>
-        <p className="reservation-seats">{formatSeatList(res.seatIds)}</p>
+        <p
+          className="reservation-seats"
+          data-seat-display={seatDisplay.assigned ? 'seats' : 'unassigned'}
+        >
+          {seatDisplay.text}
+        </p>
         <p className="muted small reservation-meta">
           <span data-type-breakdown>{reservationTypeSummary(res)}</span>
           {' ／ '}合計{' '}

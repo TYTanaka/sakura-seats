@@ -9,11 +9,16 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  assignSeatsToReservation,
   cancelReservation,
   checkInByToken as applyCheckInByToken,
+  clearReservationSeats,
   createReservation,
+  createZoneReservation,
   emptyData,
   findReservationByCodePhone,
+  isUnassignedZoneBooking,
+  isZoneBooking,
   normalizeAppData,
   selfCancelEligibility,
   setBlockedForSeats,
@@ -30,6 +35,7 @@ import {
   type SelfCancelResult,
   type UncancelResult,
 } from './logic'
+import { assignZoneSeats, zoneAvailability, type ZoneId } from './zones'
 import { cloudEnabled } from './config'
 import { isStaleRevision, nextRevision, parseRevision } from './revision'
 import type { StaffAllowlist } from './staffAuth'
@@ -55,6 +61,20 @@ export interface CheckInOutcome {
   checkedInAt: string | null
 }
 
+/**
+ * ゾーン予約の申込入力（R12）。
+ * お客様は席を選ばない: ゾーンと人数（券種の並び）だけを申し込み、
+ * 実際の席は支払い時に割り当てる。
+ */
+export interface ZoneBookingInput {
+  zone: ZoneId
+  /** 人数分の券種ID（1人目から順に） */
+  typeIds: string[]
+  name: string
+  phone: string
+  note: string
+}
+
 export interface Store {
   data: AppData
   mode: 'local' | 'cloud'
@@ -74,6 +94,13 @@ export interface Store {
    */
   syncState: 'ok' | 'reconnecting' | 'offline'
   reserve: (input: NewReservationInput) => Promise<Reservation>
+  /**
+   * ゾーン予約を申し込む（R12）。席は割り当てない。
+   * クラウド: book_zone RPC が収容判定（カウントホールド）まで原子的に行う。
+   * ローカル: zoneAvailability で残席を確認してから作成する。
+   * 満席の場合は「満席」を含む文面の例外を投げる。
+   */
+  reserveZone: (input: ZoneBookingInput) => Promise<Reservation>
   cancel: (reservationId: string) => Promise<void>
   /**
    * キャンセルの取り消し（スタッフ操作）。結果コードを返す。
@@ -312,6 +339,34 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         setData(result.data)
         return result.reservation
       },
+      reserveZone: async (input) => {
+        refreshIfStale()
+        // 収容判定: ゾーンの残席（未割当ホールド差し引き後）が人数未満なら満席
+        const avail = zoneAvailability(dataRef.current, input.zone)
+        if (avail.available < input.typeIds.length) {
+          throw new Error('このゾーンは満席です。他のゾーンをお選びください')
+        }
+        const result = createZoneReservation(dataRef.current, {
+          zone: input.zone,
+          typeIds: input.typeIds,
+          name: input.name,
+          phone: input.phone,
+          note: input.note,
+        })
+        // reserve と同じく、保存できて初めて「予約完了」とする
+        const rev = nextRevision(revRef.current)
+        if (!persistAll(result.data, rev)) {
+          setPersistFailed(true)
+          throw new Error(
+            '端末への保存に失敗したため、予約を完了できませんでした。端末の空き容量を確認して、もう一度お試しください',
+          )
+        }
+        revRef.current = rev
+        setPersistFailed(false)
+        dataRef.current = result.data
+        setData(result.data)
+        return result.reservation
+      },
       cancel: async (reservationId) => {
         mutate((prev) => cancelReservation(prev, reservationId))
       },
@@ -340,9 +395,74 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         }
       },
       setPaid: async (reservationId, value) => {
+        refreshIfStale()
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        // R12: ゾーン予約の支払い = 席の確定。ゾーン内の空席から詰めて
+        // 割り当ててから支払い済みにする。割り当てられなければ例外にし、
+        // 支払い済みにはしない（スタッフに理由が伝わる）
+        if (target && isUnassignedZoneBooking(target) && value && !target.cancelled) {
+          const assignment = assignZoneSeats(
+            dataRef.current,
+            target.zone as ZoneId,
+            target.items.length,
+          )
+          if (!assignment) {
+            throw new Error(
+              'このゾーンに割り当てられる席がありません（空席が不足しています）。支払い済みにはしませんでした',
+            )
+          }
+          mutate((prev) =>
+            setPaid(
+              assignSeatsToReservation(prev, reservationId, assignment.seatIds),
+              reservationId,
+              true,
+            ),
+          )
+          return
+        }
+        // R12: ゾーン予約を未払いに戻すと、割り当てた席も解放する
+        if (
+          target &&
+          isZoneBooking(target) &&
+          !value &&
+          target.paid &&
+          target.seatIds.length > 0
+        ) {
+          mutate((prev) =>
+            setPaid(clearReservationSeats(prev, reservationId), reservationId, false),
+          )
+          return
+        }
         mutate((prev) => setPaid(prev, reservationId, value))
       },
       completeReception: async (reservationId) => {
+        refreshIfStale()
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        // R12: 未割当のゾーン予約の受付完了は、席の割当＋支払い＋来場を一度に行う
+        if (target && isUnassignedZoneBooking(target) && !target.cancelled) {
+          const assignment = assignZoneSeats(
+            dataRef.current,
+            target.zone as ZoneId,
+            target.items.length,
+          )
+          if (!assignment) {
+            throw new Error(
+              'このゾーンに割り当てられる席がありません（空席が不足しています）。受付完了にはしませんでした',
+            )
+          }
+          mutate((prev) =>
+            setCheckedIn(
+              setPaid(
+                assignSeatsToReservation(prev, reservationId, assignment.seatIds),
+                reservationId,
+                true,
+              ),
+              reservationId,
+              true,
+            ),
+          )
+          return
+        }
         mutate((prev) =>
           setCheckedIn(setPaid(prev, reservationId, true), reservationId, true),
         )

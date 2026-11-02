@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ALL_SEATS, seatById } from '../data/seats'
+import { ALL_SEATS } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
   defaultTicketType,
@@ -9,17 +9,17 @@ import {
   isBookingClosed,
   isValidPhone,
   normalizePhone,
-  seatStatus,
+  reservationTypeSummary,
   type Performance,
   type Reservation,
 } from '../lib/logic'
 import {
+  SEATS_UNDECIDED_NOTICE,
   ZONE_DEF_BY_ID,
   ZONE_IDS,
   allZoneAvailability,
-  assignZoneSeats,
-  describeSelection,
   zoneAvailability,
+  zoneLabel,
   type ZoneId,
 } from '../lib/zones'
 import { useStore } from '../lib/store'
@@ -33,28 +33,27 @@ import {
 } from '../lib/share'
 import flyerUrl from '../assets/flyer.webp'
 import flyerJpgUrl from '../assets/flyer.jpg'
-import OverviewMap from './OverviewMap'
-import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import ReservationQr from './ReservationQr'
 import ZoneSeatMap from './ZoneSeatMap'
 
-type Step = 'zone' | 'result' | 'form' | 'confirm' | 'done'
+type Step = 'zone' | 'form' | 'confirm' | 'done'
 
 /**
- * 申込フォームの下書き（R3-8）: 入力途中でリロードしても消えないよう
- * 端末内に保持する。予約が完了したら破棄する。
- * ゾーン制への移行に伴い、人数と選んだゾーンも一緒に保持する。
+ * 申込フォームの下書き: 入力途中でリロードしても消えないよう端末内に保持する。
+ * 予約が完了したら破棄する。
+ * R12 でキーを v2 に更新: 席を選ぶ前提だった v1 の下書き（選択済みの席ID）は
+ * 席を確定しないモデルでは意味を持たないため、引き継がず破棄される。
  */
-const DRAFT_KEY = 'sakura-seats-booking-draft-v1'
+const DRAFT_KEY = 'sakura-seats-booking-draft-v2'
 
 interface BookingDraft {
   name: string
   phone: string
   note: string
-  selected: string[]
-  typeBySeat: Record<string, string>
-  /** 申込フロー上のステップも一緒に保持する（R4-8: リロードでステップだけ戻らないように） */
-  step: 'zone' | 'result' | 'form' | 'confirm'
+  /** 人数分の券種ID（1人目から順に） */
+  typeIds: string[]
+  /** 申込フロー上のステップも一緒に保持する（リロードでステップだけ戻らないように） */
+  step: 'zone' | 'form' | 'confirm'
   /** 人数 */
   partySize: number
   /** 選んだゾーン（未選択は null） */
@@ -72,23 +71,16 @@ function loadDraft(): BookingDraft | null {
     const raw = localStorage.getItem(DRAFT_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<BookingDraft> & { step?: string }
-    const selected = Array.isArray(parsed.selected)
-      ? parsed.selected.filter((s): s is string => typeof s === 'string')
-      : []
     return {
       name: typeof parsed.name === 'string' ? parsed.name : '',
       phone: typeof parsed.phone === 'string' ? parsed.phone : '',
       note: typeof parsed.note === 'string' ? parsed.note : '',
-      selected,
-      typeBySeat:
-        parsed.typeBySeat && typeof parsed.typeBySeat === 'object' ? parsed.typeBySeat : {},
-      // 旧バージョンの 'seats'（座席表で選ぶ）・'omakase'（候補えらび）は
-      // 'zone'（ゾーンえらび）として読み替える
+      typeIds: Array.isArray(parsed.typeIds)
+        ? parsed.typeIds.filter((s): s is string => typeof s === 'string')
+        : [],
       step:
-        parsed.step === 'form' || parsed.step === 'confirm' || parsed.step === 'result'
-          ? parsed.step
-          : 'zone',
-      partySize: clampPartySize(parsed.partySize, selected.length > 0 ? selected.length : 2),
+        parsed.step === 'form' || parsed.step === 'confirm' ? parsed.step : 'zone',
+      partySize: clampPartySize(parsed.partySize, 2),
       zoneId:
         typeof parsed.zoneId === 'string' &&
         (ZONE_IDS as string[]).includes(parsed.zoneId)
@@ -108,33 +100,78 @@ function clearDraft() {
   }
 }
 
+/** 人数分の券種を人数の並びで調整する（足りない分はデフォルト券種で埋める） */
+function fitTypeIds(typeIds: string[], partySize: number, fallbackId: string): string[] {
+  const next = typeIds.slice(0, partySize)
+  while (next.length < partySize) next.push(fallbackId)
+  return next
+}
+
+/** 人ごとの券種セレクタ（席は未確定なので「1人目」形式で並べる） */
+function PartyTypePicker({
+  perf,
+  typeIds,
+  onChange,
+}: {
+  perf: Performance
+  typeIds: string[]
+  onChange: (index: number, typeId: string) => void
+}) {
+  const fallbackId = defaultTicketType(perf).id
+  return (
+    <div className="seat-type-list">
+      {typeIds.map((typeId, index) => {
+        const current = typeId || fallbackId
+        return (
+          <div key={index} className="seat-type-row" data-party-type-row={index}>
+            <span className="seat-type-label">{index + 1}人目</span>
+            <div className="seg-group" role="group" aria-label={`${index + 1}人目の券種`}>
+              {perf.ticketTypes.map((type) => (
+                <button
+                  key={type.id}
+                  type="button"
+                  data-party-type={`${index}:${type.id}`}
+                  aria-pressed={current === type.id}
+                  className={`seg-btn${current === type.id ? ' active' : ''}`}
+                  onClick={() => onChange(index, type.id)}
+                >
+                  {type.name} {formatYen(type.price)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function AudienceBook({
   perf,
   onBookingDoneChange,
 }: {
   perf: Performance
-  /** 完了画面の表示状態を親へ伝える（R6・C-2: 完了中は控え一覧を完了カードの下へ回すため） */
+  /** 完了画面の表示状態を親へ伝える（完了中は控え一覧を完了カードの下へ回すため） */
   onBookingDoneChange?: (done: boolean) => void
 }) {
-  const { data, reserve } = useStore()
+  const { data, reserveZone } = useStore()
   const [initialDraft] = useState<BookingDraft | null>(loadDraft)
-  // 下書きがあれば、入力途中のステップから再開する（席が無ければゾーンえらびから）
+  // 下書きがあれば入力途中のステップから再開する（ゾーン未選択ならゾーンえらびから）
   const [step, setStep] = useState<Step>(() => {
     const s = initialDraft?.step
-    return (s === 'form' || s === 'confirm' || s === 'result') &&
-      (initialDraft?.selected.length ?? 0) > 0
-      ? s
-      : 'zone'
+    return (s === 'form' || s === 'confirm') && initialDraft?.zoneId ? s : 'zone'
   })
   /** 人数（1〜8名） */
   const [partySize, setPartySize] = useState<number>(() => initialDraft?.partySize ?? 2)
   /** 選んだゾーン */
   const [zoneId, setZoneId] = useState<ZoneId | null>(() => initialDraft?.zoneId ?? null)
-  /** 割り当てられた席（=申込対象の席） */
-  const [selected, setSelected] = useState<string[]>(() => initialDraft?.selected ?? [])
-  /** 席ごとの券種指定（未指定はデフォルト券種） */
-  const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>(
-    () => initialDraft?.typeBySeat ?? {},
+  /** 人ごとの券種指定（人数分。未指定はデフォルト券種） */
+  const [typeIds, setTypeIds] = useState<string[]>(() =>
+    fitTypeIds(
+      initialDraft?.typeIds ?? [],
+      initialDraft?.partySize ?? 2,
+      defaultTicketType(perf).id,
+    ),
   )
   const [name, setName] = useState(() => initialDraft?.name ?? '')
   const [phone, setPhone] = useState(() => initialDraft?.phone ?? '')
@@ -142,14 +179,14 @@ export default function AudienceBook({
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  /** 送信直前に席が取られてしまった場合の案内（同じゾーンで割り当て直す） */
-  const [seatTakenNotice, setSeatTakenNotice] = useState(false)
+  /** 送信時点でゾーンが満席になっていた場合の案内（ゾーン選び直しへ戻す） */
+  const [zoneFullNotice, setZoneFullNotice] = useState(false)
   /** 選んだゾーンでは人数分を用意できなかった場合の案内 */
   const [zoneError, setZoneError] = useState<{ zone: ZoneId; remaining: number } | null>(
     null,
   )
 
-  // 締切は「今」を定期的に再評価して判定する（開いたまま締切を跨いでも追随する・R4-1）
+  // 締切は「今」を定期的に再評価して判定する（開いたまま締切を跨いでも追随する）
   const nowMs = useNow(10000)
   const closed = isBookingClosed(data, new Date(nowMs))
   /** 開いている間に締切を跨いだことを知らせる表示 */
@@ -159,55 +196,26 @@ export default function AudienceBook({
     const was = wasClosedRef.current
     wasClosedRef.current = closed
     if (!closed || was) return
-    // 締切を跨いだ瞬間: 選択を解除し、フォーム途中ならゾーンえらびへ戻して詰み状態を防ぐ
-    if (selected.length > 0) {
-      setSelected([])
+    // 締切を跨いだ瞬間: フォーム途中ならゾーンえらびへ戻して詰み状態を防ぐ
+    if (step === 'form' || step === 'confirm') {
+      setStep('zone')
       setDeadlinePassed(true)
     }
-    if (step === 'form' || step === 'confirm' || step === 'result') setStep('zone')
-  }, [closed, selected.length, step])
-
-  // 下書きから復元した席のうち、1席でも埋まっていたら割当ごと選び直しにする。
-  // 外れたことが分かるよう一言表示する（R4-6 のゾーン版）
-  const [draftPruned, setDraftPruned] = useState(false)
-  const prunedDraftRef = useRef(false)
-  useEffect(() => {
-    if (prunedDraftRef.current) return
-    prunedDraftRef.current = true
-    const initialSelected = initialDraft?.selected ?? []
-    if (initialSelected.length === 0) return
-    const allAvailable = initialSelected.every(
-      (id) => seatStatus(data, id) === 'available',
-    )
-    if (isBookingClosed(data)) {
-      // 戻ってきた時点で既に締切を過ぎていたら、選択は持たずに受付終了として出す
-      setSelected([])
-      setDeadlinePassed(true)
-      setStep('zone')
-    } else if (!allAvailable) {
-      setSelected([])
-      setDraftPruned(true)
-      setStep('zone')
-    }
-    // 初回マウント時のデータでのみ判定する
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [closed, step])
 
   // 入力内容を下書きとして保持する（ステップ・人数・ゾーンも含める。全て空なら破棄）
   useEffect(() => {
     if (step === 'done') return
     try {
-      if (!name && !phone && !note && selected.length === 0) {
+      if (!name && !phone && !note && zoneId === null) {
         localStorage.removeItem(DRAFT_KEY)
       } else {
         const draft: BookingDraft = {
           name,
           phone,
           note,
-          selected,
-          typeBySeat,
-          step:
-            step === 'form' || step === 'confirm' || step === 'result' ? step : 'zone',
+          typeIds,
+          step: step === 'form' || step === 'confirm' ? step : 'zone',
           partySize,
           zoneId,
         }
@@ -216,119 +224,93 @@ export default function AudienceBook({
     } catch {
       // 保存できなくても画面操作は継続する
     }
-  }, [name, phone, note, selected, typeBySeat, step, partySize, zoneId])
+  }, [name, phone, note, typeIds, step, partySize, zoneId])
 
-  // 完了画面の表示中かどうかを親へ伝える（控え一覧の配置切り替え用・C-2）
+  // 完了画面の表示中かどうかを親へ伝える（控え一覧の配置切り替え用）
   useEffect(() => {
     onBookingDoneChange?.(step === 'done')
   }, [step, onBookingDoneChange])
 
   // ゾーンごとの空き状況は現在の占有状態から都度計算する
-  // （誰かが予約すれば即座に残り席数・満席表示へ反映される）
+  // （誰かが予約すれば残り席数・満席表示へ反映される）
   const availability = useMemo(() => allZoneAvailability(data), [data])
 
-  const selectedSeats = useMemo(() => selected.map(seatById), [selected])
-  const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
-  const includesRestricted = selectedSeats.some((s) => s.restrictedView)
-  const typeNameOf = (seatId: string) =>
-    findTicketType(perf, typeBySeat[seatId] ?? defaultTicketType(perf).id)?.name ?? ''
-
-  // 割当結果の表示用メタ情報（ゾーン・分割・見切れ・要約）
-  const selectionMeta = useMemo(
-    () => (selected.length > 0 ? describeSelection(selected) : null),
-    [selected],
+  const total = typeIds.reduce(
+    (sum, typeId) => sum + (findTicketType(perf, typeId)?.price ?? 0),
+    0,
   )
-  const resultZone = zoneId ?? selectionMeta?.zone ?? null
-  const resultZoneDef = resultZone ? ZONE_DEF_BY_ID.get(resultZone) : undefined
+  const zoneDef = zoneId ? ZONE_DEF_BY_ID.get(zoneId) : undefined
+  /** 券種内訳の表示（「大人×1・子供×1」） */
+  const typeBreakdown = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const typeId of typeIds) {
+      const typeName = findTicketType(perf, typeId)?.name ?? typeId
+      counts.set(typeName, (counts.get(typeName) ?? 0) + 1)
+    }
+    return [...counts.entries()].map(([n, c]) => `${n}×${c}`).join('・')
+  }, [typeIds, perf])
 
   const changePartySize = (next: number) => {
-    setPartySize(Math.min(MAX_ONLINE_SEATS, Math.max(1, next)))
-    setSeatTakenNotice(false)
+    const size = Math.min(MAX_ONLINE_SEATS, Math.max(1, next))
+    setPartySize(size)
+    setTypeIds((prev) => fitTypeIds(prev, size, defaultTicketType(perf).id))
+    setZoneFullNotice(false)
     setZoneError(null)
   }
 
-  /** ゾーンを選ぶ: そのゾーンの中でだけ自動割当し、結果画面へ進む */
+  /** ゾーンを選ぶ: 残席が人数分あればフォームへ進む（席はまだ確定しない） */
   const pickZone = (zone: ZoneId) => {
     if (closed) return
     setError('')
-    setSeatTakenNotice(false)
-    const assignment = assignZoneSeats(data, zone, partySize)
-    if (!assignment) {
-      setZoneError({ zone, remaining: zoneAvailability(data, zone).available })
+    setZoneFullNotice(false)
+    const avail = zoneAvailability(data, zone)
+    if (avail.available < partySize) {
+      setZoneError({ zone, remaining: avail.available })
       return
     }
     setZoneError(null)
     setZoneId(zone)
-    setSelected(assignment.seatIds)
-    // 券種の指定は、割り当てられた席分だけを引き継ぐ
-    setTypeBySeat((prev) =>
-      Object.fromEntries(
-        Object.entries(prev).filter(([id]) => assignment.seatIds.includes(id)),
-      ),
-    )
-    setStep('result')
+    setStep('form')
     window.scrollTo({ top: 0 })
   }
 
   const handleSubmit = async () => {
+    if (!zoneId) return
     setError('')
     setSubmitting(true)
     try {
-      const reservation = await reserve({
-        seats: selected.map((seatId) => ({
-          seatId,
-          typeId: typeBySeat[seatId] ?? defaultTicketType(perf).id,
-        })),
+      const reservation = await reserveZone({
+        zone: zoneId,
+        typeIds,
         name,
         // 電話番号は正規化した数字のみで保存する（照会側も同じ形で比較する）
         phone: normalizePhone(phone),
         note,
-        source: 'online',
       })
       clearDraft()
-      // 完了画面がリロードで消えても再表示できるよう、端末に控えを残す（R4・F3）
-      // 2回目以降の予約でも前の控えは消さず、一覧へ追加する（R6）
+      // 完了画面がリロードで消えても再表示できるよう、端末に控えを残す
       addLastReservation({
         code: reservation.id,
         performanceName: perf.name,
         whenText: formatPerformanceWhen(perf),
-        seatLabels: reservation.items.map((item) => seatById(item.seatId).label),
+        seatLabels: [],
         amount: reservation.amount,
         savedAt: new Date().toISOString(),
-        // 控えからカレンダー登録できるよう、公演日・開演時刻も一緒に残す
         perfDate: perf.date,
         perfTime: perf.time,
-        // 控えの QR を作り直せるよう、受付用トークンも一緒に残す（R7）
         qrToken: reservation.qrToken,
+        // R12: 席は未確定。控えにはゾーンと人数を残す
+        zoneLabel: zoneLabel(zoneId),
+        partySize,
       })
       setCompleted(reservation)
       setStep('done')
     } catch (e) {
       const message = e instanceof Error ? e.message : '予約に失敗しました'
-      // 席が他の人に取られた場合は、取られた席を除いて同じゾーンで割り当て直す
-      const seatGone =
-        message.includes('予約されてしまいました') ||
-        message.includes('すでに予約・販売済み') ||
-        message.includes('販売していない席')
-      if (seatGone) {
-        const failedSeats = selected
-        setSelected([])
-        setSeatTakenNotice(true)
-        const reassigned =
-          zoneId !== null
-            ? assignZoneSeats(data, zoneId, failedSeats.length, failedSeats)
-            : null
-        if (reassigned) {
-          setSelected(reassigned.seatIds)
-          setTypeBySeat((prev) =>
-            Object.fromEntries(
-              Object.entries(prev).filter(([id]) => reassigned.seatIds.includes(id)),
-            ),
-          )
-          setStep('result')
-        } else {
-          setStep('zone')
-        }
+      if (message.includes('満席')) {
+        // 送信時点で満席になっていた: ゾーン選び直しへ戻して案内する
+        setZoneFullNotice(true)
+        setStep('zone')
         window.scrollTo({ top: 0 })
       } else {
         setError(message)
@@ -340,8 +322,8 @@ export default function AudienceBook({
 
   const resetFlow = () => {
     clearDraft()
-    setSelected([])
-    setTypeBySeat({})
+    setTypeIds(fitTypeIds([], 2, defaultTicketType(perf).id))
+    setPartySize(2)
     setName('')
     setPhone('')
     setNote('')
@@ -349,7 +331,7 @@ export default function AudienceBook({
     setCompleted(null)
     setZoneId(null)
     setZoneError(null)
-    setSeatTakenNotice(false)
+    setZoneFullNotice(false)
     setStep('zone')
     window.scrollTo({ top: 0 })
   }
@@ -385,13 +367,11 @@ export default function AudienceBook({
             <dd>{completed.name} 様</dd>
           </div>
           <div>
-            <dt>座席</dt>
-            <dd>
-              {completed.items.map((item) => (
-                <span key={item.seatId} className="detail-seat-line">
-                  {seatById(item.seatId).label}（{item.typeName} {formatYen(item.price)}）
-                </span>
-              ))}
+            <dt>ゾーン</dt>
+            <dd data-done-zone>
+              {completed.zone ? zoneLabel(completed.zone) : ''}
+              <br />
+              {completed.items.length}名（{reservationTypeSummary(completed)}）
             </dd>
           </div>
           <div>
@@ -400,6 +380,10 @@ export default function AudienceBook({
           </div>
         </dl>
         <div className="notice-box">
+          <p data-seats-undecided>
+            {SEATS_UNDECIDED_NOTICE}。お支払いが済みましたら、このページの
+            「予約確認」から座席番号をご確認いただけます。
+          </p>
           <p>当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。</p>
           <p>変更は主催者までご連絡ください。キャンセルは『予約確認』からもできます。</p>
         </div>
@@ -449,17 +433,12 @@ export default function AudienceBook({
         <>
           {deadlinePassed && (
             <p className="closed-notice deadline-passed-notice" data-deadline-passed role="status">
-              予約締切を過ぎたため、受付を終了しました。選択していた座席は解除されました。
+              予約締切を過ぎたため、受付を終了しました。
             </p>
           )}
-          {draftPruned && (
-            <p className="draft-pruned-notice" data-draft-pruned role="status">
-              選んでいた座席は予約済みになったため、選択を解除しました。新しいゾーンからお選びください
-            </p>
-          )}
-          {seatTakenNotice && (
-            <p className="seat-taken-notice" data-seat-taken role="status">
-              先ほどの席は他の方に予約されました。お手数ですが、ゾーンを選び直してください
+          {zoneFullNotice && (
+            <p className="seat-taken-notice" data-zone-full role="status">
+              申し訳ありません。選んだゾーンは満席になりました。別のゾーンをお選びください
             </p>
           )}
           <div className="page-share">
@@ -477,7 +456,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。選んだゾーンの中で、並んだ席を自動でご用意します。
+              人数を選んで、上から見た座席表で「ここがいいな」と思うエリア（ゾーン）をタップしてください。選んだゾーンの中で並んだ席をご用意します。座席番号は当日、受付でのお支払い時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -569,91 +548,22 @@ export default function AudienceBook({
         </>
       )}
 
-      {step === 'result' && selectionMeta && (
-        <section className="card result-card">
-          {seatTakenNotice && (
-            <p className="seat-taken-notice" data-seat-taken role="status">
-              先ほどの席は他の方に予約されました。同じゾーンで新しい席をご用意しました
-            </p>
-          )}
-          <h3>ご用意した席</h3>
-          <p className="result-zone" data-result-zone>
-            ゾーン{resultZone}（{resultZoneDef?.name}）
-            {selectionMeta.split && (
-              <span className="candidate-split-badge">2か所に分かれます</span>
-            )}
-            {selectionMeta.restricted && (
-              <span className="candidate-restricted-badge">見切れ席あり</span>
-            )}
-          </p>
-          {resultZoneDef && (
-            <p className="muted small result-zone-desc">{resultZoneDef.description}</p>
-          )}
-          <p className="result-seats" data-result-summary>
-            {selectionMeta.summary}
-          </p>
-          <p className="muted small result-seat-labels">
-            {selectedSeats.map((s) => s.label).join('、')}
-          </p>
-          {selectionMeta.restricted && (
-            <p className="selection-warn">
-              ※見切れ席（舞台の一部が見えにくい席）が含まれています
-            </p>
-          )}
-          <p className="result-price" data-result-price>
-            {defaultTicketType(perf).name}料金で{' '}
-            {formatYen(defaultTicketType(perf).price * selected.length)}
-            〜（{selected.length}名分の目安・券種で変わります）
-          </p>
-          <div className="result-overview">
-            <h4 className="candidate-overview-title">ホール全体での位置</h4>
-            <p className="muted small candidate-overview-note">
-              金色の席が、ご用意した席です（空き状況は表示していません）
-            </p>
-            <OverviewMap groups={[{ seatIds: selected, label: 'あなたの席' }]} />
-          </div>
-          <div className="btn-row">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => {
-                setError('')
-                setSeatTakenNotice(false)
-                setStep('zone')
-              }}
-            >
-              ゾーンを選び直す
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              data-result-confirm
-              onClick={() => {
-                setError('')
-                setSeatTakenNotice(false)
-                setStep('form')
-                window.scrollTo({ top: 0 })
-              }}
-            >
-              この席で申し込む
-            </button>
-          </div>
-        </section>
-      )}
-
-      {step === 'form' && (
+      {step === 'form' && zoneId && (
         <section className="card">
           <h3>お申し込み情報</h3>
-          <p className="chosen-seats" data-chosen-seats>
-            座席：{selectedSeats.map((s) => s.label).join('、')}
+          <p className="chosen-seats" data-chosen-zone>
+            ゾーン：{zoneLabel(zoneId)}／{partySize}名
           </p>
-          <h4 className="form-subhead">座席と券種</h4>
-          <TicketTypePicker
+          {zoneDef && <p className="muted small">{zoneDef.description}</p>}
+          <p className="muted small" data-seats-undecided>
+            {SEATS_UNDECIDED_NOTICE}（ゾーンの中で並んだ席をご用意します）
+          </p>
+          <h4 className="form-subhead">人数と券種</h4>
+          <PartyTypePicker
             perf={perf}
-            seatIds={selected}
-            typeBySeat={typeBySeat}
-            onChange={(seatId, typeId) =>
-              setTypeBySeat((prev) => ({ ...prev, [seatId]: typeId }))
+            typeIds={typeIds}
+            onChange={(index, typeId) =>
+              setTypeIds((prev) => prev.map((t, i) => (i === index ? typeId : t)))
             }
           />
           {perf.priceNote && <p className="muted small">※{perf.priceNote}</p>}
@@ -736,7 +646,7 @@ export default function AudienceBook({
         </section>
       )}
 
-      {step === 'confirm' && (
+      {step === 'confirm' && zoneId && (
         <section className="card">
           <h3>お申し込み内容の確認</h3>
           <dl className="detail-list">
@@ -749,14 +659,14 @@ export default function AudienceBook({
               </dd>
             </div>
             <div>
-              <dt>座席</dt>
-              <dd>
-                {selectedSeats.map((s) => (
-                  <span key={s.id} className="detail-seat-line">
-                    {s.label}（{typeNameOf(s.id)} {formatYen(priceOfSeat(perf, typeBySeat, s.id))}）
-                  </span>
-                ))}
+              <dt>ゾーン</dt>
+              <dd data-confirm-zone>
+                {zoneLabel(zoneId)}／{partySize}名
               </dd>
+            </div>
+            <div>
+              <dt>券種内訳</dt>
+              <dd>{typeBreakdown}</dd>
             </div>
             <div>
               <dt>お名前</dt>
@@ -777,11 +687,9 @@ export default function AudienceBook({
               <dd className="detail-total">{formatYen(total)}（当日現金払い）</dd>
             </div>
           </dl>
-          {includesRestricted && (
-            <p className="selection-warn">
-              ※見切れ席（舞台の一部が見えにくい席）が含まれています
-            </p>
-          )}
+          <p className="muted small" data-seats-undecided>
+            {SEATS_UNDECIDED_NOTICE}。お支払い後、「予約確認」ページで座席番号をご確認いただけます。
+          </p>
           {error && <p className="error-text">{error}</p>}
           <div className="btn-row">
             <button type="button" className="btn btn-ghost" onClick={() => setStep('form')}>

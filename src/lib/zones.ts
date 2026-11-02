@@ -37,7 +37,12 @@ import {
   seatById,
   type SeatDef,
 } from '../data/seats'
-import { seatStatus, type AppData } from './logic'
+import {
+  formatSeatList,
+  seatStatus,
+  type AppData,
+  type Reservation,
+} from './logic'
 
 export type ZoneId = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I'
 
@@ -124,7 +129,7 @@ export const LOW_STOCK_REMAINING = 10
 export interface ZoneAvailability {
   /** ゾーンの総席数 */
   total: number
-  /** 現在の空席数 */
+  /** 現在の空席数（未割当ホールドを差し引いた、申し込める残り） */
   available: number
   /** 満席（空席0） */
   soldOut: boolean
@@ -132,12 +137,33 @@ export interface ZoneAvailability {
   low: boolean
 }
 
+/**
+ * ゾーンの「未割当ホールド人数」（R12）。
+ * 席がまだ割り当たっていない有効なゾーン予約の人数合計で、その分だけ
+ * ゾーンの残席は減る（カウントホールド。特定の席は押さえていない）。
+ * - クラウド（お客様画面）: data.zoneHolds にサーバ集計が入っていればそれを使う
+ * - ローカル / スタッフ画面: data.reservations から同じ定義で導出する
+ */
+export function zoneHoldCount(data: AppData, zone: ZoneId): number {
+  if (data.zoneHolds) return data.zoneHolds[zone] ?? 0
+  let holds = 0
+  for (const res of data.reservations) {
+    if (res.cancelled) continue
+    if (res.zone !== zone) continue
+    if (res.seatIds.length > 0) continue
+    holds += res.items.length
+  }
+  return holds
+}
+
 export function zoneAvailability(data: AppData, zone: ZoneId): ZoneAvailability {
   const ids = ZONE_SEAT_IDS[zone]
-  let available = 0
+  let freeSeats = 0
   for (const id of ids) {
-    if (seatStatus(data, id) === 'available') available++
+    if (seatStatus(data, id) === 'available') freeSeats++
   }
+  // 物理的な空席から未割当ホールドを差し引いたものが「申し込める残り」
+  const available = Math.max(0, freeSeats - zoneHoldCount(data, zone))
   return {
     total: ids.length,
     available,
@@ -440,6 +466,47 @@ export function assignZoneSeats(
   const restrictedWindows = enumerateWindows(data, zone, partySize, true, excluded)
   if (restrictedWindows.length > 0) return toAssignment(zone, restrictedWindows[0])
   return findZoneSplit(data, zone, partySize, true, excluded)
+}
+
+/* ---------------- 予約の座席表示（R12） ---------------- */
+
+/** ゾーンの表示名「ゾーンB（1階中央・中央）」。未知のゾーンIDはそのまま出す */
+export function zoneLabel(zone: string): string {
+  const def = ZONE_DEF_BY_ID.get(zone as ZoneId)
+  return def ? `ゾーン${def.id}（${def.name}）` : `ゾーン${zone}`
+}
+
+/** 席未確定の案内文（お客様向けに統一する） */
+export const SEATS_UNDECIDED_NOTICE = '座席はお支払い後に確定します'
+
+export interface ReservationSeatDisplay {
+  /** ゾーン予約か */
+  isZone: boolean
+  /** 席が割り当てられているか */
+  assigned: boolean
+  /** 一行表示用テキスト（スタッフ一覧・印刷・CSV向け） */
+  text: string
+}
+
+/**
+ * 予約の座席表示を決める（スタッフ・お客様で同じ規則を使う）。
+ * - 席が割り当てられていれば従来どおり席の表記（ゾーン予約でも同じ）
+ * - ゾーン予約で未割当なら「ゾーン名＋席未確定」。席番号は出さない
+ * - ゾーンでないのに席が無い予約は空（通常は存在しない）
+ */
+export function reservationSeatDisplay(res: Reservation): ReservationSeatDisplay {
+  const isZone = typeof res.zone === 'string' && res.zone.length > 0
+  if (res.seatIds.length > 0) {
+    return { isZone, assigned: true, text: formatSeatList(res.seatIds) }
+  }
+  if (isZone) {
+    return {
+      isZone,
+      assigned: false,
+      text: `${zoneLabel(res.zone as string)}・${res.items.length}名（席未確定）`,
+    }
+  }
+  return { isZone, assigned: false, text: '' }
 }
 
 /**
