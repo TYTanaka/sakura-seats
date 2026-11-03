@@ -26,7 +26,7 @@ import {
   buildSnapshotGmailUrl,
   buildSnapshotLineUrl,
 } from './lib/share'
-import flyerUrl from './assets/flyer.webp'
+import posterMainUrl from './assets/poster-main.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
 import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
@@ -73,24 +73,6 @@ function TwinLeavesMark() {
   )
 }
 
-/**
- * ヒーローの瞬く星（装飾のみ・ポスターの星空に合わせた控えめなきらめき）。
- * アニメーションは opacity / transform のみで、座席表の描画には影響しない。
- */
-function HeroSparkles() {
-  return (
-    <div className="hero-sparkles" aria-hidden="true">
-      <span className="sparkle sp-1">✦</span>
-      <span className="sparkle sp-2 violet">✦</span>
-      <span className="sparkle sp-3">✦</span>
-      <span className="sparkle sp-4">✦</span>
-      <span className="sparkle sp-5 violet">✦</span>
-      <span className="sparkle sp-6">✦</span>
-      <span className="sparkle sp-7">✦</span>
-    </div>
-  )
-}
-
 function TopHeader({
   perf,
   onLookup,
@@ -133,11 +115,9 @@ function TopHeader({
   }
   return (
     <header className="site-header">
-      <img className="hero-art" src={flyerUrl} alt="" aria-hidden="true" />
-      <div className="hero-overlay" aria-hidden="true" />
-      <div className="hero-scrim-top" aria-hidden="true" />
-      <HeroSparkles />
-      <div className="hero-content">
+      {/* 緞帳帯: 会場名と導線ボタン。ポスター上部の赤い幕に合わせた帯で、
+          ポスター本体の文字には何も重ねない（R23） */}
+      <div className="hero-band">
         <div className="header-top">
           <p className="venue-line">
             <VenueName />
@@ -151,6 +131,16 @@ function TopHeader({
             </button>
           </div>
         </div>
+      </div>
+      <div className="marquee-trim" aria-hidden="true" />
+      {/* メインポスター（R23）: 作品タイトル等はポスター自体に含まれるため、
+          画像の上には文字を重ねない。ポスターは切り取らず額縁ごと置き、
+          実情報は右隣の情報カラムに寄せる（劇場の掲示風レイアウト）。
+          ヒーロー全体の高さは、予約の入口がファーストビューに入る
+          従来の上限（R16）に収める */}
+      <div className="hero-main">
+        <img className="hero-art" src={posterMainUrl} alt="" aria-hidden="true" />
+        <div className="hero-info">
         <h1 className="site-title">
           <TwinLeavesMark />
           {perf.name}
@@ -170,8 +160,9 @@ function TopHeader({
             予約受付は終了しました
           </p>
         )}
-        {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
-        {perf.note && <p className="site-note">{perf.note}</p>}
+          {perf.priceNote && <p className="site-note">※{perf.priceNote}</p>}
+          {perf.note && <p className="site-note">{perf.note}</p>}
+        </div>
       </div>
     </header>
   )

@@ -33,8 +33,8 @@ import {
   buildLineSharePageUrl,
   buildLineShareReservationUrl,
 } from '../lib/share'
-import flyerUrl from '../assets/flyer.webp'
-import flyerJpgUrl from '../assets/flyer.jpg'
+import posterMainUrl from '../assets/poster-main.webp'
+import posterMainJpgUrl from '../assets/poster-main.jpg'
 import ReservationQr from './ReservationQr'
 import ZoneSeatMap from './ZoneSeatMap'
 
@@ -673,15 +673,15 @@ export default function AudienceBook({
             <h3>公演ポスター</h3>
             <a
               className="poster-link"
-              href={flyerUrl}
+              href={posterMainUrl}
               target="_blank"
               rel="noreferrer"
               aria-label="公演ポスターを大きく見る"
             >
               <picture>
-                <source srcSet={flyerUrl} type="image/webp" />
+                <source srcSet={posterMainUrl} type="image/webp" />
                 <img
-                  src={flyerJpgUrl}
+                  src={posterMainJpgUrl}
                   alt="劇団ツインリーブス 2027年5月公演 ポスター"
                   loading="lazy"
                 />

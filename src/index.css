@@ -1,25 +1,30 @@
 :root {
-  /* 星空×絵本テーマ（公演ポスターの鮮やかな夜空：深い藍・紫→マゼンタの星雲・星の金） */
-  --burgundy: #3e2884; /* 見出し・主要テキスト用ディープバイオレット */
-  --burgundy-deep: #170b3d; /* ステージ幕用ディープインディゴ */
-  --burgundy-soft: #8a4bce; /* プライマリバイオレット */
-  --pink: #8a4bce;
-  --pink-soft: #a678e0;
-  --pink-pale: #f2e8fd;
-  --gold: #f5c451; /* 星の金（ポスターの輝き・おすすめ・差し色） */
+  /* 舞台×絵本テーマ（R23: メインポスターの世界観に統一）：
+     緞帳の深紅・マーキーランプの金・夜空のロイヤルブルー・絵本のクリーム。
+     変数名は歴史的経緯で旧テーマの名残（--pink 等）だが、値はポスター色。
+     機能色は不変：ゾーン色（.zc-*）・完売の黒・支払済/予約済などの状態色・
+     警告の橙赤 #e0492f はブランド赤と混同しないよう従来のまま維持する。
+     ブランド赤は暗いワイン系、エラー赤 #d6455b は明るいコーラル系で分離。 */
+  --burgundy: #71182a; /* 見出し・主要テキスト用ディープワイン */
+  --burgundy-deep: #160d33; /* 夜空の深み用ロイヤルインディゴ */
+  --burgundy-soft: #a32738; /* プライマリの赤（中間） */
+  --pink: #b3273d; /* ステージレッド（プライマリ） */
+  --pink-soft: #d4697a; /* 柔らかいローズ（差し色・境界） */
+  --pink-pale: #fbecea; /* 淡いローズ（背景 tint） */
+  --gold: #f5c451; /* マーキーの金（ポスターの輝き・おすすめ・差し色） */
   --mint: #5ec8a7;
   --mint-pale: #e2f6ee;
-  --lavender: #7d64bd;
-  --lavender-pale: #f3edfd;
+  --lavender: #46589e; /* ロイヤルブルー */
+  --lavender-pale: #e8ecfa;
   --ivory: #fbf6ee; /* 絵本のページのようなクリーム背景 */
   --paper: #fffdf8;
-  --ink: #322a4a;
-  /* 補助テキスト色: クリーム背景で 4.5:1 以上を確保（旧 #857a9e は 3.92:1 で AA 未満） */
-  --muted: #6f6196;
-  --line: #d8c6f0;
+  --ink: #33222a;
+  /* 補助テキスト色: クリーム背景で 4.5:1 以上を確保（#77616c は ivory で 5.26:1） */
+  --muted: #77616c;
+  --line: #e2cdb2; /* 温かいサンドゴールドの境界 */
   --error: #d6455b;
   --success: #2f9e66;
-  --shadow-pink: 0 4px 16px rgba(94, 52, 178, 0.14);
+  --shadow-pink: 0 4px 16px rgba(146, 32, 52, 0.13);
 }
 
 * {
@@ -35,7 +40,7 @@ body {
 body {
   background-color: var(--ivory);
   /* ページ上部だけ夜空のラベンダーをほんのり敷く（本文域はクリームのまま） */
-  background-image: linear-gradient(180deg, rgba(138, 75, 206, 0.12), rgba(138, 75, 206, 0) 430px);
+  background-image: linear-gradient(180deg, rgba(179, 39, 61, 0.1), rgba(179, 39, 61, 0) 430px);
   background-repeat: no-repeat;
   color: var(--ink);
   font-family: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Hiragino Sans',
@@ -58,9 +63,9 @@ body::before {
   pointer-events: none;
   background-image:
     radial-gradient(1.6px 1.6px at 22px 34px, rgba(245, 196, 81, 0.35) 50%, transparent 52%),
-    radial-gradient(1.2px 1.2px at 128px 92px, rgba(138, 75, 206, 0.3) 50%, transparent 52%),
-    radial-gradient(1px 1px at 196px 168px, rgba(201, 42, 126, 0.22) 50%, transparent 52%),
-    radial-gradient(1.4px 1.4px at 84px 214px, rgba(138, 75, 206, 0.26) 50%, transparent 52%),
+    radial-gradient(1.2px 1.2px at 128px 92px, rgba(70, 88, 158, 0.3) 50%, transparent 52%),
+    radial-gradient(1px 1px at 196px 168px, rgba(179, 39, 61, 0.2) 50%, transparent 52%),
+    radial-gradient(1.4px 1.4px at 84px 214px, rgba(70, 88, 158, 0.26) 50%, transparent 52%),
     radial-gradient(1px 1px at 238px 252px, rgba(245, 196, 81, 0.3) 50%, transparent 52%);
   background-size: 260px 300px;
   animation: starfield-breathe 7s ease-in-out infinite alternate;
@@ -96,152 +101,79 @@ textarea {
 
 /* ---------- ヘッダー ---------- */
 
+/* ヒーロー（R23）: 緞帳帯＋メインポスター全面＋情報帯の3段構成。
+   ポスターには作品タイトル等が既に描かれているため、画像の上には
+   文字もスクリムも重ねない。情報は上下の帯に寄せ、帯の色はポスターの
+   緞帳（深紅）と下帯（ワイン→夜空）から採る */
 .site-header {
   position: relative;
   overflow: hidden;
   margin: 0 -12px 6px;
-  padding: 10px 18px 22px;
   text-align: center;
   color: #ffffff;
-  background: linear-gradient(180deg, #0d0730 0%, #38197c 55%, #170b3d 100%);
+  background: var(--burgundy-deep);
   border-bottom: 4px solid var(--gold);
   border-radius: 0 0 28px 28px;
-  box-shadow: 0 6px 20px rgba(36, 26, 77, 0.35);
+  box-shadow: 0 6px 20px rgba(40, 10, 24, 0.35);
 }
 
-/* ヒーロー背景：公演フライヤー全面＋夜空グラデーションのオーバーレイ */
+/* 緞帳帯: 会場名＋導線ボタン。ポスター上部の赤い幕に合わせた深紅の帯 */
+.hero-band {
+  background: linear-gradient(180deg, #8e1f2f 0%, #71182a 55%, #571122 100%);
+  padding: 4px 18px 6px;
+}
+
+.hero-band .header-top {
+  margin-bottom: 0;
+}
+
+/* マーキートリム: 劇場の電飾を模した金のドットの帯（ポスターの上下） */
+.marquee-trim {
+  height: 10px;
+  background-color: #2a0714;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    #ffe9a8 2.1px,
+    rgba(245, 196, 81, 0.35) 3.3px,
+    transparent 4.4px
+  );
+  background-size: 20px 10px;
+  background-position: center;
+  background-repeat: repeat-x;
+}
+
+/* ヒーロー本体: 夜空の壁（ロイヤルインディゴ）に、額縁入りのポスターと
+   情報カラムを横に並べる劇場掲示風レイアウト */
+.hero-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 10px 18px 12px;
+  background: linear-gradient(180deg, #2a1a4d 0%, #160d33 100%);
+  text-align: left;
+}
+
+/* メインポスター: 切り取らず自然な縦横比のまま、金の額縁で掲げる。
+   大きさは「ポスターの全体像が伝わること」と「予約の入口が
+   ファーストビューに入ること（R16）」の両立点に置く。
+   全面の大きいポスターは下部のポスターカードで見せる */
 .hero-art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 16%;
-  pointer-events: none;
+  flex: none;
+  display: block;
+  width: min(30vw, 128px);
+  height: auto;
+  border: 3px solid var(--gold);
+  border-radius: 6px;
+  box-shadow:
+    0 8px 22px rgba(6, 3, 18, 0.55),
+    0 0 14px rgba(245, 196, 81, 0.25);
 }
 
-.hero-overlay {
-  position: absolute;
-  inset: 0;
-  /* 新ポスターは中段（星雲）が明るいため、旧ポスター時より一段濃くして
-     白文字のコントラスト（従来実測 ≥4.5:1）を維持する */
-  background: linear-gradient(
-    180deg,
-    rgba(16, 9, 52, 0.78) 0%,
-    rgba(24, 13, 68, 0.75) 48%,
-    rgba(13, 7, 40, 0.9) 100%
-  );
-  pointer-events: none;
-}
-
-/* ヒーロー上端の追加スクリム: 会場名・料金ラインが星空の明るい部分でも
-   読めるよう、上部だけ局所的に暗くする（アート全体は隠さない） */
-.hero-scrim-top {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 62%;
-  background: linear-gradient(
-    180deg,
-    rgba(9, 5, 30, 0.62) 0%,
-    rgba(9, 5, 30, 0.42) 55%,
-    rgba(9, 5, 30, 0) 100%
-  );
-  pointer-events: none;
-}
-
-.hero-content {
-  position: relative;
-}
-
-/* ヒーローの瞬く星（装飾のみ・控えめに散らす） */
-.hero-sparkles {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.sparkle {
-  position: absolute;
-  color: #ffe9a8;
-  text-shadow:
-    0 0 8px rgba(245, 196, 81, 0.9),
-    0 0 2px rgba(255, 255, 255, 0.9);
-  line-height: 1;
-  animation: sparkle-twinkle 3s ease-in-out infinite;
-}
-
-.sparkle.violet {
-  color: #e6ccff;
-  text-shadow:
-    0 0 8px rgba(166, 120, 224, 0.9),
-    0 0 2px rgba(255, 255, 255, 0.9);
-}
-
-/* 星の配置（R6）: 以前はヒーロー全面に散らしていたが、会場名やタイトルの
-   文字に重なって見えたため、全てヒーロー下端の余白帯（本文テキストより
-   下・金の縁取りの上）に沿わせる。本文には重ならない。 */
-.sparkle.sp-1 {
-  bottom: 7px;
-  left: 5%;
-  font-size: 13px;
-}
-.sparkle.sp-2 {
-  bottom: 12px;
-  left: 21%;
-  font-size: 9px;
-  animation-delay: 0.7s;
-}
-.sparkle.sp-3 {
-  bottom: 5px;
-  left: 38%;
-  font-size: 11px;
-  animation-delay: 1.3s;
-}
-.sparkle.sp-4 {
-  bottom: 13px;
-  right: 24%;
-  font-size: 9px;
-  animation-delay: 0.4s;
-}
-.sparkle.sp-5 {
-  bottom: 6px;
-  right: 12%;
-  font-size: 12px;
-  animation-delay: 1.8s;
-}
-.sparkle.sp-6 {
-  bottom: 11px;
-  right: 5%;
-  font-size: 10px;
-  animation-delay: 2.2s;
-}
-.sparkle.sp-7 {
-  bottom: 10px;
-  left: 56%;
-  font-size: 8px;
-  animation-delay: 2.6s;
-}
-
-@keyframes sparkle-twinkle {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.8) rotate(0deg);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.15) rotate(20deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sparkle {
-    animation: none;
-    opacity: 0.75;
-  }
+/* 情報カラム: 公演名・日時・料金などの実情報をクリームと金で載せる */
+.hero-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 2px;
 }
 
 /* タイトル横の双葉マーク */
@@ -279,8 +211,8 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1.5;
-  color: #e8defc;
-  text-shadow: 0 1px 6px rgba(10, 6, 32, 0.65);
+  color: #fdf3d8;
+  text-shadow: 0 1px 6px rgba(42, 7, 20, 0.65);
   /* 改行はフレーズの境目だけに許可（収まりきらない場合のみ文字単位も許す） */
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -302,9 +234,12 @@ textarea {
 
 .site-title {
   margin: 0 0 4px;
-  font-size: 25px;
+  /* R23: 作品タイトルはポスター側が担うため、公演名は情報帯の見出しとして
+     一段小さくし、ポスターと競合させない */
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: 0.04em;
+  color: #fff8ea;
   word-break: keep-all;
   overflow-wrap: anywhere;
   text-shadow:
@@ -316,6 +251,7 @@ textarea {
   margin: 0 0 3px;
   font-size: 17px;
   font-weight: 800;
+  color: #ffd977;
   word-break: keep-all;
   overflow-wrap: anywhere;
   text-shadow: 0 1px 8px rgba(10, 6, 32, 0.7);
@@ -326,7 +262,7 @@ textarea {
   font-size: 13px;
   line-height: 1.35;
   font-weight: 700;
-  color: #f2ecff;
+  color: #f7ead2;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
 }
 
@@ -349,7 +285,7 @@ textarea {
   max-width: 560px;
   font-size: 12.5px;
   line-height: 1.6;
-  color: #e9e2fb;
+  color: #efdfc8;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
 }
 
@@ -362,7 +298,7 @@ textarea {
   font-size: 12px;
   font-weight: 700;
   color: #ffffff;
-  background: rgba(20, 14, 52, 0.38);
+  background: rgba(30, 4, 12, 0.38);
   border: 1.5px solid rgba(255, 255, 255, 0.85);
   border-radius: 999px;
   text-shadow: 0 1px 4px rgba(10, 6, 32, 0.6);
@@ -376,11 +312,11 @@ textarea {
 
 .card {
   background-color: var(--paper);
-  /* 星雲の気配をほんのり重ねる（地色は --paper のままなので文字コントラストは不変） */
+  /* 金と緞帳色の気配をほんのり重ねる（地色は --paper のままなので文字コントラストは不変） */
   background-image: linear-gradient(
     160deg,
-    rgba(166, 120, 224, 0.08),
-    rgba(201, 42, 126, 0.04) 55%,
+    rgba(245, 196, 81, 0.1),
+    rgba(179, 39, 61, 0.05) 55%,
     rgba(255, 255, 255, 0) 78%
   );
   border: 1.5px solid var(--line);
@@ -450,14 +386,15 @@ textarea {
 
 .btn-primary {
   position: relative;
-  /* ポスターの星雲グラデーション（紫→マゼンタ）＋金の縁取りと柔らかなグロー。
-     白文字とのコントラストは最も明るい終端でも 5:1 以上を確保 */
-  background: linear-gradient(160deg, #3a1c92, var(--pink) 52%, #c92a7e);
+  /* ポスターの緞帳グラデーション（深紅→ステージレッド）＋金の縁取りと柔らかなグロー。
+     白文字とのコントラストは最も明るい終端（--pink）でも 6.4:1 を確保。
+     エラー赤 #d6455b（明るいコーラル・フラット）とは暗さと縁取りで見分ける */
+  background: linear-gradient(160deg, #571122, var(--pink) 52%, #8e1f2f);
   border-color: rgba(245, 196, 81, 0.55);
   color: #fff;
   box-shadow:
-    0 4px 14px rgba(94, 52, 178, 0.45),
-    0 0 12px rgba(201, 42, 126, 0.22),
+    0 4px 14px rgba(113, 24, 42, 0.45),
+    0 0 12px rgba(245, 196, 81, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
@@ -483,7 +420,7 @@ textarea {
 .btn-ghost {
   background: #fff;
   color: var(--burgundy);
-  border-color: #c3aef2;
+  border-color: #dbb98a;
 }
 
 .btn-ghost:hover {
@@ -559,7 +496,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #624fa0;
+  color: #7c4453;
 }
 
 .field input,
@@ -567,7 +504,7 @@ textarea {
 .field textarea {
   width: 100%;
   padding: 11px 12px;
-  border: 1.5px solid #dac9f3;
+  border: 1.5px solid #e3cfae;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -579,7 +516,7 @@ textarea {
 .field textarea:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(166, 120, 224, 0.3);
+  box-shadow: 0 0 0 3px rgba(179, 39, 61, 0.28);
 }
 
 .field textarea {
@@ -609,7 +546,7 @@ textarea {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #624fa0;
+  color: #7c4453;
 }
 
 .required {
@@ -642,20 +579,20 @@ textarea {
   text-align: center;
 }
 
-/* 注目カード（ポスター／直前の予約）は紫→マゼンタ→金のグラデーション縁取り */
+/* 注目カード（ポスター／直前の予約）は赤→深紅→金のグラデーション縁取り */
 .poster-card,
 .last-reservation-card {
   border: 1.5px solid transparent;
   background:
     linear-gradient(
         160deg,
-        rgba(166, 120, 224, 0.08),
-        rgba(201, 42, 126, 0.04) 55%,
+        rgba(245, 196, 81, 0.1),
+        rgba(179, 39, 61, 0.05) 55%,
         rgba(255, 255, 255, 0) 78%
       )
       padding-box,
     linear-gradient(var(--paper), var(--paper)) padding-box,
-    linear-gradient(135deg, var(--pink), #c92a7e 55%, var(--gold)) border-box;
+    linear-gradient(135deg, var(--pink), #7c1d2e 55%, var(--gold)) border-box;
 }
 
 .poster-link {
@@ -710,9 +647,9 @@ textarea {
 }
 
 .floor-tab.active {
-  background: linear-gradient(135deg, var(--pink), #c92a7e);
+  background: linear-gradient(135deg, var(--pink), #7c1d2e);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(138, 75, 206, 0.4);
+  box-shadow: 0 2px 8px rgba(179, 39, 61, 0.4);
 }
 
 .zoom-controls {
@@ -722,7 +659,7 @@ textarea {
 }
 
 .zoom-btn {
-  border: 1.5px solid #dac9f3;
+  border: 1.5px solid #e3cfae;
   background: #fff;
   min-height: 40px;
   padding: 6px 10px;
@@ -810,7 +747,7 @@ textarea {
     radial-gradient(1.4px 1.4px at 56% 26%, rgba(255, 255, 255, 0.75) 50%, transparent 52%),
     radial-gradient(1.2px 1.2px at 76% 62%, rgba(230, 204, 255, 0.9) 50%, transparent 52%),
     radial-gradient(1.6px 1.6px at 90% 30%, rgba(255, 255, 255, 0.85) 50%, transparent 52%),
-    linear-gradient(180deg, #0a0522, var(--burgundy-deep) 55%, #38197c);
+    linear-gradient(180deg, #0a0522, var(--burgundy-deep) 55%, #2c3a7d);
   color: #f6e7bd;
   font-weight: 800;
   letter-spacing: 0.6em;
@@ -928,7 +865,7 @@ textarea {
 .seat-available {
   background: #fff;
   border: 1.5px solid var(--pink-soft);
-  box-shadow: 0 1px 3px rgba(138, 75, 206, 0.18);
+  box-shadow: 0 1px 3px rgba(146, 32, 52, 0.16);
 }
 
 button.seat-available:hover {
@@ -937,8 +874,9 @@ button.seat-available:hover {
 
 .seat-selected {
   /* 選択中：星雲グラデーション（紫→深マゼンタ）。予約済（灰紫）・支払済（単色紫）と
-     一目で区別できるよう、彩度と奥行きを持たせる。白の座番とのコントラストも従来以上 */
-  background: linear-gradient(160deg, var(--pink) 15%, #c92a7e);
+     一目で区別できるよう、彩度と奥行きを持たせる。白の座番とのコントラストも従来以上。
+     機能色のため --pink のテーマ変更に追随させず旧値を固定する（R23） */
+  background: linear-gradient(160deg, #8a4bce 15%, #c92a7e);
   border-color: #4a2a86;
   color: #fff;
   box-shadow:
@@ -953,7 +891,8 @@ button.seat-available:hover {
 }
 
 .seat-paid {
-  background: var(--lavender);
+  /* 機能色（支払済）はテーマ変更の影響を受けないよう旧値を固定（R23） */
+  background: #7d64bd;
   border-color: #6a54a8;
   color: #fff;
 }
@@ -996,7 +935,7 @@ button.seat-available:hover {
   width: min(856px, calc(100% - 24px));
   z-index: 40;
   /* 深い藍のグラス＋金の縁取り（ポスターの夜空に浮かぶバー） */
-  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(46, 22, 104, 0.97));
+  background: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1.5px solid rgba(245, 196, 81, 0.55);
@@ -1004,7 +943,7 @@ button.seat-available:hover {
   padding: 12px 14px;
   box-shadow:
     0 10px 28px rgba(13, 7, 40, 0.5),
-    0 0 14px rgba(138, 75, 206, 0.25);
+    0 0 14px rgba(245, 196, 81, 0.18);
 }
 
 /* バーの縁に乗る小さな星 */
@@ -1014,7 +953,7 @@ button.seat-available:hover {
   top: -9px;
   right: 16px;
   padding: 0 5px;
-  background: #2b1460;
+  background: #33102e;
   font-size: 12px;
   line-height: 1.4;
   color: var(--gold);
@@ -1024,11 +963,11 @@ button.seat-available:hover {
 
 /* バー内だけ文字を夜空用に反転（フォーム側の .selection-total 等は従来色のまま） */
 .selection-bar .selection-empty {
-  color: #cfc2ee;
+  color: #e6cdb4;
 }
 
 .selection-bar .selection-seats {
-  color: #f2ecff;
+  color: #fdf3d8;
 }
 
 .selection-bar .selection-total {
@@ -1141,12 +1080,12 @@ button.seat-available:hover {
   margin: 0 0 10px;
   padding: 7px 18px;
   border-radius: 999px;
-  background: linear-gradient(160deg, #3a1c92, var(--pink) 60%, #c92a7e);
+  background: linear-gradient(160deg, #571122, var(--pink) 60%, #7c1d2e);
   border: 1.5px solid rgba(245, 196, 81, 0.5);
   color: #fff;
   font-weight: 800;
   font-size: 14px;
-  box-shadow: 0 3px 10px rgba(94, 52, 178, 0.4);
+  box-shadow: 0 3px 10px rgba(113, 24, 42, 0.4);
 }
 
 .done-badge::before {
@@ -1193,7 +1132,7 @@ button.seat-available:hover {
 
 .done-sparkles .ds.violet {
   color: var(--pink-soft);
-  text-shadow: 0 0 8px rgba(166, 120, 224, 0.7);
+  text-shadow: 0 0 8px rgba(212, 105, 122, 0.7);
 }
 
 .done-sparkles .ds-1 {
@@ -1334,7 +1273,7 @@ button.seat-available:hover {
 }
 
 .staff-tab {
-  border: 1.5px solid #dac9f3;
+  border: 1.5px solid #e3cfae;
   background: #fff;
   color: var(--muted);
   padding: 9px 16px;
@@ -1344,10 +1283,10 @@ button.seat-available:hover {
 }
 
 .staff-tab.active {
-  background: linear-gradient(135deg, var(--pink), #c92a7e);
+  background: linear-gradient(135deg, var(--pink), #7c1d2e);
   border-color: var(--pink);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(138, 75, 206, 0.35);
+  box-shadow: 0 2px 8px rgba(179, 39, 61, 0.35);
 }
 
 .reservation-list {
@@ -1432,7 +1371,7 @@ button.seat-available:hover {
 }
 
 .toggle-btn.on {
-  background: linear-gradient(135deg, var(--pink), #c92a7e);
+  background: linear-gradient(135deg, var(--pink), #7c1d2e);
   border-color: var(--pink);
   color: #fff;
 }
@@ -1519,9 +1458,9 @@ button.seat-available:hover {
 }
 
 .seg-btn.active {
-  background: linear-gradient(135deg, var(--pink), #c92a7e);
+  background: linear-gradient(135deg, var(--pink), #7c1d2e);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(138, 75, 206, 0.35);
+  box-shadow: 0 2px 6px rgba(179, 39, 61, 0.35);
 }
 
 .detail-seat-line {
@@ -1575,7 +1514,7 @@ button.seat-available:hover {
   flex: 1 1 110px;
   min-width: 0;
   padding: 11px 12px;
-  border: 1.5px solid #dac9f3;
+  border: 1.5px solid #e3cfae;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1592,7 +1531,7 @@ button.seat-available:hover {
 .type-editor-price input {
   width: 96px;
   padding: 11px 10px;
-  border: 1.5px solid #dac9f3;
+  border: 1.5px solid #e3cfae;
   border-radius: 14px;
   font-size: 16px;
   background: #fff;
@@ -1603,7 +1542,7 @@ button.seat-available:hover {
 .type-editor-price input:focus {
   outline: none;
   border-color: var(--pink-soft);
-  box-shadow: 0 0 0 3px rgba(166, 120, 224, 0.3);
+  box-shadow: 0 0 0 3px rgba(179, 39, 61, 0.28);
 }
 
 .yen-unit {
@@ -2232,8 +2171,8 @@ button.seat-available:hover {
     radial-gradient(1.2px 1.2px at 88% 22%, rgba(255, 233, 168, 0.95) 50%, transparent 52%) padding-box,
     radial-gradient(1.3px 1.3px at 72% 80%, rgba(255, 255, 255, 0.7) 50%, transparent 52%) padding-box,
     radial-gradient(1px 1px at 26% 84%, rgba(230, 204, 255, 0.9) 50%, transparent 52%) padding-box,
-    linear-gradient(160deg, #170b3d, #402a86 70%, #5b2ea6) padding-box,
-    linear-gradient(120deg, var(--gold), #c92a7e 55%, var(--pink)) border-box;
+    linear-gradient(160deg, #2a0714, #57162a 70%, #71182a) padding-box,
+    linear-gradient(120deg, var(--gold), var(--pink) 55%, #31439b) border-box;
   border: 2px solid transparent;
   box-shadow: 0 6px 20px rgba(23, 11, 61, 0.45);
   padding: 10px 14px 12px;
@@ -2276,7 +2215,7 @@ button.seat-available:hover {
 .today-venue {
   font-size: 12px;
   font-weight: 700;
-  color: #e8defc;
+  color: #f7ead2;
 }
 
 .today-scroll-btn {
@@ -2365,9 +2304,9 @@ button.seat-available:hover {
   font-size: 13px;
   font-weight: 800;
   color: #fff;
-  /* 再接続中：深い藍のグラス＋紫の縁 */
-  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(56, 25, 124, 0.97));
-  border-bottom: 2px solid rgba(166, 120, 224, 0.8);
+  /* 再接続中：ロイヤルブルーのグラス＋金の縁 */
+  background: linear-gradient(165deg, rgba(28, 16, 56, 0.97), rgba(49, 67, 155, 0.97));
+  border-bottom: 2px solid rgba(245, 196, 81, 0.6);
   box-shadow: 0 2px 8px rgba(10, 6, 32, 0.3);
 }
 
@@ -2703,7 +2642,7 @@ button.seat-available:hover {
   margin: 0 0 12px;
   padding: 10px 14px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(245, 196, 81, 0.28), rgba(138, 75, 206, 0.16));
+  background: linear-gradient(135deg, rgba(245, 196, 81, 0.28), rgba(179, 39, 61, 0.14));
   border: 1.5px solid var(--gold);
   color: var(--burgundy);
   font-weight: 700;
@@ -2816,7 +2755,7 @@ button.seat-available:hover {
   color: var(--burgundy);
 }
 .zseat-grid {
-  background: linear-gradient(180deg, #241557, #170b3d);
+  background: linear-gradient(180deg, #1d1440, #160d33);
   border-radius: 12px;
   padding: 8px 10px 10px;
   display: flex;
@@ -3089,8 +3028,8 @@ button.zseat-cell:active {
   text-align: left;
   padding: 9px 12px;
   border-radius: 12px;
-  border: 1.5px solid rgba(138, 75, 206, 0.35);
-  background: linear-gradient(180deg, rgba(138, 75, 206, 0.1), rgba(64, 32, 128, 0.1));
+  border: 1.5px solid rgba(179, 39, 61, 0.35);
+  background: linear-gradient(180deg, rgba(179, 39, 61, 0.1), rgba(87, 17, 34, 0.1));
   color: var(--burgundy);
   cursor: pointer;
 }
@@ -3258,7 +3197,7 @@ button.zseat-cell:active {
   box-shadow:
     0 0 0 1.5px var(--zc),
     0 4px 14px rgba(23, 11, 61, 0.18);
-  background: linear-gradient(180deg, rgba(138, 75, 206, 0.2), rgba(64, 32, 128, 0.14));
+  background: linear-gradient(180deg, rgba(179, 39, 61, 0.18), rgba(87, 17, 34, 0.12));
 }
 
 /* 確定バー・案内が出ているあいだ、ページ末尾がバーに隠れないよう余白を足す */
@@ -3292,7 +3231,7 @@ button.zseat-cell:active {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(46, 22, 104, 0.97));
+  background: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1.5px solid rgba(245, 196, 81, 0.55);
@@ -3346,7 +3285,7 @@ button.zseat-cell:active {
   padding: 12px 14px;
   border-radius: 14px;
   background: var(--pink-pale);
-  border: 1.5px solid rgba(201, 42, 126, 0.45);
+  border: 1.5px solid rgba(179, 39, 61, 0.45);
   color: var(--burgundy);
   font-size: 13.5px;
   font-weight: 700;
@@ -3465,6 +3404,8 @@ button.zseat-cell:active {
   border-bottom-width: 2px;
   border-radius: 0 0 16px 16px;
   text-align: left;
+  /* スタッフ帯も緞帳の深紅に合わせる（レイアウト・視認性は従来どおり） */
+  background: linear-gradient(180deg, #71182a, #4a0e1e);
 }
 
 .compact-content {
@@ -3488,7 +3429,7 @@ button.zseat-cell:active {
 .compact-when {
   font-size: 12px;
   font-weight: 700;
-  color: #e8defc;
+  color: #f7ead2;
 }
 
 .site-header.is-compact .staff-link {
@@ -3581,7 +3522,7 @@ button.zseat-cell:active {
   color: var(--burgundy);
 }
 .overview-grid {
-  background: linear-gradient(180deg, #241557, #170b3d);
+  background: linear-gradient(180deg, #1d1440, #160d33);
   border-radius: 12px;
   padding: 8px 10px 10px;
   display: flex;
