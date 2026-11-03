@@ -121,7 +121,8 @@ textarea {
 .party-size,
 .today-times,
 .result-price,
-.door-selection-bar {
+.door-selection-bar,
+.print-sheet {
   font-variant-numeric: tabular-nums;
 }
 

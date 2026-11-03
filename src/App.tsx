@@ -25,7 +25,7 @@ import {
   buildSnapshotGmailUrl,
   buildSnapshotLineUrl,
 } from './lib/share'
-import posterMainUrl from './assets/poster-main.webp'
+import posterHeroUrl from './assets/poster-hero.webp'
 import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
 import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
@@ -189,7 +189,7 @@ function TopHeader({
       <div className="hero-main">
         <img
           className="hero-art"
-          src={posterMainUrl}
+          src={posterHeroUrl}
           alt=""
           aria-hidden="true"
           fetchPriority="high"

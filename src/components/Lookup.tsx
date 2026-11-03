@@ -107,6 +107,9 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
         予約完了画面でお伝えした予約番号（SK-XXXX）と、申込時に入力した電話番号で
         ご予約の内容を確認できます。
       </p>
+      <p className="muted small">
+        予約番号が分からない場合は、当日の受付でお名前をお伝えください。
+      </p>
       {mode === 'local' && (
         <p className="muted small">
           ※試作版のため、この端末で申し込んだ予約のみ確認できます。

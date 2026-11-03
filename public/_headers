@@ -17,3 +17,10 @@
   X-Frame-Options: SAMEORIGIN
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+
+# ハッシュ付きアセットの長期キャッシュ（R30・ラウンド12 R12-1）:
+# ファイル名にコンテンツハッシュが入っているため、内容が変われば URL も変わる。
+# 再訪時は再検証なしで即表示できる。当日・連日使う端末で効く。
+# index.html や _redirects 等の非ハッシュファイルには付けない（従来どおり毎回再検証）。
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
