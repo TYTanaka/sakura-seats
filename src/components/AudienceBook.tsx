@@ -15,7 +15,6 @@ import {
   type Reservation,
 } from '../lib/logic'
 import {
-  SEATS_UNDECIDED_NOTICE,
   ZONE_DEF_BY_ID,
   ZONE_IDS,
   allZoneAvailability,
@@ -25,6 +24,7 @@ import {
   type ZoneId,
 } from '../lib/zones'
 import { useStore } from '../lib/store'
+import SeatsNotice from './SeatsNotice'
 import { useNow } from '../lib/useNow'
 import { addLastReservation } from '../lib/lastReservation'
 import {
@@ -528,7 +528,16 @@ export default function AudienceBook({
           <div>
             <dt>ゾーン</dt>
             <dd data-done-zone>
-              {completed.zone ? zoneLabel(completed.zone) : ''}
+              {completed.zone ? (
+                <>
+                  <span className="u-nowrap">{zoneLabel(completed.zone).split('（')[0]}</span>
+                  {zoneLabel(completed.zone).includes('（') && (
+                    <span className="u-nowrap">（{zoneLabel(completed.zone).split('（')[1]}</span>
+                  )}
+                </>
+              ) : (
+                ''
+              )}
               <br />
               {completed.items.length}名（{reservationTypeSummary(completed)}）
             </dd>
@@ -540,8 +549,7 @@ export default function AudienceBook({
         </dl>
         <div className="notice-box">
           <p data-seats-undecided>
-            {SEATS_UNDECIDED_NOTICE}。お支払いまたは受付が済みましたら、このページの
-            「予約確認」から座席番号をご確認いただけます。
+            <SeatsNotice />。<span className="u-nowrap">お支払いまたは受付が済みましたら、</span><span className="u-nowrap">このページの「予約確認」から</span><span className="u-nowrap">座席番号をご確認いただけます。</span>
           </p>
           <p>当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。</p>
           <p>変更は主催者までご連絡ください。キャンセルは『予約確認』からもできます。</p>
@@ -619,7 +627,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              ゾーンをタップし、画面下の「このゾーンで進む」で決定。座席番号はお支払い時、または当日の受付時に確定します。
+              ゾーンをタップし、画面下の<span className="u-nowrap">「このゾーンで進む」</span>で決定。座席番号はお支払い時、または当日の受付時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -722,10 +730,15 @@ export default function AudienceBook({
             <div className="zone-decision-bar" data-zone-decision-bar>
               <div className="zdb-info">
                 <span className="zdb-zone" data-decision-zone>
-                  {zoneLabel(selectedZone)}
+                  {/* R31: ゾーン名と（階・位置）を別々の塊にし、塊の途中では割らない */}
+                  <span className="u-nowrap">{zoneLabel(selectedZone).split('（')[0]}</span>
+                  {zoneLabel(selectedZone).includes('（') && (
+                    <span className="u-nowrap">（{zoneLabel(selectedZone).split('（')[1]}</span>
+                  )}
                 </span>
                 <span className="zdb-meta" data-decision-meta>
-                  残り{availability[selectedZone].available}席・{partySize}名で申込
+                  <span className="u-nowrap">残り{availability[selectedZone].available}席</span>・
+                  <span className="u-nowrap">{partySize}名で申込</span>
                 </span>
               </div>
               <div className="zdb-actions">
@@ -781,7 +794,7 @@ export default function AudienceBook({
           </p>
           {zoneDef && <p className="muted small">{zoneDef.description}</p>}
           <p className="muted small" data-seats-undecided>
-            {SEATS_UNDECIDED_NOTICE}（ゾーンの中で並んだ席をご用意します）
+            <SeatsNotice />（ゾーンの中で並んだ席をご用意します）
           </p>
           {/* 選んだゾーンの位置を座席表でも確認できるようにする（操作できない静止画） */}
           <div className="form-zone-map">
@@ -872,9 +885,9 @@ export default function AudienceBook({
             <details className="privacy-note" data-privacy-note>
               <summary>個人情報の取り扱いについて</summary>
               <p>
-                お名前と電話番号は、ご予約の管理と当日の受付のためにのみ使います。
-                予約データはこのアプリのデータベースに保存され、劇団ツインリーブスの
-                スタッフが確認します。それ以外の目的で使うことはありません。
+                お名前と電話番号は、ご予約の管理と当日の受付<span className="u-nowrap">のためにのみ使います。</span>
+                予約データはこのアプリの<span className="u-nowrap">データベースに保存され、</span>劇団ツインリーブスの
+                スタッフが確認します。それ以外の目的で<span className="u-nowrap">使うことはありません。</span>
               </p>
             </details>
             {error && <p className="error-text">{error}</p>}
@@ -936,7 +949,7 @@ export default function AudienceBook({
             </div>
           </dl>
           <p className="muted small" data-seats-undecided>
-            {SEATS_UNDECIDED_NOTICE}。お支払いまたは受付の後、「予約確認」ページで座席番号をご確認いただけます。
+            <SeatsNotice />。お支払いまたは受付の後、「予約確認」ページで<span className="u-nowrap">座席番号をご確認いただけます。</span>
           </p>
           {error && <p className="error-text">{error}</p>}
           <div className="btn-row">

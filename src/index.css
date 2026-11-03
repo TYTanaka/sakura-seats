@@ -126,6 +126,43 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- 改行の整え（R31） ----------
+   お客様側の文章にだけ適用する（スタッフ画面には広げない）。
+   - line-break: strict: 禁則を厳密に（行頭の句読点・閉じ括弧などを防ぐ）
+   - word-break: keep-all: 日本語を単語の途中で割らない（分かち書き境界で改行）。
+     長すぎる文字列は overflow-wrap: anywhere で安全に折り返す（既存の席ラベルと同じ組）
+   - text-wrap: pretty: 最終行に1〜2文字だけ残る孤立行を避ける
+   見出し類は balance で行の長さを均す。切り離せない単位（料金・日時など）は
+   .u-nowrap の塊にしてフレーズ境界でだけ折れるようにする */
+.hero-info,
+.book-flow,
+.done-card,
+.lookup-card,
+.last-res-item,
+.site-footer {
+  line-break: strict;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+/* ヒーローの短い注記（公演データの自由文）だけは keep-all を外す:
+   keep-all では文末の「。」が単独行に落ちるケースがあるため。
+   禁則（strict）と pretty は効いたままにする */
+.site-note {
+  word-break: normal;
+}
+.site-title,
+.book-flow h2,
+.book-flow h3,
+.lookup-card h2,
+.done-badge,
+.done-lead {
+  text-wrap: balance;
+}
+.u-nowrap {
+  white-space: nowrap;
+}
+
 .app-shell {
   max-width: 880px;
   margin: 0 auto;

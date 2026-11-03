@@ -6,7 +6,8 @@ import {
   reservationTypeSummary,
   type Reservation,
 } from '../lib/logic'
-import { SEATS_UNDECIDED_NOTICE, zoneLabel } from '../lib/zones'
+import { zoneLabel } from '../lib/zones'
+import SeatsNotice from './SeatsNotice'
 import { useStore } from '../lib/store'
 import ReservationQr from './ReservationQr'
 import { formatCheckedInAt } from './ReservationCard'
@@ -104,7 +105,7 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
       </button>
       <h2>予約確認</h2>
       <p className="muted">
-        予約完了画面でお伝えした予約番号（SK-XXXX）と、申込時に入力した電話番号で
+        予約完了画面でお伝えした<span className="u-nowrap">予約番号</span>（SK-XXXX）と、申込時に入力した<span className="u-nowrap">電話番号</span>で
         ご予約の内容を確認できます。
       </p>
       <p className="muted small">
@@ -197,7 +198,7 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
                 <dd data-lookup-zone>
                   {zoneLabel(found.zone)}／{found.items.length}名
                   <span className="detail-seat-line" data-seats-undecided>
-                    {SEATS_UNDECIDED_NOTICE}
+                    <SeatsNotice />
                   </span>
                 </dd>
               </div>
@@ -233,9 +234,13 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
           </dl>
           <div className="notice-box">
             {found.checkedIn ? (
-              <p>受付は完了しています。そのまま会場へお越しください。</p>
+              <p>
+                受付は完了しています。そのまま会場へ<span className="u-nowrap">お越しください。</span>
+              </p>
             ) : (
-              <p>当日は受付でお名前と予約番号をお伝えください。</p>
+              <p>
+                当日は受付でお名前と予約番号を<span className="u-nowrap">お伝えください。</span>
+              </p>
             )}
             <p>変更は主催者までご連絡ください。キャンセルは下のボタンからもできます。</p>
           </div>

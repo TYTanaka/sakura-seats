@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import {
   formatMonthDayTime,
   formatPerformanceWhen,
-  formatTicketTypes,
   formatYen,
   isBookingClosed,
   localDateString,
@@ -10,7 +9,8 @@ import {
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
 import { lookupReceiptCancelled } from './lib/receiptStatus'
-import { SEATS_UNDECIDED_NOTICE, totalAvailableSeats } from './lib/zones'
+import { totalAvailableSeats } from './lib/zones'
+import SeatsNotice from './components/SeatsNotice'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
 import {
@@ -201,8 +201,17 @@ function TopHeader({
         </h1>
         <p className="site-when">{formatPerformanceWhen(perf)}</p>
         <p className="site-meta">
-          料金：{formatTicketTypes(perf)}（当日現金払い） ／{' '}
-          <span className="meta-available">空席 {available}席</span>
+          料金：
+          {perf.ticketTypes.map((t, i) => (
+            <span key={t.id}>
+              {i > 0 && '／'}
+              <span className="u-nowrap">
+                {t.name} {formatYen(t.price)}
+              </span>
+            </span>
+          ))}
+          <span className="u-nowrap">（当日現金払い）</span> ／{' '}
+          <span className="meta-available u-nowrap">空席 {available}席</span>
         </p>
         {showDeadline && (
           <p className="site-deadline" data-booking-deadline-display>
@@ -403,13 +412,19 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
             </button>
           </div>
           <p className="last-res-line">
-            {snapshot.performanceName} ／ {snapshot.whenText}
+            {snapshot.performanceName} ／{' '}
+            <span className="u-nowrap">{snapshot.whenText}</span>
           </p>
           {snapshot.zoneLabel ? (
             <p className="last-res-line">
-              ゾーン：{snapshot.zoneLabel}（{snapshot.partySize}名）
+              ゾーン：
+              <span className="u-nowrap">{snapshot.zoneLabel.split('（')[0]}</span>
+              {snapshot.zoneLabel.includes('（') && (
+                <span className="u-nowrap">（{snapshot.zoneLabel.split('（')[1]}</span>
+              )}
+              <span className="u-nowrap">（{snapshot.partySize}名）</span>
               <br />
-              {SEATS_UNDECIDED_NOTICE}
+              <SeatsNotice />
             </p>
           ) : (
             <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
