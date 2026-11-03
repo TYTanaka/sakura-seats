@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { ALL_SEATS } from './data/seats'
 import {
   formatMonthDayTime,
   formatPerformanceWhen,
@@ -7,11 +6,10 @@ import {
   formatYen,
   isBookingClosed,
   localDateString,
-  seatStatus,
   type Performance,
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
-import { SEATS_UNDECIDED_NOTICE } from './lib/zones'
+import { SEATS_UNDECIDED_NOTICE, totalAvailableSeats } from './lib/zones'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
 import {
@@ -88,7 +86,9 @@ function TopHeader({
   const { data } = useStore()
   // 締切ピルも時刻の経過に追随させる（開いたまま締切を跨いだら表示を切り替える・R4-1）
   const nowMs = useNow(10000)
-  const available = ALL_SEATS.filter((s) => seatStatus(data, s.id) === 'available').length
+  // 空席数はゾーン別表示と計算経路を1本化する（R24・ラウンド9 R-1:
+  // 未割当のゾーン予約＝カウントホールドも差し引く totalAvailableSeats）
+  const available = totalAvailableSeats(data)
   const bookingClosed = isBookingClosed(data, new Date(nowMs))
   const showDeadline = data.bookingDeadline !== null && !bookingClosed
   if (compact) {

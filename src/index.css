@@ -4,7 +4,9 @@
      変数名は歴史的経緯で旧テーマの名残（--pink 等）だが、値はポスター色。
      機能色は不変：ゾーン色（.zc-*）・完売の黒・支払済/予約済などの状態色・
      警告の橙赤 #e0492f はブランド赤と混同しないよう従来のまま維持する。
-     ブランド赤は暗いワイン系、エラー赤 #d6455b は明るいコーラル系で分離。 */
+     ブランド赤は暗いワイン系＋グラデーション＋金トリム、エラー赤は
+     フラットな深紅 #bd2f47（R24・ラウンド9 D-3: クリーム上で 5.33:1、
+     WCAG AA を満たす濃さに変更。質感と濃淡でブランド赤と見分ける）。 */
   --burgundy: #71182a; /* 見出し・主要テキスト用ディープワイン */
   --burgundy-deep: #160d33; /* 夜空の深み用ロイヤルインディゴ */
   --burgundy-soft: #a32738; /* プライマリの赤（中間） */
@@ -22,7 +24,15 @@
   /* 補助テキスト色: クリーム背景で 4.5:1 以上を確保（#77616c は ivory で 5.26:1） */
   --muted: #77616c;
   --line: #e2cdb2; /* 温かいサンドゴールドの境界 */
-  --error: #d6455b;
+  --error: #bd2f47; /* R24・D-3: 旧 #d6455b はクリーム上で 4.01:1 と AA 未満だった */
+  --gold-deep: #e8a100; /* 選択リング等の濃い金（スタッフ選択中と共通の金） */
+  /* 浮動要素の共通トークン（R24・ラウンド9 D-2）: 確定バーとトーストで
+     地（ワイン→藍グラス）と文字（クリーム）を1本化する */
+  --float-bg: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
+  --float-text: #f7ead2;
+  /* 劇場の掲示らしい明朝ディスプレイ書体（外部フォントは使わない） */
+  --font-display: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro', 'Yu Mincho',
+    'YuMincho', 'Noto Serif JP', serif;
   --success: #2f9e66;
   --shadow-pink: 0 4px 16px rgba(146, 32, 52, 0.13);
 }
@@ -117,9 +127,17 @@ textarea {
   box-shadow: 0 6px 20px rgba(40, 10, 24, 0.35);
 }
 
-/* 緞帳帯: 会場名＋導線ボタン。ポスター上部の赤い幕に合わせた深紅の帯 */
+/* 緞帳帯: 会場名＋導線ボタン。ポスター上部の赤い幕に合わせた深紅の帯。
+   R24: 縦の陰影レイヤーで幕のひだを重ねる（背景のみ・高さは不変） */
 .hero-band {
-  background: linear-gradient(180deg, #8e1f2f 0%, #71182a 55%, #571122 100%);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(24, 2, 8, 0.14) 0 9px,
+      rgba(255, 214, 170, 0.05) 9px 13px,
+      rgba(0, 0, 0, 0) 13px 30px
+    ),
+    linear-gradient(180deg, #8e1f2f 0%, #71182a 55%, #571122 100%);
   padding: 4px 18px 6px;
 }
 
@@ -149,7 +167,10 @@ textarea {
   align-items: flex-start;
   gap: 14px;
   padding: 10px 18px 12px;
-  background: linear-gradient(180deg, #2a1a4d 0%, #160d33 100%);
+  /* R24: 舞台上のスポットライトのような金の気配を上部に重ねる（背景のみ） */
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(245, 196, 81, 0.14), rgba(245, 196, 81, 0) 55%),
+    linear-gradient(180deg, #2a1a4d 0%, #160d33 100%);
   text-align: left;
 }
 
@@ -164,9 +185,13 @@ textarea {
   height: auto;
   border: 3px solid var(--gold);
   border-radius: 6px;
+  /* R24: 淡い金の外枠（アウトライン）で二重額縁にし、グローも一段強める。
+     アウトラインはレイアウトに影響しない */
+  outline: 1.5px solid rgba(255, 233, 168, 0.75);
+  outline-offset: 3px;
   box-shadow:
     0 8px 22px rgba(6, 3, 18, 0.55),
-    0 0 14px rgba(245, 196, 81, 0.25);
+    0 0 22px rgba(245, 196, 81, 0.38);
 }
 
 /* 情報カラム: 公演名・日時・料金などの実情報をクリームと金で載せる */
@@ -323,7 +348,12 @@ textarea {
   border-radius: 22px;
   padding: 16px;
   margin-bottom: 14px;
-  box-shadow: var(--shadow-pink);
+  /* R24: 内側に金の細線と上端の光を重ね、額縁のような奥行きを出す
+     （地色は不変なので文字コントラストは変わらない） */
+  box-shadow:
+    var(--shadow-pink),
+    inset 0 0 0 1px rgba(245, 196, 81, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .card h2,
@@ -388,14 +418,19 @@ textarea {
   position: relative;
   /* ポスターの緞帳グラデーション（深紅→ステージレッド）＋金の縁取りと柔らかなグロー。
      白文字とのコントラストは最も明るい終端（--pink）でも 6.4:1 を確保。
-     エラー赤 #d6455b（明るいコーラル・フラット）とは暗さと縁取りで見分ける */
-  background: linear-gradient(160deg, #571122, var(--pink) 52%, #8e1f2f);
+     エラー赤 #bd2f47（フラットな深紅）とは質感と縁取りで見分ける。
+     R24: 上部に光のシーン（薄い白色レイヤー）と下端に金の線を重ねて
+     緞帳の光沢を出す。文字は中央に乗るためコントラストは不変 */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 46%),
+    linear-gradient(160deg, #571122, var(--pink) 52%, #8e1f2f);
   border-color: rgba(245, 196, 81, 0.55);
   color: #fff;
   box-shadow:
     0 4px 14px rgba(113, 24, 42, 0.45),
-    0 0 12px rgba(245, 196, 81, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    0 0 14px rgba(245, 196, 81, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -2px 0 rgba(245, 196, 81, 0.35);
 }
 
 /* 主要ボタンの右上の小さな星（装飾のみ・小ボタンには付けない） */
@@ -482,6 +517,52 @@ textarea {
   font-size: 13px;
   line-height: 1.7;
   padding: 8px 4px 0;
+}
+
+/* ===== R24: 明朝ディスプレイ書体（お客様向け見出し・金額のみ） =====
+   劇場の掲示（playbill）の気配を出すため、お客様画面の見出し・公演名・
+   日時・金額だけを明朝系にする。本文とスタッフ画面（selection-total の
+   当日販売合計を含む）は従来のゴシックのままにし、読みやすさを優先する */
+.site-title,
+.site-when,
+.book-flow .card h2,
+.book-flow .card h3,
+.book-flow .card h4,
+.lookup-card h2,
+.lookup-card h3,
+.done-card .reservation-code,
+.last-reservation-card h3,
+.today-card .today-name,
+.detail-total,
+.book-flow .selection-total {
+  font-family: var(--font-display);
+}
+
+/* お客様見出しの金装飾（R24）: 星を小さな菱形に変え、下端に金の
+   ヘアラインを敷く。背景レイヤーで描くため見出しの高さは変わらない */
+.book-flow .card h2::before,
+.book-flow .card h3::before,
+.lookup-card h2::before,
+.lookup-card h3::before,
+.last-reservation-card h3::before {
+  content: '◆';
+  font-size: 0.58em;
+  vertical-align: 0.22em;
+}
+.book-flow .card h2,
+.book-flow .card h3,
+.lookup-card h2,
+.lookup-card h3,
+.last-reservation-card h3 {
+  background-image: linear-gradient(
+    90deg,
+    rgba(232, 161, 0, 0.75),
+    rgba(245, 196, 81, 0.35) 45%,
+    rgba(245, 196, 81, 0) 78%
+  );
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 100% 1.5px;
 }
 
 /* ---------- フォーム ---------- */
@@ -579,9 +660,11 @@ textarea {
   text-align: center;
 }
 
-/* 注目カード（ポスター／直前の予約）は赤→深紅→金のグラデーション縁取り */
+/* 注目カード（ポスター／直前の予約／完了）は赤→深紅→金のグラデーション縁取り。
+   R24: 完了カードも同じ格に揃えた */
 .poster-card,
-.last-reservation-card {
+.last-reservation-card,
+.done-card {
   border: 1.5px solid transparent;
   background:
     linear-gradient(
@@ -599,9 +682,12 @@ textarea {
   display: block;
   border-radius: 14px;
   overflow: hidden;
+  /* R24: 内側にクリームのマット＋金の細線を重ね、二重額縁にする */
   box-shadow:
     0 6px 18px rgba(23, 11, 61, 0.35),
-    0 0 0 1.5px rgba(245, 196, 81, 0.4);
+    0 0 0 1.5px rgba(245, 196, 81, 0.4),
+    inset 0 0 0 3px rgba(255, 248, 234, 0.9),
+    inset 0 0 0 5px rgba(232, 161, 0, 0.55);
 }
 
 .poster-link img {
@@ -935,7 +1021,7 @@ button.seat-available:hover {
   width: min(856px, calc(100% - 24px));
   z-index: 40;
   /* 深い藍のグラス＋金の縁取り（ポスターの夜空に浮かぶバー） */
-  background: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
+  background: var(--float-bg);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1.5px solid rgba(245, 196, 81, 0.55);
@@ -1073,6 +1159,31 @@ button.seat-available:hover {
 
 .done-card {
   position: relative;
+  /* R24: 上端のマーキートリムの帯ぶん、余白を少し足す */
+  padding-top: 30px;
+}
+
+/* R24: 完了カード上端のマーキートリム（ヒーローの帯と同じ金の電飾）。
+   祝祭の入口として控えめに1本だけ */
+.done-card::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 18px;
+  right: 18px;
+  height: 10px;
+  border-radius: 999px;
+  background-color: #2a0714;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    #ffe9a8 2.1px,
+    rgba(245, 196, 81, 0.35) 3.3px,
+    transparent 4.4px
+  );
+  background-size: 20px 10px;
+  background-position: center;
+  background-repeat: repeat-x;
+  pointer-events: none;
 }
 
 .done-badge {
@@ -1131,8 +1242,9 @@ button.seat-available:hover {
 }
 
 .done-sparkles .ds.violet {
-  color: var(--pink-soft);
-  text-shadow: 0 0 8px rgba(212, 105, 122, 0.7);
+  /* R24: 旧名（violet）のまま色だけ淡い金に寄せ、星はすべて金系で統一 */
+  color: #ffe9a8;
+  text-shadow: 0 0 8px rgba(255, 233, 168, 0.8);
 }
 
 .done-sparkles .ds-1 {
@@ -1584,7 +1696,8 @@ button.seat-available:hover {
   position: fixed;
   inset: 0;
   z-index: 150;
-  background: rgba(38, 16, 66, 0.55);
+  /* R24・D-2（波及）: 紫みのある色味をワイン系の暗色に寄せる */
+  background: rgba(32, 8, 20, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1592,14 +1705,38 @@ button.seat-available:hover {
 }
 
 .modal-panel {
+  position: relative;
   background: #fff;
   border-radius: 20px;
-  box-shadow: 0 18px 50px rgba(38, 16, 66, 0.45);
-  padding: 22px 20px 20px;
+  box-shadow: 0 18px 50px rgba(32, 8, 20, 0.45);
+  /* R24: 上端にマーキートリムの帯を置くぶん余白を足す */
+  padding: 36px 20px 20px;
   width: 100%;
   max-width: 400px;
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
+}
+
+/* R24: モーダル上端のマーキートリム（完了カードと共通の意匠） */
+.modal-panel::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  right: 18px;
+  height: 10px;
+  border-radius: 999px;
+  background-color: #2a0714;
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    #ffe9a8 2.1px,
+    rgba(245, 196, 81, 0.35) 3.3px,
+    transparent 4.4px
+  );
+  background-size: 20px 10px;
+  background-position: center;
+  background-repeat: repeat-x;
+  pointer-events: none;
 }
 
 .modal-title {
@@ -2378,8 +2515,9 @@ button.seat-available:hover {
 }
 
 .toast-info {
-  /* 深い藍のグラス＋金の縁 */
-  background: linear-gradient(165deg, rgba(23, 11, 61, 0.97), rgba(56, 25, 124, 0.97));
+  /* R24・D-2: 確定バーと共通の浮動トークン（ワイン→藍グラス＋金の縁）。
+     旧・藍→紫グラデーションは確定バーと色味がずれていた */
+  background: var(--float-bg);
   border: 1.5px solid rgba(245, 196, 81, 0.55);
 }
 
@@ -2723,8 +2861,9 @@ button.seat-available:hover {
   font-weight: 800;
   padding: 5px 12px;
   border-radius: 999px;
-  border: 1.5px solid var(--violet, #7a5fd0);
-  background: rgba(122, 95, 208, 0.1);
+  /* R24・D-2（波及）: 旧バイオレットの縁を金のトークン系に統一 */
+  border: 1.5px solid rgba(232, 161, 0, 0.65);
+  background: rgba(245, 196, 81, 0.14);
   color: var(--burgundy);
   cursor: pointer;
 }
@@ -2755,7 +2894,10 @@ button.seat-available:hover {
   color: var(--burgundy);
 }
 .zseat-grid {
-  background: linear-gradient(180deg, #1d1440, #160d33);
+  /* R24: 舞台側（上端）にスポットライトの金の気配を重ねる（背景のみ） */
+  background:
+    radial-gradient(130% 55% at 50% 0%, rgba(245, 196, 81, 0.1), rgba(245, 196, 81, 0) 60%),
+    linear-gradient(180deg, #1d1440, #160d33);
   border-radius: 12px;
   padding: 8px 10px 10px;
   display: flex;
@@ -2887,6 +3029,16 @@ button.zseat-cell:active {
   border: 1px solid rgba(245, 196, 81, 0.55);
   border-radius: 6px;
   box-sizing: border-box;
+  /* R24: 舞台バーを緞帳の布地らしく（縦ひだの陰影＋深紅）。
+     図形・座標には一切触れず、背景だけを重ねる */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(24, 2, 8, 0.22) 0 5px,
+      rgba(255, 214, 170, 0.06) 5px 7px,
+      rgba(0, 0, 0, 0) 7px 16px
+    ),
+    linear-gradient(180deg, #8e1f2f, #571122);
 }
 .zplan-hatch {
   position: absolute;
@@ -3127,13 +3279,18 @@ button.zseat-cell:active {
 
 /* ===== R14: 座席表を見ながら決める（仮選択＋画面下の確定バー） ===== */
 
-/* 仮選択中のゾーンのセルは光らせ、ほかのゾーンは少し落とす */
+/* 仮選択中のゾーンのセルは光らせ、ほかのゾーンは少し落とす。
+   R24・ラウンド9 D-1: 光らせ方をゾーン色（var(--zc)）から金へ統一した。
+   旧仕様ではゾーン色そのままで光るため、C（蛍光ピンク #ef5da8）を選ぶと
+   パレットから浮き、スタッフ側の「選択中＝金」とも意味が揃わなかった。
+   セルの地色（ゾーン色・占有の暗色）はそのままに、白＋濃金の二重リングと
+   金のグローで「選んでいる」ことを示す（スタッフ選択・R17ハイライトと同系） */
 .zseat-cell.is-selected {
-  filter: brightness(1.3);
+  filter: brightness(1.25);
   box-shadow:
     0 0 0 2px #fff,
-    0 0 0 4px var(--zc),
-    0 0 12px 2px var(--zc);
+    0 0 0 4px var(--gold-deep),
+    0 0 12px 2px rgba(232, 161, 0, 0.8);
   z-index: 1;
   animation: zsel-pulse 1.8s ease-in-out infinite;
 }
@@ -3142,14 +3299,14 @@ button.zseat-cell:active {
   100% {
     box-shadow:
       0 0 0 2px #fff,
-      0 0 0 4px var(--zc),
-      0 0 8px 1px var(--zc);
+      0 0 0 4px var(--gold-deep),
+      0 0 8px 1px rgba(232, 161, 0, 0.65);
   }
   50% {
     box-shadow:
       0 0 0 2px #fff,
-      0 0 0 4px var(--zc),
-      0 0 16px 4px var(--zc);
+      0 0 0 4px var(--gold-deep),
+      0 0 16px 4px rgba(232, 161, 0, 0.95);
   }
 }
 .zseat-cell.is-dimmed {
@@ -3187,17 +3344,22 @@ button.zseat-cell:active {
 .zbadge.is-selected {
   z-index: 3;
   transform: translate(-50%, -50%) scale(1.12);
+  /* R24・D-1: バッジのリングもセルと同じ金に統一（文字のゾーン色は残す） */
+  border-color: var(--gold-deep);
   box-shadow:
     0 0 0 2px #fff,
-    0 0 0 4px var(--zc),
+    0 0 0 4px var(--gold-deep),
+    0 0 14px 2px rgba(232, 161, 0, 0.75),
     0 4px 14px rgba(0, 0, 0, 0.5);
 }
 .zonelist-item.is-selected {
-  border-color: var(--zc);
+  /* R24・D-1: 一覧側の選択表示も金（枠＋淡い金の地）でセル・バッジと揃える */
+  border-color: var(--gold-deep);
   box-shadow:
-    0 0 0 1.5px var(--zc),
+    0 0 0 1.5px var(--gold-deep),
+    0 0 10px rgba(232, 161, 0, 0.35),
     0 4px 14px rgba(23, 11, 61, 0.18);
-  background: linear-gradient(180deg, rgba(179, 39, 61, 0.18), rgba(87, 17, 34, 0.12));
+  background: linear-gradient(180deg, rgba(245, 196, 81, 0.22), rgba(179, 39, 61, 0.1));
 }
 
 /* 確定バー・案内が出ているあいだ、ページ末尾がバーに隠れないよう余白を足す */
@@ -3231,7 +3393,7 @@ button.zseat-cell:active {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
+  background: var(--float-bg);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1.5px solid rgba(245, 196, 81, 0.55);
@@ -3254,7 +3416,8 @@ button.zseat-cell:active {
   line-height: 1.35;
 }
 .zdb-meta {
-  color: #cfc2ee;
+  /* R24・D-2: 旧ラベンダー #cfc2ee を廃し、浮動要素共通のクリームに統一 */
+  color: var(--float-text);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -3302,7 +3465,8 @@ button.zseat-cell:active {
   width: 30px;
   height: 30px;
   border-radius: 999px;
-  border: 1.5px solid #c3aef2;
+  /* R24・D-2: 旧ラベンダーの縁を案内枠（ステージレッド系）に揃える */
+  border: 1.5px solid rgba(179, 39, 61, 0.45);
   background: #fff;
   color: var(--burgundy);
   font-size: 16px;
@@ -3373,6 +3537,8 @@ button.zseat-cell:active {
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--lavender-pale);
+  /* R24: 金の細線で「確定した内容」の格を出す */
+  border: 1.5px solid rgba(232, 161, 0, 0.5);
   color: var(--burgundy);
   font-weight: 700;
 }
@@ -3387,6 +3553,15 @@ button.zseat-cell:active {
   border-radius: 6px;
   padding: 2px 0 2px 0.4em;
   margin-bottom: 4px;
+  /* R24: 公式図の舞台バー（.zplan-stage）と布地の意匠を揃える */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(24, 2, 8, 0.22) 0 5px,
+      rgba(255, 214, 170, 0.06) 5px 7px,
+      rgba(0, 0, 0, 0) 7px 16px
+    ),
+    linear-gradient(180deg, #8e1f2f, #571122);
 }
 
 /* ---------------- ラウンド6 ---------------- */
@@ -3404,8 +3579,16 @@ button.zseat-cell:active {
   border-bottom-width: 2px;
   border-radius: 0 0 16px 16px;
   text-align: left;
-  /* スタッフ帯も緞帳の深紅に合わせる（レイアウト・視認性は従来どおり） */
-  background: linear-gradient(180deg, #71182a, #4a0e1e);
+  /* スタッフ帯も緞帳の深紅に合わせる（レイアウト・視認性は従来どおり）。
+     R24: お客様側の帯と同じ幕ひだの陰影を重ねる */
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(24, 2, 8, 0.14) 0 9px,
+      rgba(255, 214, 170, 0.05) 9px 13px,
+      rgba(0, 0, 0, 0) 13px 30px
+    ),
+    linear-gradient(180deg, #71182a, #4a0e1e);
 }
 
 .compact-content {
@@ -3522,7 +3705,10 @@ button.zseat-cell:active {
   color: var(--burgundy);
 }
 .overview-grid {
-  background: linear-gradient(180deg, #1d1440, #160d33);
+  /* R24: ゾーン座席表と同様に舞台側へ金の気配を重ねる */
+  background:
+    radial-gradient(130% 55% at 50% 0%, rgba(245, 196, 81, 0.1), rgba(245, 196, 81, 0) 60%),
+    linear-gradient(180deg, #1d1440, #160d33);
   border-radius: 12px;
   padding: 8px 10px 10px;
   display: flex;

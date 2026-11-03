@@ -15,6 +15,7 @@ import {
   describeSelection,
   resolveZoneTap,
   summarizeSeatIds,
+  totalAvailableSeats,
   zoneAvailability,
   zoneOfSeat,
   type ZoneId,
@@ -138,6 +139,28 @@ describe('ゾーン空き状況', () => {
     let total = 0
     for (const z of ZONE_IDS) total += countAvailableInZone(data, z)
     expect(total).toBe(461 - 24)
+  })
+
+  it('全体の空席数（R24・R-1）はゾーン別残席＋車椅子・親子室で、初期状態は469', () => {
+    expect(totalAvailableSeats(emptyData())).toBe(469)
+  })
+
+  it('全体の空席数は未割当ホールド（カウントホールド）を差し引く', () => {
+    const withHolds: AppData = { ...emptyData(), zoneHolds: { C: 2, A: 3 } }
+    expect(totalAvailableSeats(withHolds)).toBe(469 - 5)
+    // ゾーン別表示との一致（計算経路の1本化）
+    let sum = 0
+    for (const z of ZONE_IDS) sum += zoneAvailability(withHolds, z).available
+    expect(totalAvailableSeats(withHolds)).toBe(sum + 8)
+  })
+
+  it('全体の空席数は割当済みの席も差し引く（二重に数えない）', () => {
+    // ゾーンEを全席ブロック → 461-24 + 車椅子2 + 親子室6
+    const data = blockSeats(emptyData(), ZONE_SEAT_IDS.E)
+    expect(totalAvailableSeats(data)).toBe(469 - 24)
+    // 車椅子席を1席ブロックすると、その分だけ減る
+    const data2 = blockSeats(emptyData(), [WHEELCHAIR_SEATS[0].id])
+    expect(totalAvailableSeats(data2)).toBe(468)
   })
 
   it('残りわずかは「残り10席以下」で判定する', () => {

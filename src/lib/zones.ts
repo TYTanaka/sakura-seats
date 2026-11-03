@@ -29,6 +29,7 @@
  * - ゾーン内の空席が人数未満なら割当なし（他ゾーンへは絶対に漏らさない）。
  */
 import {
+  ALL_SEATS,
   RECOMMENDED_SEAT_IDS,
   ROW_LAYOUT_1F,
   ROW_LAYOUT_2F,
@@ -176,6 +177,25 @@ export function allZoneAvailability(data: AppData): Record<ZoneId, ZoneAvailabil
   const out = {} as Record<ZoneId, ZoneAvailability>
   for (const id of ZONE_IDS) out[id] = zoneAvailability(data, id)
   return out
+}
+
+/**
+ * ホール全体の「申し込める残り席数」（R24・ラウンド9 R-1）。
+ * ヒーローの「空席 N席」はこの単一の計算経路で出す:
+ * ゾーン別の残席（zoneAvailability ＝ 物理空席 − 未割当ホールド）の合計に、
+ * ゾーンに属さない車椅子席・親子室の物理空席を加えたもの。
+ * かつてヒーローは seat_state ベースで数えており、席が未割当のゾーン予約
+ * （カウントホールド）が総数に反映されず、ゾーン別表示と食い違っていた。
+ */
+export function totalAvailableSeats(data: AppData): number {
+  let total = 0
+  for (const id of ZONE_IDS) total += zoneAvailability(data, id).available
+  for (const seat of ALL_SEATS) {
+    if (zoneOfSeat(seat) === null && seatStatus(data, seat.id) === 'available') {
+      total++
+    }
+  }
+  return total
 }
 
 /* ---------------- ゾーンの仮選択（R14: 座席表を見ながら決める） ---------------- */
