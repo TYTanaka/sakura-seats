@@ -40,6 +40,7 @@ import {
 } from '../data/seats'
 import {
   formatSeatList,
+  isZoneBooking,
   seatStatus,
   type AppData,
   type Reservation,
@@ -517,6 +518,41 @@ export function assignZoneSeats(
   const restrictedWindows = enumerateWindows(data, zone, partySize, true, excluded)
   if (restrictedWindows.length > 0) return toAssignment(zone, restrictedWindows[0])
   return findZoneSplit(data, zone, partySize, true, excluded)
+}
+
+/**
+ * 席の手動指定（R25・ラウンド10 S-1）のクライアント側検証。
+ * スタッフが座席表から選んだ席を未割当のゾーン予約へ割り当てられるか、
+ * サーバ（staff_assign_seats RPC・migration_sakura_r25）と同一基準で判定し、
+ * 問題があればスタッフ向けの理由文を返す（問題なければ null）。
+ * クラウドではサーバが再検証するため、これは即時フィードバック用。
+ * 対象は「未割当のゾーン予約」だけ（割当済みの席の付け替えは扱わない）。
+ */
+export function manualAssignmentError(
+  data: AppData,
+  reservation: Reservation,
+  seatIds: string[],
+): string | null {
+  if (reservation.cancelled) return 'キャンセル済みの予約には席を割り当てられません'
+  if (!isZoneBooking(reservation)) return 'ゾーン予約ではありません'
+  if (reservation.seatIds.length > 0) return 'すでに席が割り当てられています'
+  const party = reservation.items.length
+  if (seatIds.length !== party) {
+    return `席数が人数と一致しません（${party}席選んでください）`
+  }
+  if (new Set(seatIds).size !== seatIds.length) return '同じ席が重複しています'
+  const zone = reservation.zone as ZoneId
+  for (const seatId of seatIds) {
+    if (zoneOfSeat(seatById(seatId)) !== zone) {
+      return 'ゾーン外の席が含まれています'
+    }
+  }
+  for (const seatId of seatIds) {
+    if (seatStatus(data, seatId) !== 'available') {
+      return '選択した席の一部は空席ではありません'
+    }
+  }
+  return null
 }
 
 /* ---------------- 予約の座席表示（R12） ---------------- */

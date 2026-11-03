@@ -144,6 +144,7 @@ export default function StaffSeatMap({
   stateOf,
   onSeatTap,
   initialScale = 1,
+  seatEnabled,
 }: {
   data: AppData
   /** 席ごとの見た目の状態（選択中は呼び出し側が 'selected' を返す） */
@@ -152,6 +153,11 @@ export default function StaffSeatMap({
   onSeatTap: (seatId: string) => void
   /** 開いた直後の倍率（1 = 全体表示。当日販売は席を狙いやすいよう拡大で開く） */
   initialScale?: number
+  /**
+   * 選択対象外の席を薄くして押せなくする（R25: 席の手動指定で
+   * 「このゾーンの空席だけ」を対象にするとき用）。未指定なら全席が対象。
+   */
+  seatEnabled?: (seatId: string) => boolean
 }) {
   const layout = useMemo(() => buildZoneMapLayout(data), [data])
 
@@ -387,11 +393,13 @@ export default function StaffSeatMap({
   const renderCell = (c: ZoneMapLayoutCell) => {
     const seat = seatById(c.seatId)
     const state = stateOf(c.seatId)
+    const enabled = seatEnabled ? seatEnabled(c.seatId) : true
     const cls =
       `sseat-cell zplan-cell` +
       (c.zone ? ` zc-${c.zone.toLowerCase()}` : ' is-neutral') +
       ` is-${state}` +
-      (c.shape === 'diamond' ? ' is-diamond' : '')
+      (c.shape === 'diamond' ? ' is-diamond' : '') +
+      (enabled ? '' : ' is-outofscope')
     return (
       <button
         key={c.seatId}
@@ -400,6 +408,7 @@ export default function StaffSeatMap({
         style={cellStyle(c)}
         data-seat-id={c.seatId}
         data-seat-state={state}
+        disabled={!enabled}
         onClick={() => onSeatTap(c.seatId)}
         aria-label={`${seat.label}（${stateLabel(state)}${seat.restrictedView ? '・見切れ席' : ''}）`}
       >

@@ -2194,6 +2194,41 @@ button.seat-available:hover {
   border-color: #c9b8f5;
 }
 
+/* R25（ラウンド10・S-1）: 「来場済みなのに席未確定」の警告チップ。
+   未払いチップ（橙）より強い赤系で、当日の案内が止まる状態だと分かるように */
+.state-chip.is-seat-pending {
+  background: #fdeceb;
+  color: #a02c22;
+  border-color: #f0a49d;
+}
+
+.reservation-seats.is-seat-pending {
+  color: #a02c22;
+}
+
+/* 席未確定（来場済み）のときの「席を指定する」は警告色で目立たせる */
+.toggle-btn.sub.warn {
+  background: #fdeceb;
+  border-color: #e0694f;
+  color: #a02c22;
+  font-weight: 700;
+}
+
+/* 席の手動指定パネル（R25・S-1）: カード内に座席表を開く */
+.assign-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.assign-panel-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .reservation-seats {
   margin: 6px 0 2px;
   font-size: 15px;
@@ -2594,6 +2629,64 @@ button.seat-available:hover {
   color: var(--burgundy-soft);
 }
 
+/* R25（ラウンド10・C-1）: キャンセル済みの控え。
+   有効なチケットと見分けがつくよう、QR の場所自体を「キャンセル済み」の印にし、
+   予約番号・明細を沈ませ、チップと説明をはっきり独立して出す */
+.last-res-cancelled-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  min-height: 76px;
+  padding: 6px;
+  border: 2px solid #d84f43;
+  border-radius: 14px;
+  background: #fdeceb;
+  color: #a02c22;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.cancelled-chip {
+  flex: none;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: #fdeceb;
+  color: #a02c22;
+  border: 1px solid #f0a49d;
+}
+
+.last-res-item.is-cancelled .last-res-code,
+.last-res-item.is-cancelled .last-res-line {
+  opacity: 0.55;
+}
+
+/* キャンセル済みチップと並ぶ分、予約番号は少し小さくし、ハイフン位置で
+   折り返さないよう nowrap で1行に収める */
+.last-res-item.is-cancelled .last-res-code {
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.last-res-cancelled-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 700;
+  color: #a02c22;
+}
+
+.last-res-folded-cancelled {
+  color: #a02c22;
+  font-weight: 800;
+}
+
 .last-res-summary {
   flex: 1;
   min-width: 0;
@@ -2773,6 +2866,19 @@ button.seat-available:hover {
 .zone-price-note {
   margin: 0;
 }
+/* R25（ラウンド10・G-1）: 人数上限（8名）に達したときの案内。
+   ステッパーが黙って止まるのではなく、理由と次の手をその場で出す */
+.party-cap-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--pink-pale);
+  border: 1.5px solid var(--pink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 700;
+  color: var(--burgundy);
+}
 .zone-note {
   margin-top: 14px;
 }
@@ -2828,8 +2934,9 @@ button.seat-available:hover {
   margin-bottom: 4px;
   min-height: 18px;
 }
+/* R25（ラウンド10・G-2）: 補助文字を引き上げる（11px→12px） */
 .zseat-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted, #8a7f95);
 }
 .zseat-reset {
@@ -3138,8 +3245,9 @@ button.zseat-cell:active {
   line-height: 1;
   color: var(--zc);
 }
+/* R25（G-2）: ゾーン残数バッジ 10.5px→12px（収まりは実測で確認） */
 .zbadge-count {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
 }
@@ -3223,7 +3331,7 @@ button.zseat-cell:active {
   font-weight: 800;
 }
 .zonelist-desc {
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.45;
   color: var(--muted, #8a7f95);
 }
@@ -3237,7 +3345,7 @@ button.zseat-cell:active {
   color: var(--burgundy);
 }
 .zone-low-badge {
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 800;
   padding: 1px 7px;
   border-radius: 999px;
@@ -3920,6 +4028,13 @@ button.sseat-cell:active {
   .sseat-cell.is-selected {
     animation: none;
   }
+}
+/* R25（S-1）: 席の手動指定パネルで「対象外」の席（他ゾーン・対象外区分）。
+   disabled に加えて見た目も沈ませ、選べる席と一目で区別できるようにする */
+.sseat-cell.is-outofscope {
+  opacity: 0.28;
+  filter: grayscale(0.8);
+  cursor: not-allowed;
 }
 /* 見切れ席の※印（拡大時のみセル内に出る） */
 .sseat-star {

@@ -35,7 +35,12 @@ import {
   type SelfCancelResult,
   type UncancelResult,
 } from './logic'
-import { assignZoneSeats, zoneAvailability, type ZoneId } from './zones'
+import {
+  assignZoneSeats,
+  manualAssignmentError,
+  zoneAvailability,
+  type ZoneId,
+} from './zones'
 import { cloudEnabled } from './config'
 import { isStaleRevision, nextRevision, parseRevision } from './revision'
 import type { StaffAllowlist } from './staffAuth'
@@ -119,6 +124,14 @@ export interface Store {
    */
   checkInByToken: (token: string) => Promise<CheckInOutcome>
   setPaid: (reservationId: string, value: boolean) => Promise<void>
+  /**
+   * ゾーン予約に席を手で割り当てる（R25・ラウンド10 S-1）。
+   * 支払い・来場の状態は変えず、席だけを確定する。対象は未割当の
+   * ゾーン予約のみで、検証（ゾーン内・空席・人数一致）は
+   * zones.manualAssignmentError と同一基準（クラウドではサーバの
+   * staff_assign_seats RPC が再検証する）。問題があれば理由を例外で投げる。
+   */
+  assignSeats: (reservationId: string, seatIds: string[]) => Promise<void>
   /** 受付完了ワンタップ: 支払い済み＋来場済みを一度に設定する */
   completeReception: (reservationId: string) => Promise<void>
   toggleBlocked: (seatId: string) => Promise<void>
@@ -479,6 +492,17 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           return
         }
         mutate((prev) => setPaid(prev, reservationId, value))
+      },
+      assignSeats: async (reservationId, seatIds) => {
+        // R25: 席の手動指定。支払い・来場には触らず席だけを確定する。
+        // 検証は manualAssignmentError（サーバ RPC と同一基準）で行い、
+        // 問題があれば理由を投げて何も変えない
+        refreshIfStale()
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target) throw new Error('予約が見つかりません')
+        const problem = manualAssignmentError(dataRef.current, target, seatIds)
+        if (problem) throw new Error(problem)
+        mutate((prev) => assignSeatsToReservation(prev, reservationId, seatIds))
       },
       completeReception: async (reservationId) => {
         refreshIfStale()

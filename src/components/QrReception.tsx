@@ -72,8 +72,15 @@ type ScanOutcome =
  * - 手入力フォームは常時表示する
  */
 export default function QrReception({ onClose }: { onClose: () => void }) {
-  const { data, cancel, setCheckedIn, setPaid, completeReception, checkInByToken } =
-    useStore()
+  const {
+    data,
+    cancel,
+    setCheckedIn,
+    setPaid,
+    completeReception,
+    checkInByToken,
+    assignSeats,
+  } = useStore()
   const { showToast } = useToast()
   const [status, setStatus] = useState<CamStatus>('requesting')
   const [camMessage, setCamMessage] = useState('')
@@ -390,6 +397,25 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     })()
   }
 
+  /**
+   * 席の手動指定（R25・ラウンド10 S-1、受付一覧と同じ）:
+   * 失敗は理由をトーストで出し、カード側のパネルを開いたままにするため
+   * 例外をそのまま投げ直す。
+   */
+  const handleAssignSeats = async (target: Reservation, seatIds: string[]) => {
+    try {
+      await assignSeats(target.id, seatIds)
+      showToast(`${target.id} の席を指定しました`, 'info')
+    } catch (e) {
+      showToast(
+        e instanceof Error && e.message
+          ? e.message
+          : '席の指定に失敗しました。接続を確認してもう一度お試しください',
+      )
+      throw e
+    }
+  }
+
   /** 受付完了の成功トースト（R6・O-2、受付一覧と同じ文面に揃える） */
   const handleComplete = (target: Reservation) => {
     void completeReception(target.id)
@@ -616,6 +642,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
               onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
               onTogglePaid={handleTogglePaid}
               onCancel={(r) => runAction(() => cancel(r.id))}
+              onAssignSeats={handleAssignSeats}
             />
           </div>
           <button type="button" className="btn btn-primary btn-block" onClick={scanNext}>

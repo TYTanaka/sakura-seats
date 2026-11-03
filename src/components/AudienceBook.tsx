@@ -418,8 +418,18 @@ export default function AudienceBook({
     window.scrollTo({ top: 0 })
   }
 
+  /**
+   * 二重送信の同期的ガード（R25・ラウンド10 G-3）。
+   * submitting state は再描画を経てから効くため、同一タスク内の連続発火
+   * （ボタンの同期的3連打など）では素通りしてしまう。ref は代入した瞬間から
+   * 効くので、state と二重化して送信そのものを1回に止める。
+   */
+  const submitGuardRef = useRef(false)
+
   const handleSubmit = async () => {
     if (!zoneId) return
+    if (submitGuardRef.current) return
+    submitGuardRef.current = true
     setError('')
     setSubmitting(true)
     try {
@@ -446,6 +456,9 @@ export default function AudienceBook({
         // R12: 席は未確定。控えにはゾーンと人数を残す
         zoneLabel: zoneLabel(zoneId),
         partySize,
+        // R25: 控えの現在状態（キャンセル済み等）を後から照会で取り直すため、
+        // 申込時の電話番号（正規化済み）も一緒に残す
+        phone: normalizePhone(phone),
       })
       setCompleted(reservation)
       setStep('done')
@@ -461,6 +474,7 @@ export default function AudienceBook({
       }
     } finally {
       setSubmitting(false)
+      submitGuardRef.current = false
     }
   }
 
@@ -638,6 +652,16 @@ export default function AudienceBook({
                   </button>
                 </div>
               </div>
+              {/* R25（ラウンド10・G-1）: 上限に達したら理由と次の手を出す。
+                  以前はステッパーが8名で静かに止まり、団体客が理由も
+                  申し込み方も分からなかった */}
+              {partySize >= MAX_ONLINE_SEATS && (
+                <p className="party-cap-note" data-party-cap-note>
+                  一度に申し込めるのは{MAX_ONLINE_SEATS}名までです。
+                  9名以上の場合は、続けて2回に分けてお申し込みいただくか、
+                  主催者へご連絡ください。
+                </p>
+              )}
               <p className="zone-price-note muted small">
                 料金は全ゾーン一律です（
                 {perf.ticketTypes

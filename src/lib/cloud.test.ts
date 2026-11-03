@@ -620,6 +620,29 @@ describe('R12: ゾーン予約（席は支払い時に確定）', () => {
       p_id: 'uuid-9',
     })
   })
+
+  it('staffAssignSeats（R25）は staff_assign_seats を p_* 形式で呼ぶ', async () => {
+    const { client, rpc } = fakeClient(() => ({ ok: true }))
+    const api = new CloudApi(client)
+    await api.staffAssignSeats('1234', 'uuid-9', ['1F-7-12', '1F-7-13'])
+    expect(rpc).toHaveBeenCalledWith('staff_assign_seats', {
+      p_passcode: '1234',
+      p_id: 'uuid-9',
+      p_seat_ids: ['1F-7-12', '1F-7-13'],
+    })
+  })
+
+  it('R25 未適用 DB の staffAssignSeats エラーは専用文面になる', async () => {
+    const { client } = fakeClient(() => {
+      throw new Error(
+        'Could not find the function public.staff_assign_seats in the schema cache',
+      )
+    })
+    const api = new CloudApi(client)
+    await expect(api.staffAssignSeats('1234', 'uuid-9', ['1F-7-12'])).rejects.toThrow(
+      'migration_sakura_r25',
+    )
+  })
 })
 
 })

@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { seatById } from '../data/seats'
 import {
+  formatSeatList,
   formatYen,
   reservationDisplayName,
   reservationTotal,
   reservationTypeSummary,
+  seatStatus,
   type Reservation,
 } from '../lib/logic'
-import { reservationSeatDisplay } from '../lib/zones'
+import { useStore } from '../lib/store'
+import { reservationSeatDisplay, zoneLabel, zoneOfSeat } from '../lib/zones'
+import StaffSeatMap, { type StaffSeatState } from './StaffSeatMap'
 
 /** ISO日時を「12月19日 13:05」の形にする（受付済み時刻の表示用） */
 export function formatCheckedInAt(iso: string | null | undefined): string {
@@ -26,6 +31,12 @@ interface ReservationCardProps {
   onCancel: (res: Reservation) => void
   /** キャンセル済みカードの「取り消す」ボタン（QR受付では渡さない） */
   onUncancel?: (res: Reservation) => void
+  /**
+   * 席の手動指定（R25・ラウンド10 S-1）。未割当のゾーン予約にだけ
+   * 「席を指定する」を出す。失敗時は呼び出し側がトーストで理由を出し、
+   * この Promise を reject する（パネルは開いたままになる）。
+   */
+  onAssignSeats?: (res: Reservation, seatIds: string[]) => Promise<void>
 }
 
 /**
@@ -48,7 +59,9 @@ export default function ReservationCard({
   onTogglePaid,
   onCancel,
   onUncancel,
+  onAssignSeats,
 }: ReservationCardProps) {
+  const { data } = useStore()
   /**
    * キャンセル確認の段階（R22・オーナー要望で2段階に戻す）:
    * idle → inline（カード内の小さな確認・R20以前の形）→ modal（R20の
@@ -57,12 +70,40 @@ export default function ReservationCard({
    * 通常表示に畳み、モーダルの「やめる」・背景・Escape は閉じるだけ。
    */
   const [cancelStep, setCancelStep] = useState<'idle' | 'inline' | 'modal'>('idle')
+  /** モーダルのパネルと、閉じたときにフォーカスを戻す先（予約キャンセルボタン） */
+  const modalPanelRef = useRef<HTMLDivElement>(null)
+  const cancelTriggerRef = useRef<HTMLButtonElement>(null)
 
   // モーダル表示中は Escape で閉じ、背後のスクロールを止める（R20）
+  // R25（ラウンド10・A-1）: Tab はモーダル内（2ボタン）で循環させる
+  // フォーカストラップを追加し、閉じたら呼び出し元ボタンへフォーカスを戻す。
+  // 背景ページへフォーカスが抜けると、キーボード/スイッチ操作のスタッフが
+  // 見えない背景を操作しかねないため。
   useEffect(() => {
     if (cancelStep !== 'modal') return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setCancelStep('idle')
+      if (e.key === 'Escape') {
+        setCancelStep('idle')
+        return
+      }
+      if (e.key !== 'Tab') return
+      const panel = modalPanelRef.current
+      if (!panel) return
+      const focusables = [
+        ...panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => el.offsetParent !== null || el === document.activeElement)
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
@@ -70,6 +111,8 @@ export default function ReservationCard({
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
+      // 閉じたら操作の起点（予約キャンセルボタン）へフォーカスを戻す
+      cancelTriggerRef.current?.focus()
     }
   }, [cancelStep])
 
@@ -77,6 +120,58 @@ export default function ReservationCard({
   // R12: ゾーン予約は支払いまで席未確定（ゾーン名＋「席未確定」で表示し、
   // 席番号は出さない）。支払い後に割り当たれば従来どおり席を表示する
   const seatDisplay = reservationSeatDisplay(res)
+
+  /* ---------------- 席の手動指定（R25・ラウンド10 S-1） ---------------- */
+  // 自動割当できずに手動チェックインした予約など、未割当のゾーン予約には
+  // スタッフが座席表から席を決める手段がなかった。カード内で座席表を開き、
+  // そのゾーンの空席だけを人数分選んで確定する。支払い・来場は変えない
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const [assigning, setAssigning] = useState(false)
+  const canAssign =
+    !!onAssignSeats && !res.cancelled && seatDisplay.isZone && !seatDisplay.assigned
+  /** 来場済みなのに席が決まっていない（当日の案内が止まる状態） */
+  const seatPendingUrgent = canAssign && res.checkedIn
+  const party = res.items.length
+
+  const assignStateOf = (seatId: string): StaffSeatState => {
+    if (picked.includes(seatId)) return 'selected'
+    return seatStatus(data, seatId)
+  }
+  const assignSeatEnabled = (seatId: string): boolean => {
+    if (picked.includes(seatId)) return true
+    return (
+      zoneOfSeat(seatById(seatId)) === res.zone &&
+      seatStatus(data, seatId) === 'available'
+    )
+  }
+  const togglePick = (seatId: string) => {
+    // 関数型更新にする: 同一タスク内の連続タップでも、直前の選択を
+    // 取りこぼさずにトグルできるように（state の古い値で上書きしない）
+    setPicked((prev) => {
+      if (prev.includes(seatId)) return prev.filter((id) => id !== seatId)
+      if (zoneOfSeat(seatById(seatId)) !== res.zone) return prev
+      if (seatStatus(data, seatId) !== 'available') return prev
+      if (prev.length >= party) return prev
+      return [...prev, seatId]
+    })
+  }
+  const closeAssign = () => {
+    setAssignOpen(false)
+    setPicked([])
+  }
+  const confirmAssign = async () => {
+    if (!onAssignSeats || picked.length !== party || assigning) return
+    setAssigning(true)
+    try {
+      await onAssignSeats(res, picked)
+      closeAssign()
+    } catch {
+      // 理由は呼び出し側がトーストで出す。パネルは開いたままにして選び直せるようにする
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   return (
     <>
@@ -105,12 +200,19 @@ export default function ReservationCard({
                   {res.paid ? '支払済' : '未払い'}
                 </span>
                 {res.checkedIn && <span className="state-chip is-checkedin">来場済</span>}
+                {/* R25（S-1）: 来場済みなのに席未確定なら警告色で強く出す。
+                    このままではお客様を席へ案内できない状態だと一目で分かるように */}
+                {seatPendingUrgent && (
+                  <span className="state-chip is-seat-pending" data-seat-pending>
+                    席未確定
+                  </span>
+                )}
               </>
             )}
           </p>
         </div>
         <p
-          className="reservation-seats"
+          className={`reservation-seats${seatPendingUrgent ? ' is-seat-pending' : ''}`}
           data-seat-display={seatDisplay.assigned ? 'seats' : 'unassigned'}
         >
           {seatDisplay.text}
@@ -165,6 +267,17 @@ export default function ReservationCard({
             >
               {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
             </button>
+            {canAssign && (
+              <button
+                type="button"
+                data-action="assign-seats"
+                aria-expanded={assignOpen}
+                className={`toggle-btn sub${seatPendingUrgent ? ' warn' : ''}`}
+                onClick={() => (assignOpen ? closeAssign() : setAssignOpen(true))}
+              >
+                席を指定する
+              </button>
+            )}
             {cancelStep === 'inline' ? (
               <span className="cancel-confirm" data-cancel-inline>
                 キャンセルしますか？
@@ -189,6 +302,7 @@ export default function ReservationCard({
               <button
                 type="button"
                 data-action="cancel"
+                ref={cancelTriggerRef}
                 className="btn btn-ghost btn-small"
                 onClick={() => setCancelStep('inline')}
               >
@@ -212,6 +326,49 @@ export default function ReservationCard({
         </div>
       ) : null}
 
+      {/* 席の手動指定パネル（R25・S-1）: そのゾーンの空席だけが選べる。
+          支払い・来場の状態は変えず、席だけを確定する */}
+      {canAssign && assignOpen && (
+        <div className="assign-panel" data-assign-panel>
+          <p className="assign-panel-note">
+            {res.zone ? zoneLabel(res.zone) : ''}の空席から{party}席選んでください（
+            {picked.length}/{party}席）。薄くなっている席は対象外です。
+            支払い・来場の状態は変わりません。
+          </p>
+          <StaffSeatMap
+            data={data}
+            stateOf={assignStateOf}
+            onSeatTap={togglePick}
+            seatEnabled={assignSeatEnabled}
+          />
+          {picked.length > 0 && (
+            <p className="door-selection-bar" data-assign-selection>
+              選択中：{formatSeatList(picked)}
+            </p>
+          )}
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              data-assign-confirm
+              disabled={picked.length !== party || assigning}
+              onClick={() => void confirmAssign()}
+            >
+              {assigning ? '割り当て中…' : 'この席に決める'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              data-assign-abort
+              disabled={assigning}
+              onClick={closeAssign}
+            >
+              やめる
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* R22: 最終確認モーダル（R20のものをそのまま第2段階にする）。
           背景タップ・やめる・Escape では閉じるだけでキャンセルしない */}
       {cancelStep === 'modal' && (
@@ -225,6 +382,7 @@ export default function ReservationCard({
             role="alertdialog"
             aria-modal="true"
             aria-label="予約キャンセルの確認"
+            ref={modalPanelRef}
             onClick={(e) => e.stopPropagation()}
           >
             <h4 className="modal-title">本当にキャンセルしますか？</h4>

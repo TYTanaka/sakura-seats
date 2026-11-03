@@ -198,3 +198,27 @@ describe('折りたたみ状態の保存', () => {
     )
   })
 })
+
+describe('電話番号の保持（R25: 控えのキャンセル状態を照会で取り直すため）', () => {
+  it('数字のみの電話番号は保存・読み戻しできる', () => {
+    stubStorage()
+    addLastReservation({ ...SNAP_A, phone: '09011112222' })
+    const loaded = loadLastReservations()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0].phone).toBe('09011112222')
+  })
+
+  it('数字以外を含む値・数値型は落とす（壊れた値で照会しない）', () => {
+    expect(
+      parseLastReservations(JSON.stringify([{ ...SNAP_A, phone: '090-1111-2222' }]))[0]
+        .phone,
+    ).toBeUndefined()
+    expect(
+      parseLastReservations(JSON.stringify([{ ...SNAP_A, phone: 9011112222 }]))[0].phone,
+    ).toBeUndefined()
+  })
+
+  it('電話番号の無い旧い控えはそのまま読める（phone は undefined）', () => {
+    expect(parseLastReservations(JSON.stringify([SNAP_A]))[0].phone).toBeUndefined()
+  })
+})

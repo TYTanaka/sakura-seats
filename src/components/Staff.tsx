@@ -22,7 +22,7 @@ import {
   type Reservation,
   type TicketType,
 } from '../lib/logic'
-import { reservationSeatDisplay } from '../lib/zones'
+import { reservationSeatDisplay, totalAvailableSeats } from '../lib/zones'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
 import {
   authBadgeLabel,
@@ -375,8 +375,15 @@ export default function Staff({ onExit }: { onExit: () => void }) {
 /* ---------------- 受付 ---------------- */
 
 function Reception() {
-  const { data, cancel, uncancelReservation, setCheckedIn, setPaid, completeReception } =
-    useStore()
+  const {
+    data,
+    cancel,
+    uncancelReservation,
+    setCheckedIn,
+    setPaid,
+    completeReception,
+    assignSeats,
+  } = useStore()
   const { showToast } = useToast()
   const [query, setQuery] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
@@ -432,6 +439,25 @@ function Reception() {
         )
       }
     })()
+  }
+
+  /**
+   * 席の手動指定（R25・ラウンド10 S-1）: 成功したら名指しで知らせる。
+   * 失敗は理由をトーストで出し、カード側のパネルを開いたままにするため
+   * 例外をそのまま投げ直す。
+   */
+  const handleAssignSeats = async (res: Reservation, seatIds: string[]) => {
+    try {
+      await assignSeats(res.id, seatIds)
+      showToast(`${res.id} の席を指定しました`, 'info')
+    } catch (e) {
+      showToast(
+        e instanceof Error && e.message
+          ? e.message
+          : '席の指定に失敗しました。接続を確認してもう一度お試しください',
+      )
+      throw e
+    }
   }
 
   /** キャンセルの取り消し（R6・O-1）: 結果コードごとに案内を出し分ける */
@@ -544,6 +570,7 @@ function Reception() {
               onTogglePaid={handleTogglePaid}
               onCancel={(r) => runAction(() => cancel(r.id))}
               onUncancel={handleUncancel}
+              onAssignSeats={handleAssignSeats}
             />
           </li>
         ))}
@@ -804,6 +831,10 @@ function SeatSettings() {
 function Summary() {
   const { data } = useStore()
   const t = totals(data, ALL_SEAT_IDS)
+  // R25（ラウンド10・S-3）: 「残席」はヒーローの空席数と計算経路を1本化する
+  // （zones.totalAvailableSeats: ゾーン別残席＝物理空席−未割当ホールド の合計）。
+  // totals 側もホールドを差し引くよう揃えたが、表示は単一経路を正とする
+  const availableNow = totalAvailableSeats(data)
   const printList = activeReservations(data)
     .slice()
     .sort((a, b) => a.id.localeCompare(b.id))
@@ -834,7 +865,7 @@ function Summary() {
         </h2>
         <p>
           予約 {t.reservationCount}件 ／ 支払済 {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
-          ／ 未払い {formatYen(t.unpaidTotal)}（{t.reservedSeatCount}席分） ／ 残席 {t.availableSeatCount}席
+          ／ 未払い {formatYen(t.unpaidTotal)}（{t.reservedSeatCount}席分） ／ 残席 {availableNow}席
         </p>
         <table>
           <thead>
@@ -896,7 +927,7 @@ function Summary() {
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="availableSeatCount">
-            {t.availableSeatCount}席
+            {availableNow}席
           </span>
           <span className="summary-label">残席（販売中）</span>
         </div>
@@ -959,6 +990,7 @@ function Summary() {
         チェックイン状況は「受付」タブで確認できます。金額は各予約に記録された金額
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
         変更しても、記録済みの売上は変わりません。「未払い席数」は未払い（予約中）の席数です。
+        「残席」はお客様画面の空席数と同じ数え方で、席が未確定のゾーン予約分も差し引いています。
       </p>
     </section>
   )

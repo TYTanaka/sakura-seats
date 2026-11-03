@@ -1039,6 +1039,20 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
     if (status === 'available') availableSeatCount++
     else if (status === 'blocked') blockedSeatCount++
   }
+  // R25（ラウンド10・S-3）: 未割当のゾーン予約（カウントホールド）も差し引く。
+  // 以前は席の占有（seat_state 相当）だけで数えていたため、ヒーローの空席数
+  // （R24 でホールド込みに統一済み）と「残席」が食い違って見えた。
+  // ホールド数の数え方は zones.zoneHoldCount と同一にする
+  // （zoneHolds があればその合計、無ければ有効な未割当ゾーン予約から導出）
+  let holdSeats = 0
+  if (data.zoneHolds) {
+    for (const n of Object.values(data.zoneHolds)) holdSeats += n
+  } else {
+    for (const res of active) {
+      if (isZoneBooking(res) && res.seatIds.length === 0) holdSeats += res.items.length
+    }
+  }
+  availableSeatCount = Math.max(0, availableSeatCount - holdSeats)
   return {
     reservationCount: active.length,
     reservedSeatCount,

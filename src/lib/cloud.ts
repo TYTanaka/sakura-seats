@@ -234,6 +234,15 @@ function rpcErrorToMessage(error: { message: string }): Error {
       'Googleログインとスタッフ許可リストは、サーバ更新（migration_sakura_r8 の適用）後に使えるようになります',
     )
   }
+  // R25 の RPC が未適用の DB では席の手動指定だけがこの文面になる
+  if (
+    msg.includes('staff_assign_seats') &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      '席の手動指定は、サーバ更新（migration_sakura_r25 の適用）後に使えるようになります',
+    )
+  }
   // R12 の RPC が未適用の DB ではゾーン予約・支払い時割当だけがこの文面になる
   if (
     (msg.includes('book_zone') ||
@@ -260,6 +269,9 @@ function rpcErrorToMessage(error: { message: string }): Error {
   }
   if (msg.includes('ALREADY_ASSIGNED')) {
     return new Error('すでに別の席が割り当てられています。画面を更新して確認してください')
+  }
+  if (msg.includes('ALREADY_CANCELLED')) {
+    return new Error('キャンセル済みの予約です。画面を更新して確認してください')
   }
   if (msg.includes('NOT_ZONE_BOOKING')) {
     return new Error('この予約はゾーン予約ではありません')
@@ -507,6 +519,25 @@ export class CloudApi {
       p_id: cloudId,
       p_seat_ids: seatIds,
       p_checked_in: checkedIn,
+    })
+  }
+
+  /**
+   * 席だけの手動指定（staff_assign_seats RPC・R25）。
+   * 支払い・来場の状態は変えず、未割当のゾーン予約にスタッフが選んだ席を
+   * 確定する（自動割当できずに手動チェックインした席未確定の予約向け）。
+   * 検証はサーバ側（staff_assign_and_pay と同一基準）。失敗は例外になる。
+   * RPC 未適用の DB では rpcErrorToMessage が専用文面（r25 案内）にする。
+   */
+  async staffAssignSeats(
+    passcode: string,
+    cloudId: string,
+    seatIds: string[],
+  ): Promise<void> {
+    await this.call('staff_assign_seats', {
+      p_passcode: passcode,
+      p_id: cloudId,
+      p_seat_ids: seatIds,
     })
   }
 

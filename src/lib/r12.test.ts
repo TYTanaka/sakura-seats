@@ -16,6 +16,7 @@ import {
 import {
   ZONE_SEAT_IDS,
   assignZoneSeats,
+  manualAssignmentError,
   reservationSeatDisplay,
   zoneAvailability,
   zoneHoldCount,
@@ -276,5 +277,123 @@ describe('reservationSeatDisplay（表示規則）', () => {
     expect(display.isZone).toBe(false)
     expect(display.assigned).toBe(true)
     expect(display.text).toContain('1階 5列')
+  })
+})
+
+describe('R25: 席の手動指定（manualAssignmentError / assignSeatsToReservation）', () => {
+  it('ゾーン内の空席を人数分選べば問題なし', () => {
+    const { reservation } = zoneBooking(emptyData(), 'B', ['adult', 'adult'])
+    // ゾーンB の席（1階中央7列）
+    expect(zoneOfSeat(seatById('1F-7-12'))).toBe('B')
+    expect(
+      manualAssignmentError(emptyData(), reservation, ['1F-7-12', '1F-7-13']),
+    ).toBeNull()
+  })
+
+  it('人数と合わない・重複はエラー', () => {
+    const { reservation } = zoneBooking(emptyData(), 'B', ['adult', 'adult'])
+    expect(manualAssignmentError(emptyData(), reservation, ['1F-7-12'])).toContain('2席')
+    expect(
+      manualAssignmentError(emptyData(), reservation, ['1F-7-12', '1F-7-12']),
+    ).toContain('重複')
+  })
+
+  it('ゾーン外の席はエラー', () => {
+    const { reservation } = zoneBooking(emptyData(), 'B', ['adult'])
+    // 1F-1-10 はゾーンA
+    expect(zoneOfSeat(seatById('1F-1-10'))).toBe('A')
+    expect(manualAssignmentError(emptyData(), reservation, ['1F-1-10'])).toContain(
+      'ゾーン外の席',
+    )
+  })
+
+  it('埋まっている席・販売しない席はエラー', () => {
+    const first = zoneBooking(emptyData(), 'B', ['adult'])
+    const taken = assignSeatsToReservation(first.data, first.reservation.id, ['1F-7-12'])
+    const second = zoneBooking(taken, 'B', ['adult'])
+    expect(manualAssignmentError(taken, second.reservation, ['1F-7-12'])).toContain(
+      '空席ではありません',
+    )
+    const blocked = setBlockedForSeats(emptyData(), ['1F-7-14'], true)
+    const third = zoneBooking(blocked, 'B', ['adult'])
+    expect(manualAssignmentError(blocked, third.reservation, ['1F-7-14'])).toContain(
+      '空席ではありません',
+    )
+  })
+
+  it('割当済み・キャンセル済み・ゾーン予約でないものはエラー', () => {
+    const { data, reservation } = zoneBooking(emptyData(), 'B', ['adult'])
+    const assigned = assignSeatsToReservation(data, reservation.id, ['1F-7-12'])
+    const assignedRes = assigned.reservations.find((r) => r.id === reservation.id)!
+    expect(manualAssignmentError(assigned, assignedRes, ['1F-7-13'])).toContain(
+      'すでに席が割り当て',
+    )
+    const cancelledRes = { ...reservation, cancelled: true }
+    expect(manualAssignmentError(data, cancelledRes, ['1F-7-12'])).toContain(
+      'キャンセル済み',
+    )
+    const legacy = createReservation(emptyData(), {
+      seats: [{ seatId: '1F-5-6', typeId: 'adult' }],
+      name: '従来 太郎',
+      phone: '09000000000',
+      note: '',
+      source: 'online',
+    })
+    expect(
+      manualAssignmentError(legacy.data, legacy.reservation, ['1F-5-7']),
+    ).toContain('ゾーン予約ではありません')
+  })
+
+  it('assignSeatsToReservation は支払い・来場を変えず席だけを入れる', () => {
+    const booked = zoneBooking(emptyData(), 'B', ['adult', 'child'])
+    const checkedInData: AppData = {
+      ...booked.data,
+      reservations: booked.data.reservations.map((r) =>
+        r.id === booked.reservation.id ? { ...r, checkedIn: true } : r,
+      ),
+    }
+    const after = assignSeatsToReservation(checkedInData, booked.reservation.id, [
+      '1F-7-12',
+      '1F-7-13',
+    ])
+    const res = after.reservations.find((r) => r.id === booked.reservation.id)!
+    expect(res.seatIds).toEqual(['1F-7-12', '1F-7-13'])
+    expect(res.items.map((i) => i.seatId)).toEqual(['1F-7-12', '1F-7-13'])
+    // S-1 の肝: 来場済みのまま、支払いは未払いのまま
+    expect(res.checkedIn).toBe(true)
+    expect(res.paid).toBe(false)
+  })
+})
+
+describe('R25: totals の残席は未割当ホールドを差し引く（S-3）', () => {
+  it('ゾーン予約（未割当）の人数分だけ残席が減り、割当後は席占有として数える', () => {
+    const base = totals(emptyData(), ALL_IDS).availableSeatCount
+    const { data, reservation } = zoneBooking(emptyData(), 'B', ['adult', 'adult', 'child'])
+    expect(totals(data, ALL_IDS).availableSeatCount).toBe(base - 3)
+    const assigned = assignSeatsToReservation(data, reservation.id, [
+      '1F-7-12',
+      '1F-7-13',
+      '1F-7-14',
+    ])
+    // 割当後はホールドではなく実席の占有として同じく3席減（二重に引かない）
+    expect(totals(assigned, ALL_IDS).availableSeatCount).toBe(base - 3)
+  })
+
+  it('zoneHolds（クラウドの公開状態）がある場合はその合計を差し引く', () => {
+    const base = totals(emptyData(), ALL_IDS).availableSeatCount
+    const withHolds: AppData = { ...emptyData(), zoneHolds: { B: 2, C: 1 } }
+    expect(totals(withHolds, ALL_IDS).availableSeatCount).toBe(base - 3)
+  })
+
+  it('キャンセル済みのゾーン予約はホールドに数えない', () => {
+    const base = totals(emptyData(), ALL_IDS).availableSeatCount
+    const { data, reservation } = zoneBooking(emptyData(), 'B', ['adult', 'adult'])
+    const cancelled: AppData = {
+      ...data,
+      reservations: data.reservations.map((r) =>
+        r.id === reservation.id ? { ...r, cancelled: true } : r,
+      ),
+    }
+    expect(totals(cancelled, ALL_IDS).availableSeatCount).toBe(base)
   })
 })

@@ -212,12 +212,43 @@ function TodayCard({ perf }: { perf: Performance }) {
  * カレンダーは公演日・開演時刻を持つ控えだけに出す（旧い控えには無い）。
  */
 function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot }) {
+  const { data, mode, lookupReservation } = useStore()
   const [qrExpanded, setQrExpanded] = useState(false)
   const [folded, setFolded] = useState(() => loadFoldedCodes().has(snapshot.code))
   // QR は予約番号ではなくトークンから作る（R7）。トークンの無い旧い控えは番号表示
   const qrPayload = snapshot.qrToken ? encodeQrPayload(snapshot.qrToken) : null
   const qrUrl = useReservationQrUrl(qrPayload)
   const calendarUrl = buildSnapshotCalendarUrl(snapshot)
+
+  /**
+   * R25（ラウンド10・C-1）: 控えに現在状態（キャンセル済み）を反映する。
+   * 控え自体は予約時点のスナップショットで状態を持たないため、取得できる
+   * 最も新しい状態を使う:
+   * - 端末内ストアにその予約がある場合（ローカルモード／スタッフ入室中の
+   *   クラウド）は、その状態が最新で、そのまま追随する
+   * - クラウドのお客様画面ではストアに自分の予約が無いため、控えに残した
+   *   電話番号（R25〜の控えのみ）で照会 RPC から状態を取り直す（1回だけ）
+   * 取得できない・失敗した場合は「不明」として従来表示を保つ
+   * （有効な予約を誤ってキャンセル扱いする方が悪いため）。
+   */
+  const storeRes = data.reservations.find((r) => r.id === snapshot.code)
+  const [remoteCancelled, setRemoteCancelled] = useState<boolean | null>(null)
+  const statusCheckedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (storeRes || mode !== 'cloud' || !snapshot.phone) return
+    if (statusCheckedRef.current === snapshot.code) return
+    statusCheckedRef.current = snapshot.code
+    let active = true
+    void lookupReservation(snapshot.code, snapshot.phone)
+      .then((res) => {
+        if (active && res) setRemoteCancelled(res.cancelled)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [storeRes, mode, snapshot.code, snapshot.phone, lookupReservation])
+  const cancelled = storeRes ? storeRes.cancelled : remoteCancelled === true
 
   const toggleFolded = () => {
     const next = !folded
@@ -228,9 +259,10 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
   if (folded) {
     return (
       <article
-        className="last-res-item is-folded"
+        className={`last-res-item is-folded${cancelled ? ' is-cancelled' : ''}`}
         data-last-reservation-item={snapshot.code}
         data-last-reservation-folded
+        {...(cancelled ? { 'data-last-reservation-cancelled': true } : {})}
       >
         <div className="last-res-folded">
           <p className="last-res-folded-line">
@@ -239,6 +271,7 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
               ? `${snapshot.zoneLabel} ${snapshot.partySize ?? ''}名`
               : `${snapshot.seatLabels.length}席`}{' '}
             ／ {formatYen(snapshot.amount)}
+            {cancelled && <span className="last-res-folded-cancelled"> ／ キャンセル済み</span>}
           </p>
           <button
             type="button"
@@ -255,32 +288,51 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
   }
 
   return (
-    <article className="last-res-item" data-last-reservation-item={snapshot.code}>
+    <article
+      className={`last-res-item${cancelled ? ' is-cancelled' : ''}`}
+      data-last-reservation-item={snapshot.code}
+      {...(cancelled ? { 'data-last-reservation-cancelled': true } : {})}
+    >
       <div className="last-res-main">
-        <button
-          type="button"
-          className="last-res-qr-toggle"
-          data-last-reservation-qr-toggle
-          aria-expanded={qrExpanded}
-          onClick={() => setQrExpanded((v) => !v)}
-        >
-          {qrUrl ? (
-            <img
-              src={qrUrl}
-              alt={`予約番号 ${snapshot.code} のQRコード`}
-              width={64}
-              height={64}
-            />
-          ) : qrPayload ? (
-            <span className="last-res-qr-loading">QR準備中</span>
-          ) : (
-            <span className="last-res-qr-loading">番号で受付</span>
-          )}
-          <span className="last-res-qr-hint">{qrExpanded ? 'QRを閉じる' : 'QRを拡大'}</span>
-        </button>
+        {cancelled ? (
+          // キャンセル済みの控えには QR を出さない（有効なチケットと
+          // 見分けがつくよう、QR の場所自体を「キャンセル済み」の印にする）
+          <div className="last-res-cancelled-mark" aria-hidden="true">
+            キャンセル
+            <br />
+            済み
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="last-res-qr-toggle"
+            data-last-reservation-qr-toggle
+            aria-expanded={qrExpanded}
+            onClick={() => setQrExpanded((v) => !v)}
+          >
+            {qrUrl ? (
+              <img
+                src={qrUrl}
+                alt={`予約番号 ${snapshot.code} のQRコード`}
+                width={64}
+                height={64}
+              />
+            ) : qrPayload ? (
+              <span className="last-res-qr-loading">QR準備中</span>
+            ) : (
+              <span className="last-res-qr-loading">番号で受付</span>
+            )}
+            <span className="last-res-qr-hint">{qrExpanded ? 'QRを閉じる' : 'QRを拡大'}</span>
+          </button>
+        )}
         <div className="last-res-summary">
           <div className="last-res-head">
             <p className="last-res-code">{snapshot.code}</p>
+            {cancelled && (
+              <span className="cancelled-chip" data-last-reservation-cancelled-chip>
+                キャンセル済み
+              </span>
+            )}
             <button
               type="button"
               className="last-res-fold-toggle"
@@ -304,40 +356,50 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
             <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
           )}
           <p className="last-res-line">合計：{formatYen(snapshot.amount)}</p>
+          {cancelled && (
+            <p className="last-res-cancelled-note">
+              この予約はキャンセルされています。当日、受付ではご利用いただけません。
+              再度ご予約をご希望の場合は、新しくお申し込みください。
+            </p>
+          )}
         </div>
       </div>
-      {qrExpanded && <ReservationQr code={snapshot.code} token={snapshot.qrToken} />}
-      <div className="last-res-share">
-        <a
-          className="last-res-share-btn is-line"
-          data-share="line"
-          href={buildSnapshotLineUrl(snapshot)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          LINEで送る
-        </a>
-        <a
-          className="last-res-share-btn"
-          data-share="mailto"
-          href={buildSnapshotGmailUrl(snapshot)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          ✉ Gmailで送る
-        </a>
-        {calendarUrl && (
+      {!cancelled && qrExpanded && (
+        <ReservationQr code={snapshot.code} token={snapshot.qrToken} />
+      )}
+      {!cancelled && (
+        <div className="last-res-share">
           <a
-            className="last-res-share-btn"
-            data-share="calendar"
-            href={calendarUrl}
+            className="last-res-share-btn is-line"
+            data-share="line"
+            href={buildSnapshotLineUrl(snapshot)}
             target="_blank"
             rel="noreferrer"
           >
-            📅 カレンダーに追加
+            LINEで送る
           </a>
-        )}
-      </div>
+          <a
+            className="last-res-share-btn"
+            data-share="mailto"
+            href={buildSnapshotGmailUrl(snapshot)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            ✉ Gmailで送る
+          </a>
+          {calendarUrl && (
+            <a
+              className="last-res-share-btn"
+              data-share="calendar"
+              href={calendarUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              📅 カレンダーに追加
+            </a>
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -347,8 +409,9 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
  * 完了した予約の控えを新しい順に並べる。完了画面がリロードで消えても、
  * ここから予約番号・座席・QRを再表示できる。1人で2回以上買っても
  * 前の控えは消えない（保持上限つき）。
- * 最新の状態（支払い・キャンセル等）はスナップショットでは分からないため、
- * 予約確認への導線を併記する。
+ * 支払い等の最新状態はスナップショットでは分からないため、予約確認への
+ * 導線を併記する。キャンセル済みだけは R25 で控え自体に反映する
+ * （有効なチケットと見分けがつかない事故を防ぐため。SavedReservationItem 参照）。
  * 各カードは QR を小さなサムネイルで出すコンパクト表示にし（R5-3: 当日の
  * カード積み重なりで座席表が遠くならないように）、タップでその場に
  * 大きな QR を展開する。完了画面の QR は従来どおり大きいまま。

@@ -19,7 +19,7 @@ import {
   type NewReservationInput,
   type Reservation,
 } from './logic'
-import { assignZoneSeats, type ZoneId } from './zones'
+import { assignZoneSeats, manualAssignmentError, type ZoneId } from './zones'
 import { createCloudApi, type CloudApi } from './cloud'
 import { currentSiteUrl } from './share'
 import {
@@ -494,6 +494,17 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           status: target.cancelled ? 'cancelled' : 'active',
         })
         await refreshStaff()
+      },
+      assignSeats: async (reservationId, seatIds) => {
+        // R25: 席の手動指定。まずクライアント側でも同じ基準で検証して
+        // 即時に理由を返し、最終判定はサーバ（staff_assign_seats RPC）に委ねる。
+        // 支払い・来場の状態はサーバ側でも変えない
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target?.cloudId) throw new Error('予約が見つかりません')
+        const problem = manualAssignmentError(dataRef.current, target, seatIds)
+        if (problem) throw new Error(problem)
+        await api().staffAssignSeats(staffPasscode(), target.cloudId, seatIds)
+        await refreshAll()
       },
       toggleBlocked: async (seatId) => {
         const next = applyToggleBlocked(dataRef.current, seatId)

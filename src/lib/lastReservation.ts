@@ -44,6 +44,15 @@ export interface LastReservationSnapshot {
   zoneLabel?: string
   /** ゾーン予約の人数（R12）。zoneLabel と対で使う */
   partySize?: number
+  /**
+   * 申込時の電話番号（正規化済み・数字のみ。R25）。
+   * 控えの現在状態（キャンセル済みかどうか）を、クラウドモードで
+   * 照会 RPC（予約番号＋電話番号）から取り直すために保存する。
+   * 自分の端末・自分の番号であり、申込下書きも同じ形で端末内に残る。
+   * この項目が追加される前に保存された控えには無いため任意項目とし、
+   * 無い場合は端末内ストアで分かる範囲（ローカルモード等）だけを反映する。
+   */
+  phone?: string
 }
 
 /**
@@ -97,6 +106,8 @@ export function parseLastReservationSnapshot(rec: unknown): LastReservationSnaps
     ...(typeof r.partySize === 'number' && Number.isFinite(r.partySize) && r.partySize > 0
       ? { partySize: Math.floor(r.partySize) }
       : {}),
+    // 電話番号は数字のみの形だけを引き継ぐ（壊れた値・旧形式は「無し」として扱う）
+    ...(typeof r.phone === 'string' && /^[0-9]+$/.test(r.phone) ? { phone: r.phone } : {}),
   }
 }
 
