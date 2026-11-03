@@ -151,6 +151,34 @@ describe('支払いと集計', () => {
     expect(t2.unpaidTotal).toBe(0)
     expect(t2.paidSeatCount).toBe(3)
   })
+
+  it('件数＋人数と来場進捗が数えられる（R33 #1/#2）', () => {
+    let data = emptyData()
+    const r1 = reserveOnline(data, ['1F-5-12', '1F-5-13']) // 2名・未払い
+    data = r1.data
+    const r2 = createReservation(data, {
+      seats: seatsOf(['1F-6-10', '1F-6-11', '1F-6-12']),
+      name: '当日',
+      phone: '',
+      note: '',
+      source: 'door',
+    }) // 3名・支払済
+    data = r2.data
+    const t = totals(data, ALL_IDS)
+    expect(t.totalPeople).toBe(5)
+    expect(t.paidReservationCount).toBe(1)
+    expect(t.unpaidReservationCount).toBe(1)
+    expect(t.checkedInCount).toBe(0)
+    expect(t.notCheckedInCount).toBe(2)
+    expect(t.notCheckedInPeople).toBe(5)
+    // 来場済みにすると進捗が移る（キャンセル済みは母数に入らない）
+    const arrived = setCheckedIn(data, r1.reservation.id, true)
+    const t2 = totals(arrived, ALL_IDS)
+    expect(t2.checkedInCount).toBe(1)
+    expect(t2.checkedInPeople).toBe(2)
+    expect(t2.notCheckedInCount).toBe(1)
+    expect(t2.notCheckedInPeople).toBe(3)
+  })
 })
 
 describe('券種（大人・子供など）', () => {

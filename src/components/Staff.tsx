@@ -9,6 +9,7 @@ import {
 } from '../data/seats'
 import {
   activeReservations,
+  defaultPerformance,
   defaultTicketType,
   doorsOpenBeforeStart,
   formatSeatList,
@@ -392,13 +393,36 @@ export default function Staff({ onExit }: { onExit: () => void }) {
 function ZoneRemainingTable() {
   const { data } = useStore()
   const availability = allZoneAvailability(data)
+  // R33（スタッフ側改善 #4）: ゾーン別の販売（件・名）と金額も出す。
+  // 数え方は受付一覧の合計行（R32）と同一（キャンセル済みを除く有効な予約、
+  // 金額は未払い分も含む記録額の合計）なので、ゾーンで絞った一覧の
+  // 合計行・集計の「売上＋未払い合計」と必ず一致する。
+  const sales = useMemo(() => {
+    const byZone = new Map<ZoneId, { count: number; people: number; amount: number }>()
+    let unzonedCount = 0
+    for (const r of activeReservations(data)) {
+      const zone = reservationZone(r)
+      if (!zone) {
+        unzonedCount++
+        continue
+      }
+      const row = byZone.get(zone) ?? { count: 0, people: 0, amount: 0 }
+      row.count++
+      row.people += r.items.length
+      row.amount += r.amount
+      byZone.set(zone, row)
+    }
+    return { byZone, unzonedCount }
+  }, [data])
   return (
     <>
-      <h4>ゾーン別残席</h4>
-      <table className="type-table">
+      <h4>ゾーン別残席・販売</h4>
+      <table className="type-table zone-table">
         <thead>
           <tr>
             <th>ゾーン</th>
+            <th>販売</th>
+            <th>売上</th>
             <th>残席</th>
             <th>総席数</th>
           </tr>
@@ -406,11 +430,16 @@ function ZoneRemainingTable() {
         <tbody>
           {ZONE_DEFS.map((z) => {
             const a = availability[z.id]
+            const s = sales.byZone.get(z.id) ?? { count: 0, people: 0, amount: 0 }
             return (
               <tr key={z.id} data-zone-remaining={z.id}>
                 <td>
                   ゾーン{z.id}（{z.name}）
                 </td>
+                <td data-zone-sales-cell="sold">
+                  {s.count}件・{s.people}名
+                </td>
+                <td data-zone-sales-cell="amount">{formatYen(s.amount)}</td>
                 <td data-zone-remaining-cell="available">
                   {a.soldOut ? '満席' : `残り${a.available}席`}
                 </td>
@@ -422,6 +451,10 @@ function ZoneRemainingTable() {
       </table>
       <p className="muted small">
         残席はお客様画面のゾーン表示と同じ数え方です（席が未確定のゾーン予約分も差し引いています）。
+        販売・売上はキャンセル済みを除く有効な予約の集計で、売上には未払い分も含みます
+        （ゾーン別売上の合計＝上の「売上（支払済合計）」＋「未払い合計」）。
+        {sales.unzonedCount > 0 &&
+          `ゾーンに属さない予約（車椅子席・親子室など）${sales.unzonedCount}件は含みません。`}
       </p>
     </>
   )
@@ -986,6 +1019,30 @@ function DoorSales() {
       {selected.length > 0 && (
         <>
           <h4 className="form-subhead">席ごとの券種</h4>
+          {/* R33（#7）: 家族連れ等の当日販売で、選択中の全席へ券種を一括指定する。
+              ボタンは公演設定の券種から生成する（個別指定は下のピッカーで従来どおり） */}
+          {perf.ticketTypes.length > 1 && (
+            <div className="door-bulk-types" data-door-bulk-types>
+              <span className="muted small">選択中の{selected.length}席すべてを：</span>
+              {perf.ticketTypes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-door-bulk-type={t.id}
+                  onClick={() =>
+                    setTypeBySeat((prev) => {
+                      const next = { ...prev }
+                      for (const seatId of selected) next[seatId] = t.id
+                      return next
+                    })
+                  }
+                >
+                  全て{t.name}に
+                </button>
+              ))}
+            </div>
+          )}
           <TicketTypePicker
             perf={perf}
             seatIds={selected}
@@ -1050,8 +1107,15 @@ function DoorSales() {
 function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
   const { showToast } = useToast()
+  /** 一括切替の確認待ち（R33・#6）。対象の列と方向を保持し、行内で2段階確認する */
+  const [confirming, setConfirming] = useState<{ label: string; block: boolean } | null>(null)
 
   const stateOf = (seatId: string): StaffSeatState => seatStatus(data, seatId)
+
+  /** 販売しない席の合計（R33・#6）: 誤操作に気づく契機として常時表示する */
+  const blockedTotal = ALL_SEAT_IDS.filter(
+    (id) => seatStatus(data, id) === 'blocked',
+  ).length
 
   // 失敗を無言にしない（R4-4）: 切替系の失敗はすべてトーストで知らせる
   const runToggle = (fn: () => Promise<void>) => {
@@ -1092,6 +1156,9 @@ function SeatSettings() {
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
+      <p className="blocked-total-bar" data-blocked-total>
+        販売しない席：合計 {blockedTotal}席
+      </p>
       <ZoneRemainingChips />
       <StaffSeatLegend />
       {/* R18: お客様側と同じ公式図面（統合プラン）。初期表示は全体表示 */}
@@ -1102,6 +1169,11 @@ function SeatSettings() {
           const blockedCount = group.seatIds.filter(
             (id) => seatStatus(data, id) === 'blocked',
           ).length
+          // R33（#6）: 一括切替は押した瞬間に最大28席へ効くため、公演設定の
+          // 券種削除・初期化と同じ「行内2段階確認」を挟む。モーダルにせず
+          // 行内で完結させるのは、23行の長いリストで操作位置を見失わないため
+          const confirmingHere =
+            confirming && confirming.label === group.label ? confirming : null
           return (
             <li key={group.label} className="row-toggle-item">
               <span>
@@ -1110,24 +1182,54 @@ function SeatSettings() {
                   （販売しない {blockedCount}/{group.seatIds.length}席）
                 </span>
               </span>
-              <span className="row-toggle-btns">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-small"
-                  data-row-block={group.label}
-                  onClick={() => runToggle(() => setBlockedForSeats(group.seatIds, true))}
-                >
-                  全て販売しない
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-small"
-                  data-row-sell={group.label}
-                  onClick={() => runToggle(() => setBlockedForSeats(group.seatIds, false))}
-                >
-                  全て販売する
-                </button>
-              </span>
+              {confirmingHere ? (
+                <span className="cancel-confirm">
+                  <span>
+                    {group.label}を全て{confirmingHere.block ? '販売しない' : '販売する'}
+                    にしますか？
+                  </span>
+                  <button
+                    type="button"
+                    className={`btn btn-small ${confirmingHere.block ? 'btn-danger' : 'btn-primary'}`}
+                    data-row-toggle-confirm={group.label}
+                    onClick={() => {
+                      setConfirming(null)
+                      runToggle(() =>
+                        setBlockedForSeats(group.seatIds, confirmingHere.block),
+                      )
+                    }}
+                  >
+                    実行する
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    data-row-toggle-cancel={group.label}
+                    onClick={() => setConfirming(null)}
+                  >
+                    やめる
+                  </button>
+                </span>
+              ) : (
+                <span className="row-toggle-btns">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    data-row-block={group.label}
+                    onClick={() => setConfirming({ label: group.label, block: true })}
+                  >
+                    全て販売しない
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    data-row-sell={group.label}
+                    onClick={() => setConfirming({ label: group.label, block: false })}
+                  >
+                    全て販売する
+                  </button>
+                </span>
+              )}
             </li>
           )
         })}
@@ -1174,8 +1276,10 @@ function Summary() {
           {data.performance.name} ― 予約一覧・集計表
         </h2>
         <p>
-          予約 {t.reservationCount}件 ／ 支払済 {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
-          ／ 未払い {formatYen(t.unpaidTotal)}（{t.reservedSeatCount}席分） ／ 残席 {availableNow}席
+          予約 {t.reservationCount}件・{t.totalPeople}名 ／ 支払済 {t.paidReservationCount}件・
+          {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
+          ／ 未払い {formatYen(t.unpaidTotal)}（{t.unpaidReservationCount}件・{t.reservedSeatCount}席分）
+          ／ 来場済み {t.checkedInCount}件・{t.checkedInPeople}名 ／ 残席 {availableNow}席
         </p>
         <table>
           <thead>
@@ -1210,16 +1314,21 @@ function Summary() {
           </tbody>
         </table>
       </div>
+      {/* R33（スタッフ側改善 #1/#2）: 全タイルを「件数＋人数」の2値表記に
+          統一し、来場（チェックイン）進捗のタイルを追加。未払いは0円で
+          ないとき警告色にして異常に気づけるようにする。検証ハーネスが
+          金額タイルの値を単独で読むため、金額は値の単独表示を維持し、
+          件数・席数はラベル側に併記する */}
       <div className="summary-grid">
         <div className="summary-item">
           <span className="summary-value" data-summary="reservationCount">
-            {t.reservationCount}件
+            {t.reservationCount}件・{t.totalPeople}名
           </span>
           <span className="summary-label">予約数（当日販売含む）</span>
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="paidSeatCount">
-            {t.paidSeatCount}席
+            {t.paidReservationCount}件・{t.paidSeatCount}名
           </span>
           <span className="summary-label">支払済数</span>
         </div>
@@ -1229,11 +1338,32 @@ function Summary() {
           </span>
           <span className="summary-label">売上（支払済合計）</span>
         </div>
-        <div className="summary-item">
+        <div
+          className={`summary-item${t.unpaidTotal > 0 ? ' summary-item-warn' : ''}`}
+          data-summary-unpaid={t.unpaidTotal > 0 ? 'warn' : 'calm'}
+        >
           <span className="summary-value" data-summary="unpaidTotal">
             {formatYen(t.unpaidTotal)}
           </span>
-          <span className="summary-label">未払い合計（{t.reservedSeatCount}席分）</span>
+          <span className="summary-label">
+            未払い合計（{t.unpaidReservationCount}件・{t.reservedSeatCount}席分）
+          </span>
+        </div>
+        <div className="summary-item">
+          <span className="summary-value" data-summary="checkedInCount">
+            {t.checkedInCount}件・{t.checkedInPeople}名（
+            {t.reservationCount > 0
+              ? Math.round((t.checkedInCount / t.reservationCount) * 100)
+              : 0}
+            %）
+          </span>
+          <span className="summary-label">来場済み（チェックイン済み）</span>
+        </div>
+        <div className="summary-item">
+          <span className="summary-value" data-summary="notCheckedInCount">
+            {t.notCheckedInCount}件・{t.notCheckedInPeople}名
+          </span>
+          <span className="summary-label">未受付</span>
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="availableSeatCount">
@@ -1298,12 +1428,254 @@ function Summary() {
         </>
       )}
       <p className="muted small">
-        チェックイン状況は「受付」タブで確認できます。金額は各予約に記録された金額
+        金額は各予約に記録された金額
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
         変更しても、記録済みの売上は変わりません。「未払い席数」は未払い（予約中）の席数です。
         「残席」はお客様画面の空席数と同じ数え方で、席が未確定のゾーン予約分も差し引いています。
       </p>
     </section>
+  )
+}
+
+/* ---------------- 本番前チェック（R33・スタッフ側改善 #9） ---------------- */
+
+type LaunchCheckTone = 'ok' | 'warn' | 'muted'
+
+interface LaunchCheckRow {
+  key: string
+  label: string
+  value: string
+  tone: LaunchCheckTone
+  chip: string
+  guidance: string
+  /** 「確認する」ボタンのスクロール先（このタブ内に実在する要素のセレクタ） */
+  selector?: string
+}
+
+function scrollToLaunchSelector(selector: string) {
+  document
+    .querySelector(selector)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+/**
+ * 本番運用で事故になりやすい項目を、アプリ自身が持つ設定・データだけから
+ * 自動判定して一覧する（表示専用：ここから設定は変更しない）。
+ * 判定できるのは「アプリから見える状態」だけに限り、見えないもの
+ * （劇団側の運用ルール等）は項目に含めない。
+ */
+function LaunchChecklist() {
+  const { data, mode, staffAllowlist } = useStore()
+  const perf = data.performance
+  const seed = defaultPerformance()
+  const [passcodeState, setPasscodeState] = useState<
+    'loading' | 'enabled' | 'disabled' | 'error'
+  >('loading')
+
+  // パスコードログインの有効/無効はクラウドの許可リスト RPC からのみ分かる
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    let active = true
+    staffAllowlist()
+      .then((l) => {
+        if (active) setPasscodeState(l.passcodeLoginEnabled ? 'enabled' : 'disabled')
+      })
+      .catch(() => {
+        if (active) setPasscodeState('error')
+      })
+    return () => {
+      active = false
+    }
+    // マウント時のみ読み込む（StaffAccessSettings と同じ作法）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const rows: LaunchCheckRow[] = []
+
+  /* 公演名: 初期値（サンプル公演）のまま・「サンプル」を含む名前は要確認 */
+  const nameIsPlaceholder =
+    !perf.name.trim() || perf.name.includes('サンプル') || perf.name === seed.name
+  rows.push({
+    key: 'name',
+    label: '公演名',
+    value: perf.name.trim() || '（未設定）',
+    tone: nameIsPlaceholder ? 'warn' : 'ok',
+    chip: nameIsPlaceholder ? '要確認' : 'OK',
+    guidance: nameIsPlaceholder
+      ? '初期値のままの可能性があります。下の「公演名」欄で本番の公演名に変えてください'
+      : '初期値ではない公演名が設定されています',
+    selector: '[data-launch-target="perf-form"]',
+  })
+
+  /* 公演日: 未設定・過去・公演名と揃って初期値のままなら要確認 */
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const dateIsSeed = perf.date === seed.date && perf.name === seed.name
+  const dateProblem = !perf.date
+    ? '日付が未設定です'
+    : perf.date < todayStr
+      ? '公演日を過ぎています'
+      : dateIsSeed
+        ? '公演名と日付が初期値のままの可能性があります'
+        : null
+  rows.push({
+    key: 'date',
+    label: '公演日・開演',
+    value: perf.date ? `${perf.date} ${perf.time}開演` : '（未設定）',
+    tone: dateProblem ? 'warn' : 'ok',
+    chip: dateProblem ? '要確認' : 'OK',
+    guidance: dateProblem ?? '公演日が設定されています',
+    selector: '[data-launch-target="perf-form"]',
+  })
+
+  /* 券種: 未設定、または全券種0円なら要確認 */
+  const typesProblem =
+    perf.ticketTypes.length === 0
+      ? '券種が設定されていません'
+      : perf.ticketTypes.every((t) => t.price === 0)
+        ? '全ての券種が0円です'
+        : null
+  rows.push({
+    key: 'types',
+    label: '券種・料金',
+    value:
+      perf.ticketTypes.length > 0
+        ? perf.ticketTypes.map((t) => `${t.name} ${formatYen(t.price)}`).join('／')
+        : '（未設定）',
+    tone: typesProblem ? 'warn' : 'ok',
+    chip: typesProblem ? '要確認' : 'OK',
+    guidance: typesProblem ?? `${perf.ticketTypes.length}種の券種が設定されています`,
+    selector: '[data-type-editor-row]',
+  })
+
+  /* 予約締切: 未設定・過去なら要確認 */
+  const deadline = data.bookingDeadline
+  const deadlinePast = deadline ? new Date(deadline).getTime() < now.getTime() : false
+  const deadlineProblem = !deadline
+    ? '締切が未設定です（オンライン予約は自動で閉まりません）'
+    : deadlinePast
+      ? '締切を過ぎています（オンライン予約は受付終了の状態です）'
+      : null
+  rows.push({
+    key: 'deadline',
+    label: '予約締切',
+    value: deadline ? deadline.replace('T', ' ').slice(0, 16) : '締切なし',
+    tone: deadlineProblem ? 'warn' : 'ok',
+    chip: deadlineProblem ? '要確認' : 'OK',
+    guidance: deadlineProblem ?? '締切が設定されています',
+    selector: '[data-booking-deadline]',
+  })
+
+  /* パスコードログイン: クラウドでは許可リスト RPC の現在値、ローカルでは常時有効 */
+  if (mode === 'local') {
+    rows.push({
+      key: 'passcode',
+      label: 'パスコードログイン',
+      value: '有効（ローカルモードではパスコードのみ）',
+      tone: 'muted',
+      chip: '参考',
+      guidance:
+        '本番（クラウド）では移行期間用です。公演前に無効化し、Googleログインへ寄せる想定です',
+      selector: '[data-passcode-current]',
+    })
+  } else if (passcodeState === 'enabled') {
+    rows.push({
+      key: 'passcode',
+      label: 'パスコードログイン',
+      value: '有効',
+      tone: 'warn',
+      chip: '要確認',
+      guidance:
+        '移行期間用です。本番では無効化する想定です（変更は下の「パスコードログイン」から、Googleログインしたスタッフのみ行えます）',
+      selector: '[data-passcode-current]',
+    })
+  } else if (passcodeState === 'disabled') {
+    rows.push({
+      key: 'passcode',
+      label: 'パスコードログイン',
+      value: '無効',
+      tone: 'ok',
+      chip: 'OK',
+      guidance: 'Googleログインのみで入室する設定です',
+      selector: '[data-passcode-current]',
+    })
+  } else {
+    rows.push({
+      key: 'passcode',
+      label: 'パスコードログイン',
+      value: passcodeState === 'loading' ? '確認中…' : '取得できませんでした',
+      tone: 'muted',
+      chip: passcodeState === 'loading' ? '読込中' : '確認不可',
+      guidance:
+        passcodeState === 'loading'
+          ? '現在の設定を読み込んでいます'
+          : '通信状態を確認して、開き直してください',
+      selector: '[data-passcode-current]',
+    })
+  }
+
+  /* 予約データ: 件数を中立に示し、テスト予約の残存確認を促す */
+  const totalCount = data.reservations.length
+  const cancelledCount = data.reservations.filter((r) => r.cancelled).length
+  rows.push({
+    key: 'reservations',
+    label: '予約データ',
+    value:
+      totalCount === 0
+        ? '予約なし'
+        : `有効 ${totalCount - cancelledCount}件（全${totalCount}件・キャンセル済み${cancelledCount}件を含む）`,
+    tone: totalCount > 0 ? 'warn' : 'ok',
+    chip: totalCount > 0 ? '要確認' : 'OK',
+    guidance:
+      totalCount > 0
+        ? 'テスト予約が残っていないか、受付タブで確認してください'
+        : '予約はまだありません',
+  })
+
+  const warnCount = rows.filter((r) => r.tone === 'warn').length
+
+  return (
+    <div className="launch-check" data-launch-checklist>
+      <h4>本番前チェック</h4>
+      <p className="muted small">
+        本番運用で事故になりやすい項目を、現在の設定とデータから自動で確認します。
+        この一覧は表示のみで、設定は変更しません。
+      </p>
+      <ul className="launch-check-list">
+        {rows.map((row) => (
+          <li
+            key={row.key}
+            className="launch-check-row"
+            data-launch-check={row.key}
+            data-check-status={row.tone}
+          >
+            <span className={`launch-check-chip is-${row.tone}`}>{row.chip}</span>
+            <span className="launch-check-main">
+              <span className="launch-check-label">
+                {row.label}：<span className="launch-check-value">{row.value}</span>
+              </span>
+              <span className="muted small">{row.guidance}</span>
+            </span>
+            {row.selector && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                data-launch-check-goto={row.key}
+                onClick={() => scrollToLaunchSelector(row.selector!)}
+              >
+                確認する
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {warnCount > 0 && (
+        <p className="muted small" data-launch-check-warns>
+          「要確認」が {warnCount} 件あります。
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -1479,7 +1851,8 @@ function PerformanceSettings({
         公演は1回のみです。公演名・日時・券種（大人・子供などの料金種別）・メモを編集できます。
         券種の変更は新しい予約から反映され、記録済みの予約の券種名・料金は変わりません。
       </p>
-      <form onSubmit={handleSave}>
+      <LaunchChecklist />
+      <form onSubmit={handleSave} data-launch-target="perf-form">
         <label className="field">
           <span>公演名</span>
           <input

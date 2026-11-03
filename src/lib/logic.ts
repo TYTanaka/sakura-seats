@@ -964,6 +964,20 @@ export interface SellerTotals {
 export interface Totals {
   /** 有効な予約の件数 */
   reservationCount: number
+  /** 有効な予約の合計人数（席数） */
+  totalPeople: number
+  /** 支払済みの予約件数 */
+  paidReservationCount: number
+  /** 未払いの予約件数 */
+  unpaidReservationCount: number
+  /** 来場済み（チェックイン済み）の予約件数 */
+  checkedInCount: number
+  /** 来場済みの人数 */
+  checkedInPeople: number
+  /** 未受付の予約件数 */
+  notCheckedInCount: number
+  /** 未受付の人数 */
+  notCheckedInPeople: number
   /** 予約済み（未払い）の席数 */
   reservedSeatCount: number
   /** 支払済みの席数 */
@@ -1000,11 +1014,30 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   // 現在の設定にある券種は、実績がなくても行を用意する
   for (const type of data.performance.ticketTypes) typeRow(type.name)
   const bySellerMap = new Map<string, SellerTotals>()
+  let totalPeople = 0
+  let paidReservationCount = 0
+  let unpaidReservationCount = 0
+  let checkedInCount = 0
+  let checkedInPeople = 0
+  let notCheckedInCount = 0
+  let notCheckedInPeople = 0
   for (const res of active) {
     // 席数は明細の件数（＝人数）で数える。ゾーン予約は支払いまで席が
     // 未確定（seatIds が空）でも、人数分の予約として数えるため（R12）。
     // 従来型の予約では明細数と席数は常に一致する。
     const party = res.items.length
+    totalPeople += party
+    if (res.paid) paidReservationCount++
+    else unpaidReservationCount++
+    // 来場（チェックイン）進捗（R33・スタッフ側改善 #1）。キャンセル済みは
+    // active の時点で除かれているため、受付一覧の既定表示とも一致する
+    if (res.checkedIn) {
+      checkedInCount++
+      checkedInPeople += party
+    } else {
+      notCheckedInCount++
+      notCheckedInPeople += party
+    }
     if (res.seller) {
       let row = bySellerMap.get(res.seller)
       if (!row) {
@@ -1055,6 +1088,13 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   availableSeatCount = Math.max(0, availableSeatCount - holdSeats)
   return {
     reservationCount: active.length,
+    totalPeople,
+    paidReservationCount,
+    unpaidReservationCount,
+    checkedInCount,
+    checkedInPeople,
+    notCheckedInCount,
+    notCheckedInPeople,
     reservedSeatCount,
     paidSeatCount,
     salesTotal,

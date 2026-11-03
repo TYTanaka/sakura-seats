@@ -1981,6 +1981,117 @@ button.seat-available:hover {
   color: var(--muted);
 }
 
+/* R33（スタッフ側改善 #4）: ゾーン表は5列あり、狭幅ではセル余白を詰めて
+   最終列（総席数）がカード端で窮屈にならないようにする */
+@media (max-width: 480px) {
+  .zone-table th,
+  .zone-table td {
+    padding: 6px 6px;
+  }
+}
+
+/* R33（スタッフ側改善 #2）: 未払いが0円でないときの集計タイルの警告表現。
+   0円のときは通常タイルのまま（calm）にして、異常だけが目に留まるようにする */
+.summary-item-warn {
+  background: #fdeceb;
+  border-color: #e0492f;
+}
+
+.summary-item-warn .summary-value {
+  color: #a02c1a;
+}
+
+/* R33（スタッフ側改善 #6）: 販売設定タブ上部の「販売しない席」合計バー */
+.blocked-total-bar {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  background: var(--lavender-pale);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+/* R33（スタッフ側改善 #7）: 当日販売の券種一括指定ボタン行 */
+.door-bulk-types {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+/* R33（スタッフ側改善 #9）: 公演設定の「本番前チェック」 */
+.launch-check {
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin: 12px 0 16px;
+  background: var(--paper);
+}
+
+.launch-check h4 {
+  margin: 0 0 4px;
+}
+
+.launch-check-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.launch-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.launch-check-chip {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.launch-check-chip.is-ok {
+  background: var(--mint-pale);
+  color: #1e7a5a;
+}
+
+.launch-check-chip.is-warn {
+  background: #fdeceb;
+  color: #a02c1a;
+}
+
+.launch-check-chip.is-muted {
+  background: var(--lavender-pale);
+  color: var(--muted);
+}
+
+.launch-check-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.launch-check-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.launch-check-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 /* R26（ラウンド11・N3-1）: 当日販売・販売設定の座席表の上に出す
    ゾーン別残席チップ。お客様側のゾーン残席と同じ数え方 */
 .zone-remaining-chips {
