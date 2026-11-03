@@ -1497,6 +1497,28 @@ button.seat-available:hover {
   color: var(--error);
 }
 
+/* R26（ラウンド11・N3-2）: 未払い予約の「受付完了」金額入り確認。
+   主ボタンのあった全幅の位置に出し、金額を目立たせてから確定させる */
+.complete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fdf3e0;
+  border: 1.5px solid var(--gold-deep, #e8a100);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+.complete-confirm .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .row-toggle-list {
   list-style: none;
   margin: 0;
@@ -1823,6 +1845,31 @@ button.seat-available:hover {
 
 .summary-label {
   font-size: 12px;
+  color: var(--muted);
+}
+
+/* R26（ラウンド11・N3-1）: 当日販売・販売設定の座席表の上に出す
+   ゾーン別残席チップ。お客様側のゾーン残席と同じ数え方 */
+.zone-remaining-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.zone-remaining-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--lavender-pale);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--burgundy);
+  white-space: nowrap;
+}
+
+.zone-remaining-chip.is-soldout {
+  background: #ece7e2;
   color: var(--muted);
 }
 

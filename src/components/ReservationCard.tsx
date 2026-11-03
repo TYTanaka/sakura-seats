@@ -70,6 +70,15 @@ export default function ReservationCard({
    * 通常表示に畳み、モーダルの「やめる」・背景・Escape は閉じるだけ。
    */
   const [cancelStep, setCancelStep] = useState<'idle' | 'inline' | 'modal'>('idle')
+  /**
+   * 受付完了の確認段階（R26・ラウンド11 N3-2）: 未払いの予約では
+   * 「受付完了（支払い＋来場）」を押しただけでは完了させず、金額入りの
+   * 軽い確認（「合計◯円を受け取りましたか？」）を1段挟む。
+   * 「チェックインだけして」という口頭指示で主ボタンを押した新人が、
+   * 現金未収なのに支払い済みにしてしまう事故を防ぐため。
+   * 支払い済み（来場だけが残っている）予約は従来どおりワンタップで速く。
+   */
+  const [completeConfirm, setCompleteConfirm] = useState(false)
   /** モーダルのパネルと、閉じたときにフォーカスを戻す先（予約キャンセルボタン） */
   const modalPanelRef = useRef<HTMLDivElement>(null)
   const cancelTriggerRef = useRef<HTMLButtonElement>(null)
@@ -238,16 +247,46 @@ export default function ReservationCard({
 
       {!res.cancelled ? (
         <div className="reservation-actions">
-          {!receptionDone && (
-            <button
-              type="button"
-              data-action="complete"
-              className="toggle-btn complete-btn reservation-primary"
-              onClick={() => onComplete(res)}
-            >
-              受付完了（支払い＋来場）
-            </button>
-          )}
+          {!receptionDone &&
+            (completeConfirm && !res.paid ? (
+              // R26（N3-2）: 未払いの場合の金額入り確認。実際に完了するのは
+              // 「受け取った」からだけ（キャンセルの2段階確認と同じ作法）
+              <span className="complete-confirm" data-complete-confirm>
+                合計{formatYen(reservationTotal(res))}を受け取りましたか？
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  data-complete-confirm-ok
+                  onClick={() => {
+                    setCompleteConfirm(false)
+                    onComplete(res)
+                  }}
+                >
+                  受け取って受付完了
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-complete-confirm-abort
+                  onClick={() => setCompleteConfirm(false)}
+                >
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                data-action="complete"
+                className="toggle-btn complete-btn reservation-primary"
+                onClick={() => {
+                  // 未払いは確認を挟む。支払い済みはワンタップのまま
+                  if (!res.paid) setCompleteConfirm(true)
+                  else onComplete(res)
+                }}
+              >
+                受付完了（支払い＋来場）
+              </button>
+            ))}
           <div className="reservation-subactions">
             <button
               type="button"

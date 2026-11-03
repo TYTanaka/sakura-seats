@@ -22,7 +22,12 @@ import {
   type Reservation,
   type TicketType,
 } from '../lib/logic'
-import { reservationSeatDisplay, totalAvailableSeats } from '../lib/zones'
+import {
+  allZoneAvailability,
+  reservationSeatDisplay,
+  totalAvailableSeats,
+  ZONE_DEFS,
+} from '../lib/zones'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
 import {
   authBadgeLabel,
@@ -372,6 +377,78 @@ export default function Staff({ onExit }: { onExit: () => void }) {
   )
 }
 
+/* ---------------- ゾーン別残席（R26・ラウンド11 N3-1） ---------------- */
+
+/**
+ * ゾーン別残席の小表（集計タブ用）。スタッフ画面内にはゾーン別の残席が
+ * なく、「ゾーンCはあと何席？」に答えるにはお客様画面へ出るしかなかった。
+ * 数え方はお客様側のゾーン表示と同一経路（zones.allZoneAvailability:
+ * 物理空席 − 未割当ホールド）なので、ヒーローの空席数とも矛盾しない。
+ */
+function ZoneRemainingTable() {
+  const { data } = useStore()
+  const availability = allZoneAvailability(data)
+  return (
+    <>
+      <h4>ゾーン別残席</h4>
+      <table className="type-table">
+        <thead>
+          <tr>
+            <th>ゾーン</th>
+            <th>残席</th>
+            <th>総席数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ZONE_DEFS.map((z) => {
+            const a = availability[z.id]
+            return (
+              <tr key={z.id} data-zone-remaining={z.id}>
+                <td>
+                  ゾーン{z.id}（{z.name}）
+                </td>
+                <td data-zone-remaining-cell="available">
+                  {a.soldOut ? '満席' : `残り${a.available}席`}
+                </td>
+                <td data-zone-remaining-cell="total">{a.total}席</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <p className="muted small">
+        残席はお客様画面のゾーン表示と同じ数え方です（席が未確定のゾーン予約分も差し引いています）。
+      </p>
+    </>
+  )
+}
+
+/**
+ * ゾーン別残席のコンパクト表示（当日販売・販売設定の座席表の上用）。
+ * 座席表を見ながら「どのゾーンにあと何席あるか」をその場で確認できる。
+ * 数え方は ZoneRemainingTable・お客様側と同一経路。
+ */
+function ZoneRemainingChips() {
+  const { data } = useStore()
+  const availability = allZoneAvailability(data)
+  return (
+    <p className="zone-remaining-chips" data-zone-remaining-chips aria-label="ゾーン別残席">
+      {ZONE_DEFS.map((z) => {
+        const a = availability[z.id]
+        return (
+          <span
+            key={z.id}
+            className={`zone-remaining-chip${a.soldOut ? ' is-soldout' : ''}`}
+            data-zone-remaining={z.id}
+          >
+            {z.id} 残り{a.available}
+          </span>
+        )
+      })}
+    </p>
+  )
+}
+
 /* ---------------- 受付 ---------------- */
 
 function Reception() {
@@ -663,6 +740,7 @@ function DoorSales() {
     <section className="card">
       <h3>当日販売</h3>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
+      <ZoneRemainingChips />
       <StaffSeatLegend />
       {/* R18: お客様側と同じ公式図面（統合プラン）。当日販売は開いた直後から
           席を指で狙う作業なので、全体表示（席が約8px）ではなく拡大表示
@@ -783,6 +861,7 @@ function SeatSettings() {
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
+      <ZoneRemainingChips />
       <StaffSeatLegend />
       {/* R18: お客様側と同じ公式図面（統合プラン）。初期表示は全体表示 */}
       <StaffSeatMap data={data} stateOf={stateOf} onSeatTap={handleTap} />
@@ -938,6 +1017,7 @@ function Summary() {
           <span className="summary-label">販売しない席</span>
         </div>
       </div>
+      <ZoneRemainingTable />
       <h4>券種別内訳</h4>
       <table className="type-table">
         <thead>

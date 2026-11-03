@@ -9,6 +9,7 @@ import {
   type Performance,
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
+import { lookupReceiptCancelled } from './lib/receiptStatus'
 import { SEATS_UNDECIDED_NOTICE, totalAvailableSeats } from './lib/zones'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
@@ -227,25 +228,30 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
    * - 端末内ストアにその予約がある場合（ローカルモード／スタッフ入室中の
    *   クラウド）は、その状態が最新で、そのまま追随する
    * - クラウドのお客様画面ではストアに自分の予約が無いため、控えに残した
-   *   電話番号（R25〜の控えのみ）で照会 RPC から状態を取り直す（1回だけ）
+   *   電話番号（R25〜の控えのみ）で照会 RPC から状態を取り直す
    * 取得できない・失敗した場合は「不明」として従来表示を保つ
    * （有効な予約を誤ってキャンセル扱いする方が悪いため）。
+   *
+   * R26（ラウンド11・C-1R）: 照会は receiptStatus の共有キャッシュ経由に
+   * 変えた。旧実装は「照会済み」の印を立ててから await し、応答前に
+   * ストア再描画で effect が cleanup されると in-flight な結果が破棄され、
+   * 再実行も印に阻まれて二度と反映されなかった（応答が遅いと控えが
+   * キャンセル済みに反転しない）。共有キャッシュでは Promise が
+   * コンポーネントの外に残るため、cleanup 後に再実行された effect が
+   * 購読し直せば遅れた応答も届く。「不明」の間は従来表示のまま（安全側）。
    */
   const storeRes = data.reservations.find((r) => r.id === snapshot.code)
   const [remoteCancelled, setRemoteCancelled] = useState<boolean | null>(null)
-  const statusCheckedRef = useRef<string | null>(null)
   useEffect(() => {
     if (storeRes || mode !== 'cloud' || !snapshot.phone) return
-    if (statusCheckedRef.current === snapshot.code) return
-    statusCheckedRef.current = snapshot.code
-    let active = true
-    void lookupReservation(snapshot.code, snapshot.phone)
-      .then((res) => {
-        if (active && res) setRemoteCancelled(res.cancelled)
-      })
-      .catch(() => undefined)
+    let subscribed = true
+    void lookupReceiptCancelled(lookupReservation, snapshot.code, snapshot.phone).then(
+      (v) => {
+        if (subscribed && v !== null) setRemoteCancelled(v)
+      },
+    )
     return () => {
-      active = false
+      subscribed = false
     }
   }, [storeRes, mode, snapshot.code, snapshot.phone, lookupReservation])
   const cancelled = storeRes ? storeRes.cancelled : remoteCancelled === true

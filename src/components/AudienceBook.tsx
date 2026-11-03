@@ -655,8 +655,11 @@ export default function AudienceBook({
               {/* R25（ラウンド10・G-1）: 上限に達したら理由と次の手を出す。
                   以前はステッパーが8名で静かに止まり、団体客が理由も
                   申し込み方も分からなかった */}
+              {/* R26（ラウンド11・N5-1）: role="status"（aria-live="polite" 相当）を
+                  付け、スクリーンリーダーにも理由と次の手が能動的に伝わるようにする。
+                  同種の一次的な案内（締切・満席の注記、トースト）は既に status 付き */}
               {partySize >= MAX_ONLINE_SEATS && (
-                <p className="party-cap-note" data-party-cap-note>
+                <p className="party-cap-note" data-party-cap-note role="status">
                   一度に申し込めるのは{MAX_ONLINE_SEATS}名までです。
                   9名以上の場合は、続けて2回に分けてお申し込みいただくか、
                   主催者へご連絡ください。
