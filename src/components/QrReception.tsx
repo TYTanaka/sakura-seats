@@ -1,10 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Reservation } from '../lib/logic'
 import type { BarcodeDetectorLike } from '../lib/qr'
 import { parseQrPayload } from '../lib/qrToken'
 import { useStore, type CheckInOutcome } from '../lib/store'
 import { useToast } from '../lib/toast'
+import { allZoneAvailability, reservationSeatDisplay } from '../lib/zones'
 import ReservationCard, { formatCheckedInAt } from './ReservationCard'
+import ZoneSeatMap from './ZoneSeatMap'
+
+/**
+ * R17: 受付結果に添える座席表。「お席はここです」と指せるよう、
+ * 割り当てられた席だけを公式図形の座席表の上で光らせる（表示専用）。
+ * 席が無い結果（失敗・未割当）では何も出さない。
+ */
+function AssignedSeatMap({ reservation }: { reservation: Reservation | null }) {
+  const { data } = useStore()
+  const availability = useMemo(() => allZoneAvailability(data), [data])
+  if (!reservation || reservation.seatIds.length === 0) return null
+  return (
+    <div className="qr-outcome-map" data-qr-seat-map>
+      <p className="qr-outcome-map-label">お席の場所（光っている席です）</p>
+      <ZoneSeatMap
+        data={data}
+        availability={availability}
+        onPick={() => {}}
+        disabled
+        mini
+        highlightSeats={reservation.seatIds}
+      />
+    </div>
+  )
+}
 
 /**
  * カメラの状態。行き止まりを作らないため、使えない理由ごとに分ける（R7）。
@@ -28,7 +54,7 @@ type ScanOutcome =
   | { kind: 'server-pending' }
   | { kind: 'legacy'; code: string }
   | { kind: 'invalid' }
-  | { kind: 'error' }
+  | { kind: 'error'; message?: string }
 
 
 
@@ -158,8 +184,14 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
             setOutcome({ kind: 'not-found' })
             break
         }
-      } catch {
-        setOutcome({ kind: 'error' })
+      } catch (e) {
+        // R17: 席を自動で割り当てられなかった場合は、理由をそのまま見せる
+        // （汎用の「照合に失敗しました」ではスタッフが次に何をすべきか分からない）
+        const message =
+          e instanceof Error && e.message.includes('割り当て')
+            ? e.message
+            : undefined
+        setOutcome({ kind: 'error', message })
       } finally {
         setVerifying(false)
       }
@@ -422,7 +454,16 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
           data-qr-outcome={outcome.kind}
         >
           {outcome.kind === 'checked-in' && (
-            <p className="qr-outcome-title">✓ 受付が完了しました</p>
+            <>
+              <p className="qr-outcome-title">✓ 受付が完了しました</p>
+              {outcome.outcome.reservation &&
+                outcome.outcome.reservation.seatIds.length > 0 && (
+                  <p className="qr-outcome-seats" data-qr-assigned-seats>
+                    お席：{reservationSeatDisplay(outcome.outcome.reservation).text}
+                  </p>
+                )}
+              <AssignedSeatMap reservation={outcome.outcome.reservation} />
+            </>
           )}
           {outcome.kind === 'already' && (
             <>
@@ -432,6 +473,13 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
                   ? `${formatCheckedInAt(outcome.outcome.checkedInAt)} に受付済みです。二重受付はされません。`
                   : 'すでに受付済みです。二重受付はされません。'}
               </p>
+              {outcome.outcome.reservation &&
+                outcome.outcome.reservation.seatIds.length > 0 && (
+                  <p className="qr-outcome-seats" data-qr-assigned-seats>
+                    お席：{reservationSeatDisplay(outcome.outcome.reservation).text}
+                  </p>
+                )}
+              <AssignedSeatMap reservation={outcome.outcome.reservation} />
             </>
           )}
           {outcome.kind === 'cancelled' && (
@@ -485,9 +533,12 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
           )}
           {outcome.kind === 'error' && (
             <>
-              <p className="qr-outcome-title">照合に失敗しました</p>
+              <p className="qr-outcome-title">
+                {outcome.message ? '席を用意できませんでした' : '照合に失敗しました'}
+              </p>
               <p className="small">
-                接続を確認してもう一度お試しいただくか、下の欄に予約番号を入力してください。
+                {outcome.message ??
+                  '接続を確認してもう一度お試しいただくか、下の欄に予約番号を入力してください。'}
               </p>
             </>
           )}

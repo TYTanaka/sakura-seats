@@ -83,6 +83,7 @@ export default function ZoneSeatMap({
   disabled = false,
   selectedZone = null,
   mini = false,
+  highlightSeats,
 }: {
   data: AppData
   availability: Record<ZoneId, ZoneAvailability>
@@ -93,8 +94,18 @@ export default function ZoneSeatMap({
   selectedZone?: ZoneId | null
   /** 確認用の静止画モード（申込フォーム内のミニ座席表。操作・拡大・一覧なし） */
   mini?: boolean
+  /**
+   * 個別の席を光らせる（R17: QR受付の結果で「お客様の席はここ」と指せるように）。
+   * 指定した席だけを金色のリング＋鼓動で示し、ほかの席は少し落とす。
+   * 表示専用（mini + disabled と組み合わせて使う想定）。
+   */
+  highlightSeats?: string[]
 }) {
   const layout = useMemo(() => buildZoneMapLayout(data), [data])
+  const highlightSet = useMemo(
+    () => new Set(highlightSeats ?? []),
+    [highlightSeats],
+  )
 
   /** タップしたゾーンの一瞬のハイライト（割当できない案内時にも残る） */
   const [flash, setFlash] = useState<ZoneId | null>(null)
@@ -312,6 +323,16 @@ export default function ZoneSeatMap({
   })
 
   const renderCell = (c: ZoneMapLayoutCell) => {
+    // R17: 個別席ハイライト（受付結果の「あなたの席」表示）
+    const isHighlighted = highlightSet.has(c.seatId)
+    const highlightCls = isHighlighted
+      ? ' is-seat-highlight'
+      : highlightSet.size > 0
+        ? ' is-dimmed'
+        : ''
+    const highlightAttr = isHighlighted
+      ? { 'data-seat-highlight': 'true' }
+      : {}
     if (!c.zone) {
       const seat = seatById(c.seatId)
       const label =
@@ -321,11 +342,12 @@ export default function ZoneSeatMap({
       return (
         <span
           key={c.seatId}
-          className="zseat-cell is-neutral zplan-cell"
+          className={`zseat-cell is-neutral zplan-cell${highlightCls}`}
           style={cellStyle(c)}
           data-zone-seat={c.seatId}
           data-zone=""
           data-seat-status={c.status}
+          {...highlightAttr}
         >
           {label}
         </span>
@@ -347,6 +369,7 @@ export default function ZoneSeatMap({
         : selectedZone
           ? ' is-dimmed'
           : '') +
+      highlightCls +
       ' zplan-cell' +
       (c.shape === 'diamond' ? ' is-diamond' : '')
     const seat = seatById(c.seatId)
@@ -359,6 +382,7 @@ export default function ZoneSeatMap({
         data-zone-seat={c.seatId}
         data-zone={zone}
         data-seat-status={seatStatus}
+        {...highlightAttr}
         disabled={disabled || a.soldOut}
         onClick={() => handlePick(zone, 'map')}
         aria-pressed={selectedZone === zone}
@@ -518,8 +542,10 @@ export default function ZoneSeatMap({
                 {/* 全席セル */}
                 {layout.cells.map(renderCell)}
 
-                {/* ゾーンバッジ */}
-                {layout.anchors.map((an) => {
+                {/* ゾーンバッジ（席ハイライト表示では残り席数バッジが
+                    お客様の席を隠すので出さない） */}
+                {highlightSet.size === 0 &&
+                  layout.anchors.map((an) => {
                   const a = availability[an.zone]
                   const def = ZONE_DEF_BY_ID.get(an.zone)!
                   const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'

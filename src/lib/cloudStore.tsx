@@ -265,6 +265,60 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    /**
+     * R17: QR受付で「席が必要」と返ったときの2段階目の処理。
+     * 最新の占有状態を取り直し、支払い時と同じ詰め方（assignZoneSeats）で
+     * ゾーン内に席を選んで、席付きでもう一度 staff_check_in を呼ぶ。
+     * 席が他の受付と重なったら（SEAT_TAKEN）取り直して最大2回まで再試行する。
+     * どうしても席を用意できない場合は、受付せずに理由を例外で伝える。
+     */
+    const checkInAssigningSeats = async (
+      token: string,
+      summary: Reservation | null,
+    ): Promise<Awaited<ReturnType<CloudApi['staffCheckIn']>>> => {
+      const zone = summary?.zone
+      const partySize = summary?.items.length ?? 0
+      if (!zone || partySize === 0) {
+        throw new Error(
+          '席を自動で割り当てできませんでした。受付一覧から席を確認して、手動で受付してください',
+        )
+      }
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        await refreshAll()
+        const assignment = assignZoneSeats(
+          dataRef.current,
+          zone as ZoneId,
+          partySize,
+        )
+        if (!assignment) {
+          throw new Error(
+            '席を自動で割り当てできませんでした（このゾーンに空席が足りません）。受付一覧から席を確認して、手動で受付してください',
+          )
+        }
+        const outcome = await api().staffCheckIn(
+          staffPasscode(),
+          token,
+          assignment.seatIds,
+        )
+        if (outcome.result === 'SEAT_TAKEN') {
+          if (attempt < 2) continue
+          throw new Error(
+            '席が他の受付と重なってしまいました。もう一度QRコードを読み取ってください',
+          )
+        }
+        if (outcome.result === 'SEAT_INVALID' || outcome.result === 'NEEDS_SEATS') {
+          throw new Error(
+            '席を自動で割り当てできませんでした。受付一覧から席を確認して、手動で受付してください',
+          )
+        }
+        return outcome
+      }
+      // ループは必ず return / throw するが、型のために到達不能な例外を置く
+      throw new Error(
+        '席を自動で割り当てできませんでした。受付一覧から席を確認して、手動で受付してください',
+      )
+    }
+
     return {
       data,
       mode: 'cloud',
@@ -344,10 +398,19 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       },
       checkInByToken: async (token): Promise<CheckInOutcome> => {
         try {
-          const outcome = await api().staffCheckIn(staffPasscode(), token)
+          // R17: まず席なしで照合する。未割当のゾーン予約なら NEEDS_SEATS が
+          // 返るので、席を詰めてから再送し、割当と受付を原子的に行う
+          let outcome = await api().staffCheckIn(staffPasscode(), token, null)
+          if (outcome.result === 'NEEDS_SEATS') {
+            outcome = await checkInAssigningSeats(token, outcome.reservation)
+          }
           // 受付状態が変わる（または既に変わっていた）ためスタッフデータを最新化する
           await refreshStaff()
-          return outcome
+          return {
+            result: outcome.result as CheckInOutcome['result'],
+            reservation: outcome.reservation,
+            checkedInAt: outcome.checkedInAt,
+          }
         } catch (e) {
           // R7 の RPC が未適用の間は「サーバ更新待ち」として返す（行き止まりにしない）
           if (e instanceof Error && e.message.includes('migration_sakura_r7')) {
@@ -393,6 +456,25 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             target.cloudId,
             assignment.seatIds,
             false,
+          )
+          await refreshAll()
+          return
+        }
+        // R17: 受付時に席が割り当て済み（未払い）のゾーン予約は、同じ席を
+        // そのまま staff_assign_and_pay に渡して支払いを確定する
+        // （サーバ側で「自分の席」として扱われ、seat_state が sold になる）
+        if (
+          isZoneBooking(target) &&
+          value &&
+          !target.paid &&
+          !target.cancelled &&
+          target.seatIds.length > 0
+        ) {
+          await api().staffAssignAndPay(
+            staffPasscode(),
+            target.cloudId,
+            target.seatIds,
+            target.checkedIn,
           )
           await refreshAll()
           return
@@ -460,6 +542,23 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             staffPasscode(),
             target.cloudId,
             assignment.seatIds,
+            true,
+          )
+          await refreshAll()
+          return
+        }
+        // R17: 受付時に席が割り当て済み（未払い）なら、同じ席で支払いも
+        // 確定する（seat_state を sold に揃えるため assign_and_pay を使う）
+        if (
+          isZoneBooking(target) &&
+          !target.paid &&
+          !target.cancelled &&
+          target.seatIds.length > 0
+        ) {
+          await api().staffAssignAndPay(
+            staffPasscode(),
+            target.cloudId,
+            target.seatIds,
             true,
           )
           await refreshAll()

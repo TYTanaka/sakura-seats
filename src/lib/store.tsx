@@ -114,6 +114,8 @@ export interface Store {
    * QR受付: トークンを検証して受付する（R7）。
    * クラウド: staff_check_in RPC がサーバ検証する（未適用なら SERVER_PENDING）。
    * ローカル: checkInByToken（logic）と同じ規則で端末内検証する。
+   * R17: ゾーン予約で席が未割当なら、受付と同時にゾーン内で席を割り当てる
+   * （支払い状態は変えない）。席を用意できない場合は受付せず例外を投げる。
    */
   checkInByToken: (token: string) => Promise<CheckInOutcome>
   setPaid: (reservationId: string, value: boolean) => Promise<void>
@@ -387,7 +389,42 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           dataRef.current,
           token,
         )
-        if (result === 'OK') commit(next)
+        if (result !== 'OK') {
+          return {
+            result,
+            reservation,
+            checkedInAt: reservation?.checkedInAt ?? null,
+          }
+        }
+        // R17: ゾーン予約で席が未割当なら、受付と同時に席を決める
+        // （支払い時と同じ詰め方。支払い状態は触らない）。
+        // 席を用意できない場合は受付を取り消して（commit しない）例外にする
+        if (reservation && isUnassignedZoneBooking(reservation)) {
+          const assignment = assignZoneSeats(
+            next,
+            reservation.zone as ZoneId,
+            reservation.items.length,
+          )
+          if (!assignment) {
+            throw new Error(
+              '席を自動で割り当てできませんでした（このゾーンに空席が足りません）。受付一覧から席を確認して、手動で受付してください',
+            )
+          }
+          const withSeats = assignSeatsToReservation(
+            next,
+            reservation.id,
+            assignment.seatIds,
+          )
+          commit(withSeats)
+          const updated =
+            withSeats.reservations.find((r) => r.id === reservation.id) ?? null
+          return {
+            result,
+            reservation: updated,
+            checkedInAt: updated?.checkedInAt ?? null,
+          }
+        }
+        commit(next)
         return {
           result,
           reservation,

@@ -1860,6 +1860,24 @@ button.seat-available:hover {
   margin: 0 0 4px;
 }
 
+/* R17: 受付で決まった席は、その場でお客様に伝えられるよう大きく出す */
+.qr-outcome-seats {
+  font-weight: 800;
+  font-size: 18px;
+  color: #173a5e;
+}
+
+/* R17: 受付結果の座席表（割当席を光らせて「ここの席です」と指せるように） */
+.qr-outcome-map {
+  margin-top: 8px;
+}
+.qr-outcome-map-label {
+  font-weight: 700;
+  font-size: 13px;
+  color: #173a5e;
+  margin: 0 0 4px;
+}
+
 .qr-outcome-checked-in {
   border-color: #2e9e5b;
   background: #edf9f1;
@@ -3049,6 +3067,35 @@ button.zseat-cell:active {
 .zseat-cell.is-dimmed {
   opacity: 0.35;
 }
+
+/* R17: QR受付の結果で「お客様の席」を指せるよう、割当席だけを金色に光らせる。
+   仮選択（is-selected）と同じ光らせ方で、色だけを席共通の金にする */
+.zseat-cell.is-seat-highlight {
+  /* 埋まった席（暗色）の上でも一目で分かるよう、金色に塗り替えて光らせる */
+  background: #ffc21f;
+  filter: brightness(1.15);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #e8a100,
+    0 0 14px 3px rgba(232, 161, 0, 0.9);
+  z-index: 2;
+  animation: zseat-highlight-pulse 1.8s ease-in-out infinite;
+}
+@keyframes zseat-highlight-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 4px #e8a100,
+      0 0 9px 2px rgba(232, 161, 0, 0.75);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 4px #e8a100,
+      0 0 18px 5px rgba(232, 161, 0, 0.95);
+  }
+}
 .zbadge.is-selected {
   z-index: 3;
   transform: translate(-50%, -50%) scale(1.12);
@@ -3189,6 +3236,7 @@ button.zseat-cell:active {
 
 @media (prefers-reduced-motion: reduce) {
   .zseat-cell.is-selected,
+  .zseat-cell.is-seat-highlight,
   .zone-decision-bar,
   .zone-bottom-notice {
     animation: none;

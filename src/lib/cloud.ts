@@ -46,6 +46,19 @@ export interface StaffData {
   reservations: Reservation[]
 }
 
+/**
+ * staff_check_in の結果コード（R17）。画面向けの CheckInResult に、
+ * 席の同時割当のためのストア内部コード3つを加えたもの:
+ * NEEDS_SEATS（席の詰め直しが必要）/ SEAT_TAKEN（席が使われていた）/
+ * SEAT_INVALID（席の指定が不正）。この3つは cloudStore が処理し、
+ * 画面（CheckInOutcome）には出さない。
+ */
+export type StaffCheckInResult =
+  | CheckInResult
+  | 'NEEDS_SEATS'
+  | 'SEAT_TAKEN'
+  | 'SEAT_INVALID'
+
 /** RPC が使う最小限のクライアント形状（テストでモックしやすくするため） */
 export interface RpcClient {
   rpc: (
@@ -588,22 +601,32 @@ export class CloudApi {
   }
 
   /**
-   * QR受付（staff_check_in RPC・R7）。トークンをサーバで検証し、受付を記録する。
+   * QR受付（staff_check_in RPC・R7 / R17）。トークンをサーバで検証し、受付を記録する。
    * 業務結果は例外ではなく JSON { ok, result } で返るので result をそのまま返す。
    * 予約が見つかった場合は画面表示用の要約（Reservation 形式）も返す。
    * RPC 自体が未適用の DB では call が専用エラー（migration_sakura_r7 案内）を投げる。
+   *
+   * R17: ゾーン予約で席が未割当なら、席なし（seatIds = null）の呼び出しは
+   * 受付されず 'NEEDS_SEATS' が返る。呼び出し側（cloudStore）が最新の
+   * 空席から席を詰めて seatIds 付きで再送すると、割当と受付が原子的に
+   * 行われる。席が使われていた場合は 'SEAT_TAKEN'、席の指定自体が
+   * 不正な場合は 'SEAT_INVALID' が返る（どちらも受付はされない）。
+   * これら3つはストア内部の制御用で、画面向けの CheckInResult には
+   * 含めない。
    */
   async staffCheckIn(
     passcode: string,
     token: string,
+    seatIds: string[] | null = null,
   ): Promise<{
-    result: CheckInResult
+    result: StaffCheckInResult
     reservation: Reservation | null
     checkedInAt: string | null
   }> {
     const raw = (await this.call<unknown>('staff_check_in', {
       p_passcode: passcode,
       p_token: token,
+      p_seat_ids: seatIds,
     })) as {
       result?: unknown
       code?: unknown
@@ -617,12 +640,15 @@ export class CloudApi {
       perfDate?: unknown
       perfName?: unknown
     } | null
-    const known: CheckInResult[] = [
+    const known: StaffCheckInResult[] = [
       'OK',
       'ALREADY_CHECKED_IN',
       'CANCELLED',
       'WRONG_PERFORMANCE',
       'NOT_FOUND',
+      'NEEDS_SEATS',
+      'SEAT_TAKEN',
+      'SEAT_INVALID',
     ]
     const result = raw?.result
     if (typeof result !== 'string' || !(known as string[]).includes(result)) {
@@ -651,7 +677,7 @@ export class CloudApi {
         zone: typeof raw.zone === 'string' ? raw.zone : null,
       })
     }
-    return { result: result as CheckInResult, reservation, checkedInAt }
+    return { result: result as StaffCheckInResult, reservation, checkedInAt }
   }
 
   async staffUpdateReservation(

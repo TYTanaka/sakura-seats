@@ -324,6 +324,7 @@ describe('CloudApi（モック RPC クライアント）', () => {
     expect(okClient.rpc).toHaveBeenCalledWith('staff_check_in', {
       p_passcode: '1234',
       p_token: 'token-value',
+      p_seat_ids: null,
     })
     // 偽造トークン: NOT_FOUND は例外でなく result で返る（要約なし）
     const nfClient = fakeClient(() => ({ ok: false, result: 'NOT_FOUND' }))
@@ -360,6 +361,49 @@ describe('CloudApi（モック RPC クライアント）', () => {
     await expect(
       new CloudApi(weirdClient.client).staffCheckIn('1234', 't'),
     ).rejects.toThrow('通信に失敗しました')
+  })
+
+  it('staffCheckIn は R17 の席割当フロー（NEEDS_SEATS / SEAT_TAKEN / SEAT_INVALID）を返す', async () => {
+    // 未割当のゾーン予約: 席なしで呼ぶと NEEDS_SEATS + 要約（ゾーン・明細）が返る
+    const needsSummary = {
+      ok: false,
+      result: 'NEEDS_SEATS',
+      code: 'SK-0002',
+      name: '検証 花子',
+      items: [
+        { seatId: '', typeId: 'adult', typeName: '大人', price: 2000 },
+        { seatId: '', typeId: 'adult', typeName: '大人', price: 2000 },
+      ],
+      amount: 4000,
+      kind: 'online',
+      paid: false,
+      zone: 'B',
+      checkedInAt: null,
+      perfDate: '2026-12-19',
+      perfName: 'サンプル公演',
+    }
+    const needsClient = fakeClient(() => needsSummary)
+    const needs = await new CloudApi(needsClient.client).staffCheckIn('1234', 'tok')
+    expect(needs.result).toBe('NEEDS_SEATS')
+    expect(needs.reservation?.zone).toBe('B')
+    expect(needs.reservation?.items).toHaveLength(2)
+    expect(needs.reservation?.checkedIn).toBe(false)
+    // 席付きで再送すると p_seat_ids がそのまま RPC に渡る
+    const takenClient = fakeClient(() => ({ ...needsSummary, ok: false, result: 'SEAT_TAKEN' }))
+    const taken = await new CloudApi(takenClient.client).staffCheckIn('1234', 'tok', [
+      '1F-5-6',
+      '1F-5-7',
+    ])
+    expect(taken.result).toBe('SEAT_TAKEN')
+    expect(takenClient.rpc).toHaveBeenCalledWith('staff_check_in', {
+      p_passcode: '1234',
+      p_token: 'tok',
+      p_seat_ids: ['1F-5-6', '1F-5-7'],
+    })
+    const invalidClient = fakeClient(() => ({ ok: false, result: 'SEAT_INVALID' }))
+    const invalid = await new CloudApi(invalidClient.client).staffCheckIn('1234', 'tok', [])
+    expect(invalid.result).toBe('SEAT_INVALID')
+    expect(invalid.reservation).toBeNull()
   })
 
   describe('R8: Googleログイン・許可リスト', () => {
