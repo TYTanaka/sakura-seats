@@ -866,6 +866,17 @@ export default function AudienceBook({
                 placeholder="例：車椅子席を利用します、車椅子席の付き添いです、など"
               />
             </label>
+            {/* 個人情報の取り扱い（R28）: 名前・電話の入力欄のすぐ近くに置く。
+                実際の取り扱い（予約管理と当日受付のみ・アプリのデータベースに
+                保存され劇団スタッフが確認する）だけを短く正直に書く */}
+            <details className="privacy-note" data-privacy-note>
+              <summary>個人情報の取り扱いについて</summary>
+              <p>
+                お名前と電話番号は、ご予約の管理と当日の受付のためにのみ使います。
+                予約データはこのアプリのデータベースに保存され、劇団ツインリーブスの
+                スタッフが確認します。それ以外の目的で使うことはありません。
+              </p>
+            </details>
             {error && <p className="error-text">{error}</p>}
             <div className="btn-row">
               <button

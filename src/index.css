@@ -1355,6 +1355,26 @@ button.seat-available:hover {
   text-align: left;
 }
 
+/* 個人情報の取り扱い（R28）: フォーム内の折りたたみ注記。入力欄の近くで
+   邪魔にならない大きさにし、開けば短い説明が読める */
+.privacy-note {
+  margin: 2px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.privacy-note summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--burgundy);
+  padding: 6px 0;
+}
+
+.privacy-note p {
+  margin: 4px 0 6px;
+  line-height: 1.6;
+}
+
 .notice-box {
   position: relative;
   background: #fff6da;
@@ -4226,6 +4246,7 @@ button.sseat-cell:active {
 .app-shell[data-textsize='large'] .form-subhead { font-size: 16.5px; }
 .app-shell[data-textsize='large'] .seg-btn { font-size: 15.5px; }
 .app-shell[data-textsize='large'] .notice-box { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .privacy-note { font-size: 15.5px; }
 .app-shell[data-textsize='large'] .prototype-note { font-size: 15px; }
 .app-shell[data-textsize='large'] .modal-title { font-size: 24px; }
 .app-shell[data-textsize='large'] .modal-summary > div { font-size: 17.5px; }

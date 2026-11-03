@@ -1,0 +1,16 @@
+{
+  "name": "ツインリーブス公演予約",
+  "short_name": "公演予約",
+  "description": "劇団ツインリーブスの公演をスマートフォンから指定席で予約できるアプリです。",
+  "lang": "ja",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#fbf6ee",
+  "theme_color": "#b3273d",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

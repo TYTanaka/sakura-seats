@@ -187,7 +187,13 @@ function TopHeader({
           ヒーロー全体の高さは、予約の入口がファーストビューに入る
           従来の上限（R16）に収める */}
       <div className="hero-main">
-        <img className="hero-art" src={posterMainUrl} alt="" aria-hidden="true" />
+        <img
+          className="hero-art"
+          src={posterMainUrl}
+          alt=""
+          aria-hidden="true"
+          fetchPriority="high"
+        />
         <div className="hero-info">
         <h1 className="site-title">
           <TwinLeavesMark />

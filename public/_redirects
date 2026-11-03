@@ -1,0 +1,3 @@
+# Cloudflare Pages 用 SPA フォールバック（画面遷移は状態ベースだが、
+# 直リンクや末尾パスの読み込みでも index.html を返すための保険）
+/* /index.html 200
