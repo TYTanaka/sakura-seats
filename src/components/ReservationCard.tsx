@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   formatYen,
   reservationDisplayName,
@@ -50,6 +50,22 @@ export default function ReservationCard({
   onUncancel,
 }: ReservationCardProps) {
   const [confirmingCancel, setConfirmingCancel] = useState(false)
+
+  // R20: キャンセル確認モーダル表示中は Escape で閉じ、背後のスクロールを止める
+  useEffect(() => {
+    if (!confirmingCancel) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmingCancel(false)
+    }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [confirmingCancel])
+
   const receptionDone = res.paid && res.checkedIn
   // R12: ゾーン予約は支払いまで席未確定（ゾーン名＋「席未確定」で表示し、
   // 席番号は出さない）。支払い後に割り当たれば従来どおり席を表示する
@@ -142,36 +158,13 @@ export default function ReservationCard({
             >
               {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
             </button>
-            {confirmingCancel ? (
-              <span className="cancel-confirm">
-                キャンセルしますか？
-                <button
-                  type="button"
-                  className="btn btn-danger btn-small"
-                  onClick={() => {
-                    onCancel(res)
-                    setConfirmingCancel(false)
-                  }}
-                >
-                  キャンセルする
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-small"
-                  onClick={() => setConfirmingCancel(false)}
-                >
-                  やめる
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                onClick={() => setConfirmingCancel(true)}
-              >
-                予約キャンセル
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              onClick={() => setConfirmingCancel(true)}
+            >
+              予約キャンセル
+            </button>
           </div>
         </div>
       ) : onUncancel ? (
@@ -188,6 +181,77 @@ export default function ReservationCard({
           </div>
         </div>
       ) : null}
+
+      {/* R20: キャンセル確認モーダル（旧インライン確認は誤タップしやすいため廃止）。
+          背景タップ・やめる・Escape では閉じるだけでキャンセルしない */}
+      {confirmingCancel && (
+        <div
+          className="modal-backdrop"
+          data-cancel-modal
+          onClick={() => setConfirmingCancel(false)}
+        >
+          <div
+            className="modal-panel"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="予約キャンセルの確認"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 className="modal-title">本当にキャンセルしますか？</h4>
+            <dl className="modal-summary">
+              <div>
+                <dt>お名前</dt>
+                <dd>{reservationDisplayName(res)}</dd>
+              </div>
+              <div>
+                <dt>予約番号</dt>
+                <dd>{res.id}</dd>
+              </div>
+              <div>
+                <dt>席</dt>
+                <dd>{seatDisplay.text || '—'}</dd>
+              </div>
+              <div>
+                <dt>人数</dt>
+                <dd>{res.items.length}名</dd>
+              </div>
+              <div>
+                <dt>合計</dt>
+                <dd>{formatYen(reservationTotal(res))}</dd>
+              </div>
+              <div>
+                <dt>支払い</dt>
+                <dd>{res.paid ? '支払済' : '未払い'}</dd>
+              </div>
+            </dl>
+            <p className="modal-note">
+              キャンセルすると、この予約の席が解放されます。
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-danger modal-btn"
+                data-cancel-modal-confirm
+                onClick={() => {
+                  onCancel(res)
+                  setConfirmingCancel(false)
+                }}
+              >
+                キャンセルする
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost modal-btn"
+                data-cancel-modal-abort
+                autoFocus
+                onClick={() => setConfirmingCancel(false)}
+              >
+                やめる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
