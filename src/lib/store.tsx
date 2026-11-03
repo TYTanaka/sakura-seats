@@ -38,6 +38,7 @@ import {
 import {
   assignZoneSeats,
   manualAssignmentError,
+  planListCheckIn,
   zoneAvailability,
   type ZoneId,
 } from './zones'
@@ -393,6 +394,25 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         return result
       },
       setCheckedIn: async (reservationId, value) => {
+        // R34（ラウンド13・R13-1）: 一覧からの来場チェックインも QR 受付と
+        // 揃え、未割当のゾーン予約は席を詰めてから来場にする。席を用意
+        // できない場合は例外にして、来場済みにはしない（理由はトーストで
+        // スタッフに伝わり、手動指定へ誘導する）
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (value && target && !target.cancelled) {
+          const plan = planListCheckIn(dataRef.current, target)
+          if (plan.kind === 'blocked') throw new Error(plan.reason)
+          if (plan.kind === 'assign') {
+            mutate((prev) =>
+              setCheckedIn(
+                assignSeatsToReservation(prev, reservationId, plan.seatIds),
+                reservationId,
+                true,
+              ),
+            )
+            return
+          }
+        }
         mutate((prev) => setCheckedIn(prev, reservationId, value))
       },
       checkInByToken: async (token) => {

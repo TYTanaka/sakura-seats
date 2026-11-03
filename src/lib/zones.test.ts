@@ -5,7 +5,15 @@ import {
   WHEELCHAIR_SEATS,
   seatById,
 } from '../data/seats'
-import { emptyData, setBlockedForSeats, type AppData } from './logic'
+import {
+  assignSeatsToReservation,
+  createReservation,
+  createZoneReservation,
+  emptyData,
+  setBlockedForSeats,
+  type AppData,
+  type Reservation,
+} from './logic'
 import {
   LOW_STOCK_REMAINING,
   ZONE_IDS,
@@ -13,6 +21,7 @@ import {
   assignZoneSeats,
   countAvailableInZone,
   describeSelection,
+  planListCheckIn,
   resolveZoneTap,
   summarizeSeatIds,
   totalAvailableSeats,
@@ -414,5 +423,86 @@ describe('describeSelection / summarizeSeatIds', () => {
     expect(summarizeSeatIds(['1F-7-12', '1F-8-12'])).toBe(
       '1階 7列 12番、1階 8列 12番',
     )
+  })
+})
+
+describe('planListCheckIn（一覧チェックインの席割当計画・R34）', () => {
+  const zoneBooking = (
+    data: AppData,
+    zone: ZoneId,
+    typeIds: string[],
+  ): Reservation =>
+    createZoneReservation(data, {
+      zone,
+      typeIds,
+      name: '検証 太郎',
+      phone: '09000000000',
+      note: '',
+    }).reservation
+
+  it('未割当のゾーン予約（空きあり）→ 人数分の席を詰める assign', () => {
+    const data = emptyData()
+    const res = zoneBooking(data, 'B', ['adult', 'adult'])
+    const plan = planListCheckIn(data, res)
+    expect(plan.kind).toBe('assign')
+    if (plan.kind === 'assign') {
+      expect(plan.seatIds).toHaveLength(2)
+      expect(
+        plan.seatIds.every((id) => zoneOfSeat(seatById(id)) === 'B'),
+      ).toBe(true)
+    }
+  })
+
+  it('未割当のゾーン予約（ゾーン満席）→ blocked で、手動指定への誘導を含む', () => {
+    const data = blockSeats(emptyData(), [...ZONE_SEAT_IDS.I])
+    const res = zoneBooking(data, 'I', ['adult', 'adult'])
+    const plan = planListCheckIn(data, res)
+    expect(plan.kind).toBe('blocked')
+    if (plan.kind === 'blocked') {
+      expect(plan.reason).toContain('受付はしていません')
+      expect(plan.reason).toContain('席を指定する')
+    }
+  })
+
+  it('未割当のゾーン予約（残席が人数未満）→ blocked', () => {
+    // ゾーンIは14席。1席だけ残して2名は割り当てできない
+    const free = ZONE_SEAT_IDS.I[0]
+    const data = blockSeats(
+      emptyData(),
+      ZONE_SEAT_IDS.I.filter((id) => id !== free),
+    )
+    const res = zoneBooking(data, 'I', ['adult', 'adult'])
+    expect(planListCheckIn(data, res).kind).toBe('blocked')
+  })
+
+  it('席が割り当て済みのゾーン予約 → plain（従来どおり）', () => {
+    const created = createZoneReservation(emptyData(), {
+      zone: 'B',
+      typeIds: ['adult', 'adult'],
+      name: '検証 太郎',
+      phone: '09000000000',
+      note: '',
+    })
+    const base = created.data
+    const res = created.reservation
+    const assignment = assignZoneSeats(base, 'B', 2)
+    expect(assignment).not.toBeNull()
+    const withSeats = assignSeatsToReservation(base, res.id, assignment!.seatIds)
+    const seated = withSeats.reservations.find((r) => r.id === res.id)!
+    expect(seated.seatIds).toHaveLength(2)
+    expect(planListCheckIn(withSeats, seated)).toEqual({ kind: 'plain' })
+  })
+
+  it('席指定の通常予約 → plain', () => {
+    const { reservation } = createReservation(emptyData(), {
+      seats: [{ seatId: '1F-5-12', typeId: 'adult' }],
+      name: '検証 太郎',
+      phone: '09000000000',
+      note: '',
+      source: 'online',
+    })
+    expect(planListCheckIn(emptyData(), reservation)).toEqual({
+      kind: 'plain',
+    })
   })
 })

@@ -40,6 +40,7 @@ import {
 } from '../data/seats'
 import {
   formatSeatList,
+  isUnassignedZoneBooking,
   isZoneBooking,
   seatStatus,
   type AppData,
@@ -553,6 +554,45 @@ export function manualAssignmentError(
     }
   }
   return null
+}
+
+/* ---------------- 一覧チェックインの席割当計画（R34・ラウンド13 R13-1） ---------------- */
+
+/**
+ * 受付一覧の「来場チェックイン」が、対象の予約をどう扱うべきかの判定。
+ * QR 受付（R17）は未割当のゾーン予約を「席が決まるまで受付しない」のに、
+ * 一覧のトグルは席なしのまま来場済みにできてしまい、非対称だった。
+ * 両ストア（ローカル/クラウド）はこの計画に従って動きを揃える:
+ * - plain: 従来どおりそのまま来場にする（席あり・ゾーン外の予約）
+ * - assign: 詰めた席を割り当ててから来場にする（未割当のゾーン予約）
+ * - blocked: 席を用意できないため来場にしない。reason はスタッフ向けに
+ *   「受付していないこと」と手動指定（カードの「席を指定する」）への
+ *   誘導まで含めた文面
+ * キャンセル済みの予約は対象外（呼び出し側が先に除外する）。
+ */
+export type ListCheckInPlan =
+  | { kind: 'plain' }
+  | { kind: 'assign'; seatIds: string[] }
+  | { kind: 'blocked'; reason: string }
+
+export function planListCheckIn(
+  data: AppData,
+  reservation: Reservation,
+): ListCheckInPlan {
+  if (!isUnassignedZoneBooking(reservation)) return { kind: 'plain' }
+  const assignment = assignZoneSeats(
+    data,
+    reservation.zone as ZoneId,
+    reservation.items.length,
+  )
+  if (!assignment) {
+    return {
+      kind: 'blocked',
+      reason:
+        '席を自動で割り当てできませんでした（このゾーンに割り当てられる席がありません）。受付はしていません。カードの「席を指定する」から手動で席を選んでください',
+    }
+  }
+  return { kind: 'assign', seatIds: assignment.seatIds }
 }
 
 /* ---------------- 予約の座席表示（R12） ---------------- */

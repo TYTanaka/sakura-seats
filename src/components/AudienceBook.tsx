@@ -876,7 +876,7 @@ export default function AudienceBook({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                placeholder="例：車椅子席を利用します、車椅子席の付き添いです、など"
+                placeholder="例：車椅子席を利用します、親子室を利用します、車椅子席の付き添いです、など"
               />
             </label>
             {/* 個人情報の取り扱い（R28）: 名前・電話の入力欄のすぐ近くに置く。

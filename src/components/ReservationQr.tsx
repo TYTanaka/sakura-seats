@@ -82,7 +82,17 @@ export default function ReservationQr({
           height={168}
         />
       ) : (
-        <p className="muted small reservation-qr-loading">QRコードを準備中…</p>
+        /* R34・R13-3: 生成待ちの間も予約番号を先に大きく見せ、「数秒で
+           表示される」ことを伝える（番号さえ分かれば受付できるため、
+           素っ気ない「準備中…」だけを見せ続けない） */
+        <div className="reservation-qr-loading">
+          <p className="qr-code-fallback">
+            予約番号 <strong>{code}</strong>
+          </p>
+          <p className="muted small">
+            QRコードを準備中です（数秒で表示されます。そのままお待ちください）
+          </p>
+        </div>
       )}
       <p className="qr-caption">
         {checkedInCaption ?? '当日、受付でこのQRコードを見せてください'}

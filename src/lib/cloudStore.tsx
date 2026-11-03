@@ -19,8 +19,14 @@ import {
   type NewReservationInput,
   type Reservation,
 } from './logic'
-import { assignZoneSeats, manualAssignmentError, type ZoneId } from './zones'
+import {
+  assignZoneSeats,
+  manualAssignmentError,
+  planListCheckIn,
+  type ZoneId,
+} from './zones'
 import { createCloudApi, type CloudApi } from './cloud'
+import { isQrToken } from './qrToken'
 import { currentSiteUrl } from './share'
 import {
   StoreContext,
@@ -319,6 +325,72 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       )
     }
 
+    /**
+     * R34（ラウンド13・R13-1）: 受付一覧の「来場チェックイン」から未割当の
+     * ゾーン予約を受け付ける。QR 受付と揃え、席が決まるまで受付しない。
+     * トークンのある予約は QR と同じ staff_check_in の2段階（NEEDS_SEATS →
+     * 詰めて再送）を使い、トークンのない旧予約は staff_assign_seats で
+     * 詰めた席を確定してから来場にする。どちらも席を用意できなければ
+     * 例外にし、来場済みにはしない（理由と手動指定への誘導を伝える）。
+     */
+    const checkInUnassignedFromList = async (
+      target: Reservation,
+    ): Promise<void> => {
+      const cloudId = target.cloudId
+      if (!cloudId) throw new Error('予約が見つかりません')
+      const token = target.qrToken
+      if (isQrToken(token)) {
+        try {
+          let outcome = await api().staffCheckIn(staffPasscode(), token, null)
+          if (outcome.result === 'NEEDS_SEATS') {
+            outcome = await checkInAssigningSeats(token, outcome.reservation)
+          }
+          if (
+            outcome.result === 'OK' ||
+            outcome.result === 'ALREADY_CHECKED_IN'
+          ) {
+            await refreshAll()
+            return
+          }
+          if (outcome.result === 'CANCELLED') {
+            throw new Error('この予約はキャンセル済みのため、受付できません')
+          }
+          throw new Error('受付できませんでした。もう一度お試しください')
+        } catch (e) {
+          // 席を用意できなかった場合は、一覧向けの案内（手動指定への誘導）に差し替える
+          if (
+            e instanceof Error &&
+            e.message.includes('席を自動で割り当てできませんでした')
+          ) {
+            const plan = planListCheckIn(dataRef.current, target)
+            throw new Error(
+              plan.kind === 'blocked'
+                ? plan.reason
+                : '席を自動で割り当てできませんでした。カードの「席を指定する」から手動で席を選んでください',
+            )
+          }
+          // R7 の RPC が未適用の DB では、下の割当＋更新の代替経路に落とす
+          if (
+            !(e instanceof Error && e.message.includes('migration_sakura_r7'))
+          ) {
+            throw e
+          }
+        }
+      }
+      // トークンのない予約（QR の仕組みより前）: 詰めた席を確定してから来場にする
+      const plan = planListCheckIn(dataRef.current, target)
+      if (plan.kind === 'blocked') throw new Error(plan.reason)
+      if (plan.kind === 'assign') {
+        await api().staffAssignSeats(staffPasscode(), cloudId, plan.seatIds)
+      }
+      await api().staffUpdateReservation(staffPasscode(), cloudId, {
+        paid: target.paid,
+        checkedIn: true,
+        status: 'active',
+      })
+      await refreshAll()
+    }
+
     return {
       data,
       mode: 'cloud',
@@ -423,6 +495,13 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       setCheckedIn: async (reservationId, value) => {
         const target = dataRef.current.reservations.find((r) => r.id === reservationId)
         if (!target?.cloudId) throw new Error('予約が見つかりません')
+        // R34（ラウンド13・R13-1）: 未割当ゾーン予約の来場チェックインは
+        // QR 受付と揃える（席が決まるまで受付しない）。席のある予約・
+        // ゾーン外の予約・来場の取り消しは従来どおり
+        if (value && !target.cancelled && isUnassignedZoneBooking(target)) {
+          await checkInUnassignedFromList(target)
+          return
+        }
         await api().staffUpdateReservation(staffPasscode(), target.cloudId, {
           paid: target.paid,
           checkedIn: value,

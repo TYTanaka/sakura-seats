@@ -4403,7 +4403,9 @@ button.sseat-cell:active {
   font-weight: 700;
   padding: 4px 16px;
   border-radius: 999px;
-  min-height: 30px;
+  /* R34・R13-5: この切り替えを最も必要とする人（低視力・高齢）のタップ
+     目標が最小級だったため、高さを 40px 以上に確保する */
+  min-height: 40px;
 }
 
 .textsize-seg button[aria-pressed='true'] {
@@ -4472,6 +4474,27 @@ button.sseat-cell:active {
 .app-shell[data-textsize='large'] .zdb-zone { font-size: 17.5px; }
 .app-shell[data-textsize='large'] .zdb-meta { font-size: 14px; }
 .app-shell[data-textsize='large'] .zdb-btn { font-size: 16.5px; }
+/* R34・R13-2: 「大」では横並びだと情報側が潰れてゾーン名の塊が途中で
+   切れた。狭幅（380px以下）と同じくバーを縦積みにし、ゾーン名を
+   削らずに読める幅を確保する（座席表の幾何には触れない） */
+.app-shell[data-textsize='large'] .zone-decision-bar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.app-shell[data-textsize='large'] .zdb-actions {
+  display: flex;
+}
+.app-shell[data-textsize='large'] .zdb-btn {
+  flex: 1;
+}
+/* 縦積みで高くなったバーに、ページ末尾と案内が隠れないよう追随させる */
+.app-shell[data-textsize='large'] .book-flow.has-floating-bar {
+  padding-bottom: 208px;
+}
+.app-shell[data-textsize='large'] .zone-bottom-notice.has-bar {
+  bottom: calc(196px + env(safe-area-inset-bottom, 0px));
+}
 .app-shell[data-textsize='large'] .zone-bottom-notice { font-size: 16px; }
 .app-shell[data-textsize='large'] .detail-list dt { font-size: 16px; }
 .app-shell[data-textsize='large'] .detail-total { font-size: 19.5px; }
