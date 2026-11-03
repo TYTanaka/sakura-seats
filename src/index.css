@@ -151,6 +151,15 @@ textarea {
 .site-note {
   word-break: normal;
 }
+/* R35: 長文の説明文も同じ理由で keep-all を外す。keep-all のままだと
+   「当日、」だけの行や「。」だけの孤立行が出る（実機報告）。
+   対象は文章量のある案内文だけに絞り、短いラベル・数値類は
+   keep-all＋フレーズ単位のままにする */
+.lookup-card .muted,
+.notice-box,
+.privacy-note {
+  word-break: normal;
+}
 .site-title,
 .book-flow h2,
 .book-flow h3,
@@ -278,14 +287,10 @@ textarea {
   gap: 10px;
   margin-bottom: 8px;
   text-align: left;
-}
-
-/* 極端に狭い幅（〜349px）だけ、アクション側を次の行に回して
-   会場名のフレーズが収まる場所を確保する（途中では割らない） */
-@media (max-width: 349px) {
-  .header-top {
-    flex-wrap: wrap;
-  }
+  /* R35: 常時 wrap を許可する。幅も文字サイズ「大」でも会場名の
+     フレーズとボタン2つが収まらない場合は、ボタンを次の行へ回して
+     右端が欠ける事故を防ぐ（収まる幅では従来どおり1行） */
+  flex-wrap: wrap;
 }
 
 
@@ -528,7 +533,8 @@ textarea {
 }
 
 .btn-small {
-  min-height: 36px;
+  /* R35: 小ボタンでもタップ高さ 40px を下限にする（旧 36px） */
+  min-height: 40px;
   padding: 6px 12px;
   font-size: 13px;
 }
@@ -706,6 +712,8 @@ textarea {
   gap: 8px;
   font-size: 14px;
   margin-bottom: 12px;
+  /* R35: 行全体をタップ領域として 40px を確保 */
+  min-height: 40px;
 }
 
 .check-line input {
@@ -1205,6 +1213,10 @@ button.seat-available:hover {
 .detail-list dd {
   margin: 0;
   line-height: 1.6;
+  /* R35: 値側はデータ表示のため通常改行にする。keep-all 圏内
+     （予約確認・完了）では「お支払いください」が語の途中で
+     割れる読みにくさがあった（フレーズ単位は .u-nowrap 側で保持） */
+  word-break: normal;
 }
 
 .detail-total {
@@ -1622,7 +1634,11 @@ button.seat-available:hover {
 }
 
 .cancel-confirm {
-  display: inline-flex;
+  /* R35: inline-flex だと長い確認文（予約確認のセルフキャンセル）が
+     ボタンに押し潰されて数文字ずつ折り返し、ボタンが右端からはみ出した。
+     flex＋wrap で、収まらない場合はボタンを次の行へ回す */
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   font-size: 13px;
@@ -2125,6 +2141,8 @@ button.seat-available:hover {
   justify-content: flex-end;
   flex-wrap: wrap;
   flex: none;
+  /* R35: header-top が wrap した行でも右端に寄せる */
+  margin-left: auto;
 }
 
 /* おすすめ席: 空席のときだけ柔らかい金色ティント＋金のグロー */
@@ -2912,6 +2930,10 @@ button.seat-available:hover {
   height: 64px;
   font-size: 11px;
   color: var(--muted);
+  /* R35: 「番号で受付」が箱幅ぎりぎりで語の途中で折れていた。
+     折らずに1行で出す（「大」側のフォント指定も合わせて下げる） */
+  white-space: nowrap;
+  text-align: center;
 }
 
 .last-res-qr-hint {
@@ -2928,9 +2950,15 @@ button.seat-available:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  min-height: 76px;
-  padding: 6px;
+  /* R35: 横書き2行だと「大」で『キャンセル』が1行に収まらず
+     キャ/ンセ/ル と文字単位に砕けた。判子らしい縦書き1列に変え、
+     フォントサイズや端末の字幅に左右されず常に1列で読めるようにする */
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.1em;
+  width: 48px;
+  min-height: 104px;
+  padding: 10px 0;
   border: 2px solid #d84f43;
   border-radius: 14px;
   background: #fdeceb;
@@ -2971,6 +2999,9 @@ button.seat-available:hover {
   line-height: 1.6;
   font-weight: 700;
   color: #a02c22;
+  /* R35: 長文のため .site-note と同じく keep-all を外す（後掲の
+     「長文の説明文」ルールと同じ指定をここにも明示） */
+  word-break: normal;
 }
 
 .last-res-folded-cancelled {
@@ -2996,6 +3027,10 @@ button.seat-available:hover {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  /* R35: 「大」＋キャンセル済みチップでは番号・チップ・折りたたみ
+     リンクが1行に収まらず右端が欠けた。収まらない場合はリンクを
+     次の行へ回す（欠けるより折り返す） */
+  flex-wrap: wrap;
 }
 
 .last-res-code {
@@ -3009,8 +3044,14 @@ button.seat-available:hover {
 /* 「小さくする／広げる」は控えの右上に置く小さなテキストボタン */
 .last-res-fold-toggle {
   flex: none;
-  margin-top: 6px;
-  padding: 2px 4px;
+  /* R35: 見た目は小さなテキストリンクのまま、タップ領域だけ
+     40px を確保する。margin-left: auto で折り返した行でも右端に置く */
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin-top: 0;
+  margin-left: auto;
+  padding: 2px 8px;
   background: none;
   border: none;
   font-size: 12px;
@@ -3056,7 +3097,7 @@ button.seat-available:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  min-height: 40px;
   padding: 4px 12px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
@@ -3232,9 +3273,13 @@ button.seat-available:hover {
 }
 .zseat-reset {
   flex: none;
+  /* R35: タップ高さ 40px を確保（旧は約26px） */
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   font-size: 11.5px;
   font-weight: 800;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
   border: 1.5px solid var(--gold);
   background: rgba(245, 196, 81, 0.16);
@@ -3255,6 +3300,10 @@ button.seat-available:hover {
 }
 .sseat-jump {
   flex: none;
+  /* R35: タップ高さ 40px を確保（旧は約29px） */
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   font-size: 12px;
   font-weight: 800;
   padding: 5px 12px;
@@ -3529,6 +3578,13 @@ button.zseat-cell:active {
 }
 .zbadge:active {
   filter: brightness(1.35);
+}
+/* R35: バッジ自体は座席表に重なるため大きくできないが、タップ判定だけ
+   透明に広げて実質40px級にする（見た目・配置は変えない） */
+.zbadge::after {
+  content: '';
+  position: absolute;
+  inset: -10px -6px;
 }
 .zbadge-letter {
   font-size: 13px;
@@ -3861,8 +3917,9 @@ button.zseat-cell:active {
 }
 .zbn-close {
   flex: none;
-  width: 30px;
-  height: 30px;
+  /* R35: 閉じるボタンのタップ領域を 40px に（旧 30px） */
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   /* R24・D-2: 旧ラベンダーの縁を案内枠（ステージレッド系）に揃える */
   border: 1.5px solid rgba(179, 39, 61, 0.45);
@@ -3996,6 +4053,8 @@ button.zseat-cell:active {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* R35: 長い公演名を設定してもボタンが右端で欠けないよう wrap を許可 */
+  flex-wrap: wrap;
 }
 
 .compact-title {
@@ -4015,13 +4074,18 @@ button.zseat-cell:active {
 }
 
 .site-header.is-compact .staff-link {
-  min-height: 34px;
+  /* R35: タップ高さは共通の 40px に揃える（旧 34px は小さすぎた） */
+  min-height: 40px;
   padding: 4px 12px;
 }
 
 /* 初期パスコード警告の細いバー（D-2）: 本文を押し下げない1行＋遷移ボタン */
 .passcode-warning-btn {
   flex: none;
+  /* R35: タップ高さ 40px を確保（旧は約29px） */
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   padding: 5px 12px;
   border-radius: 999px;
   border: 1.5px solid #e0492f;
@@ -4524,8 +4588,9 @@ button.sseat-cell:active {
 .app-shell[data-textsize='large'] .cancelled-chip { font-size: 13px; }
 .app-shell[data-textsize='large'] .last-res-fold-toggle { font-size: 14px; }
 .app-shell[data-textsize='large'] .last-res-share-btn { font-size: 15px; }
-.app-shell[data-textsize='large'] .last-res-qr-hint,
-.app-shell[data-textsize='large'] .last-res-qr-loading { font-size: 12.5px; }
+.app-shell[data-textsize='large'] .last-res-qr-hint { font-size: 12.5px; }
+/* R35: 「番号で受付」（5文字）が 64px の箱に収まる上限に留める */
+.app-shell[data-textsize='large'] .last-res-qr-loading { font-size: 11.5px; }
 
 /* 当日カード・お知らせ帯 */
 .app-shell[data-textsize='large'] .today-badge { font-size: 16px; }

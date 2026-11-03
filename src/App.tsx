@@ -204,13 +204,15 @@ function TopHeader({
           料金：
           {perf.ticketTypes.map((t, i) => (
             <span key={t.id}>
-              {i > 0 && '／'}
               <span className="u-nowrap">
                 {t.name} {formatYen(t.price)}
               </span>
+              {/* R35: 区切りの「／」は前の単位の末尾に置く。
+                 行頭に「／」が来る折れ方をしないようにするため */}
+              {i < perf.ticketTypes.length - 1 && '／'}
             </span>
           ))}
-          <span className="u-nowrap">（当日現金払い）</span> ／{' '}
+          <span className="u-nowrap">（当日現金払い）／</span>{' '}
           <span className="meta-available u-nowrap">空席 {available}席</span>
         </p>
         {showDeadline && (
@@ -366,9 +368,7 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
           // キャンセル済みの控えには QR を出さない（有効なチケットと
           // 見分けがつくよう、QR の場所自体を「キャンセル済み」の印にする）
           <div className="last-res-cancelled-mark" aria-hidden="true">
-            キャンセル
-            <br />
-            済み
+            キャンセル済み
           </div>
         ) : (
           <button
