@@ -602,6 +602,23 @@ export function reservationSeatDisplay(res: Reservation): ReservationSeatDisplay
 }
 
 /**
+ * 予約が属するゾーンを返す（R32: 受付一覧の絞り込み・並び替え用）。
+ * - ゾーン予約は予約自体のゾーン
+ * - 席が割り当て済みなら、その席のゾーン（ゾーン予約の割当後も同じ）
+ * - どちらも無い予約（通常は存在しない）は null
+ */
+export function reservationZone(res: Reservation): ZoneId | null {
+  if (typeof res.zone === 'string' && res.zone.length > 0) {
+    return res.zone as ZoneId
+  }
+  for (const seatId of res.seatIds) {
+    const zone = zoneOfSeat(seatById(seatId))
+    if (zone) return zone
+  }
+  return null
+}
+
+/**
  * 選択済みの席IDから表示用のメタ情報を導く（下書き復元時など、
  * 割当結果オブジェクトが手元に無い場合に使う）。
  * split は「同一セグメント内の連続」になっていない場合に true とみなす。

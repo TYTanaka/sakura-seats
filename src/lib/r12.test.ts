@@ -18,6 +18,7 @@ import {
   assignZoneSeats,
   manualAssignmentError,
   reservationSeatDisplay,
+  reservationZone,
   zoneAvailability,
   zoneHoldCount,
   zoneOfSeat,
@@ -395,5 +396,30 @@ describe('R25: totals の残席は未割当ホールドを差し引く（S-3）'
       ),
     }
     expect(totals(cancelled, ALL_IDS).availableSeatCount).toBe(base)
+  })
+})
+
+describe('R32: reservationZone（予約の所属ゾーン）', () => {
+  it('未割当のゾーン予約: 予約自体のゾーンを返す', () => {
+    const { reservation } = zoneBooking(emptyData(), 'C', ['adult'])
+    expect(reservationZone(reservation)).toBe('C')
+  })
+
+  it('割当済みのゾーン予約: 引き続きゾーンを返す', () => {
+    const { data, reservation } = zoneBooking(emptyData(), 'B', ['adult', 'adult'])
+    const assigned = assignSeatsToReservation(data, reservation.id, ['1F-5-6', '1F-5-7'])
+    expect(reservationZone(assigned.reservations[0])).toBe('B')
+  })
+
+  it('従来型の予約: 席のゾーンを返す', () => {
+    const legacy = createReservation(emptyData(), {
+      seats: [{ seatId: '1F-5-6', typeId: 'adult' }],
+      name: '従来 太郎',
+      phone: '09000000000',
+      note: '',
+      source: 'online',
+    })
+    // 1F-5-6 はゾーンB（zoneOfSeat の既存テストと一致）
+    expect(reservationZone(legacy.reservation)).toBe('B')
   })
 })

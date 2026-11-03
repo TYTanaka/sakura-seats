@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -25,8 +25,12 @@ import {
 import {
   allZoneAvailability,
   reservationSeatDisplay,
+  reservationZone,
   totalAvailableSeats,
+  zoneLabel,
   ZONE_DEFS,
+  ZONE_IDS,
+  type ZoneId,
 } from '../lib/zones'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
 import {
@@ -451,6 +455,77 @@ function ZoneRemainingChips() {
 
 /* ---------------- 受付 ---------------- */
 
+/* ---------------- 受付一覧の絞り込み・並び替え（R32） ---------------- */
+
+type PaidFilter = 'all' | 'paid' | 'unpaid'
+type CheckinFilter = 'all' | 'done' | 'pending'
+type SourceFilter = 'all' | 'online' | 'door'
+type ReceptionSort = 'new' | 'old' | 'zone' | 'name' | 'party'
+
+interface ReceptionFilters {
+  query: string
+  zone: string // 'all' | ZoneId
+  paid: PaidFilter
+  checkin: CheckinFilter
+  source: SourceFilter
+  sort: ReceptionSort
+  showCancelled: boolean
+}
+
+const RECEPTION_FILTERS_KEY = 'sakura-seats-reception-filters'
+const DEFAULT_RECEPTION_FILTERS: ReceptionFilters = {
+  query: '',
+  zone: 'all',
+  paid: 'all',
+  checkin: 'all',
+  source: 'all',
+  sort: 'old',
+  showCancelled: false,
+}
+
+function loadReceptionFilters(): ReceptionFilters {
+  try {
+    const raw = sessionStorage.getItem(RECEPTION_FILTERS_KEY)
+    if (!raw) return DEFAULT_RECEPTION_FILTERS
+    const parsed = JSON.parse(raw) as Partial<ReceptionFilters>
+    const merged = { ...DEFAULT_RECEPTION_FILTERS, ...parsed }
+    // 壊れた値が残っていたら安全な側に戻す
+    if (!['all', 'paid', 'unpaid'].includes(merged.paid)) merged.paid = 'all'
+    if (!['all', 'done', 'pending'].includes(merged.checkin)) merged.checkin = 'all'
+    if (!['all', 'online', 'door'].includes(merged.source)) merged.source = 'all'
+    if (!['new', 'old', 'zone', 'name', 'party'].includes(merged.sort)) merged.sort = 'old'
+    if (merged.zone !== 'all' && !ZONE_IDS.includes(merged.zone as ZoneId)) merged.zone = 'all'
+    if (typeof merged.query !== 'string') merged.query = ''
+    if (typeof merged.showCancelled !== 'boolean') merged.showCancelled = false
+    return merged
+  } catch {
+    return DEFAULT_RECEPTION_FILTERS
+  }
+}
+
+function saveReceptionFilters(f: ReceptionFilters) {
+  try {
+    sessionStorage.setItem(RECEPTION_FILTERS_KEY, JSON.stringify(f))
+  } catch {
+    // 保持できなくても一覧は使える
+  }
+}
+
+const zoneOrder = (z: ZoneId | null) => (z ? ZONE_IDS.indexOf(z) : ZONE_IDS.length)
+
+/** 件数以外の集計（人数・金額）はキャンセル済みを除く（一覧の合計行とグループ見出しで共用） */
+function sumActive(items: Reservation[]) {
+  let people = 0
+  let amount = 0
+  for (const r of items) {
+    if (!r.cancelled) {
+      people += r.items.length
+      amount += r.amount
+    }
+  }
+  return { people, amount }
+}
+
 function Reception() {
   const {
     data,
@@ -462,10 +537,18 @@ function Reception() {
     assignSeats,
   } = useStore()
   const { showToast } = useToast()
-  const [query, setQuery] = useState('')
-  const [showCancelled, setShowCancelled] = useState(false)
-  const [unpaidOnly, setUnpaidOnly] = useState(false)
   const [qrMode, setQrMode] = useState(false)
+  // 絞り込み・並び替えはタブを離れても同じセッションの間は保持する（R32）
+  const [filters, setFilters] = useState<ReceptionFilters>(loadReceptionFilters)
+  const query = filters.query
+  const showCancelled = filters.showCancelled
+  const updateFilters = (patch: Partial<ReceptionFilters>) => {
+    setFilters((prev) => {
+      const next = { ...prev, ...patch }
+      saveReceptionFilters(next)
+      return next
+    })
+  }
 
   // 失敗はトーストでその場に出す（一覧上部の表示だとスクロール中に気づけない・R4-4）
   // R12: 支払い時の席割当が失敗した場合は理由（空席不足など）をそのまま伝える
@@ -560,11 +643,22 @@ function Reception() {
   }
 
   const list = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const qPhone = normalizePhone(query)
-    return data.reservations
-      .filter((r) => showCancelled || !r.cancelled)
-      .filter((r) => !unpaidOnly || (!r.paid && !r.cancelled))
+    const q = filters.query.trim().toLowerCase()
+    const qPhone = normalizePhone(filters.query)
+    const filtered = data.reservations
+      .filter((r) => filters.showCancelled || !r.cancelled)
+      .filter(
+        (r) =>
+          filters.paid === 'all' ||
+          (filters.paid === 'paid' ? r.paid : !r.paid && !r.cancelled),
+      )
+      .filter(
+        (r) =>
+          filters.checkin === 'all' ||
+          (filters.checkin === 'done' ? r.checkedIn : !r.checkedIn),
+      )
+      .filter((r) => filters.source === 'all' || r.source === filters.source)
+      .filter((r) => filters.zone === 'all' || reservationZone(r) === filters.zone)
       .filter(
         (r) =>
           !q ||
@@ -573,8 +667,52 @@ function Reception() {
           // 電話番号は全角・ハイフンの有無を正規化してから部分一致させる
           (qPhone.length > 0 && normalizePhone(r.phone).includes(qPhone)),
       )
-      .sort((a, b) => a.id.localeCompare(b.id))
-  }, [data.reservations, query, showCancelled, unpaidOnly])
+    const byId = (a: Reservation, b: Reservation) => a.id.localeCompare(b.id)
+    const sorted = [...filtered]
+    switch (filters.sort) {
+      case 'new':
+        sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+        break
+      case 'zone':
+        sorted.sort(
+          (a, b) =>
+            zoneOrder(reservationZone(a)) - zoneOrder(reservationZone(b)) ||
+            a.name.localeCompare(b.name, 'ja') ||
+            byId(a, b),
+        )
+        break
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name, 'ja') || byId(a, b))
+        break
+      case 'party':
+        sorted.sort(
+          (a, b) =>
+            b.items.length - a.items.length ||
+            a.createdAt.localeCompare(b.createdAt) ||
+            byId(a, b),
+        )
+        break
+      default: // 'old': 従来の既定（番号＝受付順）
+        sorted.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || byId(a, b))
+    }
+    return sorted
+  }, [data.reservations, filters])
+
+  // 表示中の合計（件数・人数・金額）。部分集計を一覧を離れずに読めるように常時出す（R32）
+  const summary = useMemo(() => ({ count: list.length, ...sumActive(list) }), [list])
+
+  // ゾーン順のときだけ、ゾーンごとの見出し行を差し込むためのグループ化（R32）
+  const groups = useMemo(() => {
+    if (filters.sort !== 'zone') return null
+    const out: { zone: ZoneId | null; items: Reservation[] }[] = []
+    for (const r of list) {
+      const z = reservationZone(r)
+      const last = out[out.length - 1]
+      if (last && last.zone === z) last.items.push(r)
+      else out.push({ zone: z, items: [r] })
+    }
+    return out
+  }, [list, filters.sort])
 
   const active = activeReservations(data)
   // 絞り込み中は「全N件中 M件を表示」と見出しに出す（R16・S-1）。
@@ -582,7 +720,26 @@ function Reception() {
   const baseCount = data.reservations.filter(
     (r) => showCancelled || !r.cancelled,
   ).length
-  const filtering = query.trim() !== '' || unpaidOnly
+  const filtering =
+    filters.query.trim() !== '' ||
+    filters.paid !== 'all' ||
+    filters.checkin !== 'all' ||
+    filters.source !== 'all' ||
+    filters.zone !== 'all'
+
+  const renderItem = (res: Reservation) => (
+    <li key={res.id} className={`reservation-item${res.cancelled ? ' is-cancelled' : ''}`}>
+      <ReservationCard
+        res={res}
+        onComplete={handleComplete}
+        onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
+        onTogglePaid={handleTogglePaid}
+        onCancel={(r) => runAction(() => cancel(r.id))}
+        onUncancel={handleUncancel}
+        onAssignSeats={handleAssignSeats}
+      />
+    </li>
+  )
 
   return (
     <section className="card">
@@ -596,15 +753,82 @@ function Reception() {
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => updateFilters({ query: e.target.value })}
           placeholder="例：山田 / SK-0001 / 090"
         />
       </label>
+      <div className="reception-filters">
+        <label className="filter-field">
+          <span>ゾーン</span>
+          <select
+            data-filter-zone
+            value={filters.zone}
+            onChange={(e) => updateFilters({ zone: e.target.value })}
+          >
+            <option value="all">すべて</option>
+            {ZONE_IDS.map((z) => (
+              <option key={z} value={z}>
+                ゾーン{z}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>支払い</span>
+          <select
+            data-filter-paid
+            value={filters.paid}
+            onChange={(e) => updateFilters({ paid: e.target.value as PaidFilter })}
+          >
+            <option value="all">すべて</option>
+            <option value="paid">支払済み</option>
+            <option value="unpaid">未払い</option>
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>受付</span>
+          <select
+            data-filter-checkin
+            value={filters.checkin}
+            onChange={(e) => updateFilters({ checkin: e.target.value as CheckinFilter })}
+          >
+            <option value="all">すべて</option>
+            <option value="done">受付済み</option>
+            <option value="pending">未受付</option>
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>種別</span>
+          <select
+            data-filter-source
+            value={filters.source}
+            onChange={(e) => updateFilters({ source: e.target.value as SourceFilter })}
+          >
+            <option value="all">すべて</option>
+            <option value="online">オンライン</option>
+            <option value="door">当日販売</option>
+          </select>
+        </label>
+        <label className="filter-field filter-field-wide">
+          <span>並び替え</span>
+          <select
+            data-sort
+            value={filters.sort}
+            onChange={(e) => updateFilters({ sort: e.target.value as ReceptionSort })}
+          >
+            <option value="new">予約が新しい順</option>
+            <option value="old">予約が古い順</option>
+            <option value="zone">ゾーン順</option>
+            <option value="name">名前順</option>
+            <option value="party">人数が多い順</option>
+          </select>
+        </label>
+      </div>
       <label className="check-line">
         <input
           type="checkbox"
           checked={showCancelled}
-          onChange={(e) => setShowCancelled(e.target.checked)}
+          onChange={(e) => updateFilters({ showCancelled: e.target.checked })}
         />
         キャンセル済みも表示する
       </label>
@@ -612,8 +836,8 @@ function Reception() {
         <input
           type="checkbox"
           data-unpaid-filter
-          checked={unpaidOnly}
-          onChange={(e) => setUnpaidOnly(e.target.checked)}
+          checked={filters.paid === 'unpaid'}
+          onChange={(e) => updateFilters({ paid: e.target.checked ? 'unpaid' : 'all' })}
         />
         未払いのみ表示
       </label>
@@ -636,21 +860,28 @@ function Reception() {
         </button>
       </div>
       {qrMode && <QrReception onClose={() => setQrMode(false)} />}
+      <p className="reception-summary" data-reception-summary>
+        表示中 {summary.count}件・{summary.people}名・合計 {formatYen(summary.amount)}
+        {list.some((r) => r.cancelled) && (
+          <span className="muted small">（人数・金額はキャンセル済みを除く）</span>
+        )}
+      </p>
       {list.length === 0 && <p className="muted empty-note">該当する予約がありません。</p>}
       <ul className="reservation-list">
-        {list.map((res) => (
-          <li key={res.id} className={`reservation-item${res.cancelled ? ' is-cancelled' : ''}`}>
-            <ReservationCard
-              res={res}
-              onComplete={handleComplete}
-              onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
-              onTogglePaid={handleTogglePaid}
-              onCancel={(r) => runAction(() => cancel(r.id))}
-              onUncancel={handleUncancel}
-              onAssignSeats={handleAssignSeats}
-            />
-          </li>
-        ))}
+        {groups
+          ? groups.map((g) => {
+              const gs = sumActive(g.items)
+              return (
+                <Fragment key={g.zone ?? 'none'}>
+                  <li className="zone-group-header" data-zone-group={g.zone ?? 'none'}>
+                    {g.zone ? zoneLabel(g.zone) : 'ゾーン未定'} ― {g.items.length}件・{gs.people}
+                    名・{formatYen(gs.amount)}
+                  </li>
+                  {g.items.map((res) => renderItem(res))}
+                </Fragment>
+              )
+            })
+          : list.map((res) => renderItem(res))}
       </ul>
     </section>
   )

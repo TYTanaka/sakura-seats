@@ -1487,6 +1487,59 @@ button.seat-available:hover {
   padding: 0;
 }
 
+/* 受付一覧の絞り込み・並び替え（R32）: 2列グリッドで片手操作できる大きさに */
+.reception-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin: 10px 0 4px;
+}
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #7c4453;
+}
+.filter-field select {
+  width: 100%;
+  padding: 10px;
+  border: 1.5px solid #e3cfae;
+  border-radius: 12px;
+  font-size: 15px;
+  background: #fff;
+  color: var(--ink);
+}
+.filter-field select:focus {
+  outline: none;
+  border-color: var(--pink-soft);
+  box-shadow: 0 0 0 3px rgba(179, 39, 61, 0.28);
+}
+.filter-field-wide {
+  grid-column: 1 / -1;
+}
+.reception-summary {
+  margin: 10px 0 2px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--burgundy);
+  font-variant-numeric: tabular-nums;
+}
+.zone-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--indigo, #2a1a4a);
+  color: var(--float-text);
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .reservation-item {
   padding: 12px 0;
   border-top: 1.5px solid var(--pink-pale);
