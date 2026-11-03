@@ -49,13 +49,20 @@ export default function ReservationCard({
   onCancel,
   onUncancel,
 }: ReservationCardProps) {
-  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  /**
+   * キャンセル確認の段階（R22・オーナー要望で2段階に戻す）:
+   * idle → inline（カード内の小さな確認・R20以前の形）→ modal（R20の
+   * 大きなモーダルが最終確認）。実際のキャンセルはモーダルの
+   * 「キャンセルする」からだけ実行される。inline の「やめる」はカードの
+   * 通常表示に畳み、モーダルの「やめる」・背景・Escape は閉じるだけ。
+   */
+  const [cancelStep, setCancelStep] = useState<'idle' | 'inline' | 'modal'>('idle')
 
-  // R20: キャンセル確認モーダル表示中は Escape で閉じ、背後のスクロールを止める
+  // モーダル表示中は Escape で閉じ、背後のスクロールを止める（R20）
   useEffect(() => {
-    if (!confirmingCancel) return
+    if (cancelStep !== 'modal') return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setConfirmingCancel(false)
+      if (e.key === 'Escape') setCancelStep('idle')
     }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
@@ -64,7 +71,7 @@ export default function ReservationCard({
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [confirmingCancel])
+  }, [cancelStep])
 
   const receptionDone = res.paid && res.checkedIn
   // R12: ゾーン予約は支払いまで席未確定（ゾーン名＋「席未確定」で表示し、
@@ -158,13 +165,36 @@ export default function ReservationCard({
             >
               {res.paid ? '✓ 支払い済み' : '支払い済みにする'}
             </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-small"
-              onClick={() => setConfirmingCancel(true)}
-            >
-              予約キャンセル
-            </button>
+            {cancelStep === 'inline' ? (
+              <span className="cancel-confirm" data-cancel-inline>
+                キャンセルしますか？
+                <button
+                  type="button"
+                  className="btn btn-danger btn-small"
+                  data-cancel-inline-confirm
+                  onClick={() => setCancelStep('modal')}
+                >
+                  キャンセルする
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-cancel-inline-abort
+                  onClick={() => setCancelStep('idle')}
+                >
+                  やめる
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                data-action="cancel"
+                className="btn btn-ghost btn-small"
+                onClick={() => setCancelStep('inline')}
+              >
+                予約キャンセル
+              </button>
+            )}
           </div>
         </div>
       ) : onUncancel ? (
@@ -182,13 +212,13 @@ export default function ReservationCard({
         </div>
       ) : null}
 
-      {/* R20: キャンセル確認モーダル（旧インライン確認は誤タップしやすいため廃止）。
+      {/* R22: 最終確認モーダル（R20のものをそのまま第2段階にする）。
           背景タップ・やめる・Escape では閉じるだけでキャンセルしない */}
-      {confirmingCancel && (
+      {cancelStep === 'modal' && (
         <div
           className="modal-backdrop"
           data-cancel-modal
-          onClick={() => setConfirmingCancel(false)}
+          onClick={() => setCancelStep('idle')}
         >
           <div
             className="modal-panel"
@@ -234,7 +264,7 @@ export default function ReservationCard({
                 data-cancel-modal-confirm
                 onClick={() => {
                   onCancel(res)
-                  setConfirmingCancel(false)
+                  setCancelStep('idle')
                 }}
               >
                 キャンセルする
@@ -244,7 +274,7 @@ export default function ReservationCard({
                 className="btn btn-ghost modal-btn"
                 data-cancel-modal-abort
                 autoFocus
-                onClick={() => setConfirmingCancel(false)}
+                onClick={() => setCancelStep('idle')}
               >
                 やめる
               </button>
