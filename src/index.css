@@ -588,8 +588,16 @@ textarea {
 
 .field-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  /* R19: 列を入力の最小コンテンツ幅未満にも縮められるようにする
+     （日付・開場・開演の3入力がカード幅を超え、3列目が画面外へ
+     はみ出す崩れの修正。使用箇所は公演設定の日時行のみ） */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.field-row > .field,
+.field-row input {
+  min-width: 0;
 }
 
 .field-row-2 {
@@ -1542,10 +1550,15 @@ button.seat-available:hover {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  /* R19: 入りきらない操作ボタンは潰さず、下の行へ回して吸収する */
+  flex-wrap: wrap;
 }
 
 .type-editor-row > input {
-  flex: 1 1 auto;
+  /* R19: .field input の width:100% を打ち消し、料金欄と1行を分け合う。
+     basis は小さく置き、可変幅はこの入力だけが担う（ボタンは縮ませない） */
+  width: auto;
+  flex: 1 1 110px;
   min-width: 0;
   padding: 11px 12px;
   border: 1.5px solid #dac9f3;
@@ -1583,6 +1596,31 @@ button.seat-available:hover {
   font-size: 13px;
   color: var(--muted);
   font-weight: 700;
+}
+
+/* R19: 券種・販売者などの編集行で、ボタンが横幅不足で縮んで
+   ラベルが縦書きになる崩れの修正。ボタンは絶対に縮ませず
+   （nowrap + flex固定）、削除確認の2ボタンは行ごと下段に回す。
+   入力欄だけが可変幅を担う（名前入力は flex:1 + min-width:0）。 */
+.type-editor-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.type-editor-row > .cancel-confirm {
+  flex: 0 0 100%;
+}
+
+.cancel-confirm .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 同じ設定画面の許可リスト行も同型（メール側が折れるため実害は
+   出ていないが、ボタンの縮小防止を揃える） */
+.allowlist-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .summary-grid {
