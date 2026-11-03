@@ -1,9 +1,10 @@
 # Cloudflare Pages 用セキュリティヘッダ（GitHub Pages では無視される）。
 # 各ディレクティブの根拠:
 # - script-src 'self': Vite ビルドは外部ファイルのみで、インラインスクリプトを使わない。
-# - style-src の 'unsafe-inline': React の style 属性に必要。
-# - font-src: R27 で Web フォントを廃止し端末フォントへ一本化したため、
-#   外部フォントの許可（Google Fonts）は不要になり削除した（R28）。
+# - style-src に 'unsafe-inline' と Google Fonts: React の style 属性と
+#   fonts.googleapis.com のスタイルシート読み込みに必要。
+# - font-src: fonts.gstatic.com（実フォント）と data:（埋め込みフォント用）。
+#   本文フォント M PLUS Rounded 1c は R27 で一度廃止したが、R29 で復帰した。
 # - img-src data:/blob:: QRコード画像（data URL）と端末内画像のため。
 # - media-src blob:: カメラプレビュー（getUserMedia の srcObject）用に許可。
 # - connect-src: Supabase の REST/RPC（https）と Realtime（wss）のみ。
@@ -15,4 +16,4 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: SAMEORIGIN
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'

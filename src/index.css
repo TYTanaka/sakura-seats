@@ -30,14 +30,13 @@
      地（ワイン→藍グラス）と文字（クリーム）を1本化する */
   --float-bg: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
   --float-text: #f7ead2;
-  /* 書体トークン（R27）: 見出し＝明朝、本文＝ゴシック。端末標準フォントだけで
-     iOS / Android / Windows の表示を揃える（外部フォントは読み込まない）。
-     以前は本文に Web フォント（M PLUS Rounded 1c）を読み込んでいたが、
-     読み込み待ち・端末差・通信量の面で不利なため端末フォントへ一本化した。 */
+  /* 書体トークン（R27 で導入、R29 で本文の丸ゴシック復帰）: 見出し＝明朝、
+     本文＝M PLUS Rounded 1c を先頭に置き、読み込めない環境では R27 で整えた
+     端末ゴシックのスタックへそのまま落ちる。 */
   --font-display: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro', 'Yu Mincho',
     'YuMincho', 'Noto Serif JP', serif;
-  --font-body: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
-    'YuGothic', 'Noto Sans JP', sans-serif;
+  --font-body: 'M PLUS Rounded 1c', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Yu Gothic', 'YuGothic', 'Noto Sans JP', sans-serif;
   --success: #2f9e66;
   --shadow-pink: 0 4px 16px rgba(146, 32, 52, 0.13);
 }
