@@ -34,6 +34,53 @@ import Staff, { hasStaffSession } from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
 
+/* 文字サイズ設定（R27・お客様側のみ）: アプリは px 指定のため OS の文字
+   サイズ設定が効かない。高齢のお客様向けに端末へ保存する切り替えを持つ。
+   スタッフ画面では Shell が data-textsize を常に standard に固定する。 */
+type TextSize = 'standard' | 'large'
+const TEXT_SIZE_KEY = 'sakura-seats-text-size-v1'
+function loadTextSize(): TextSize {
+  try {
+    return localStorage.getItem(TEXT_SIZE_KEY) === 'large' ? 'large' : 'standard'
+  } catch {
+    return 'standard'
+  }
+}
+
+function TextSizeToggle({
+  value,
+  onChange,
+}: {
+  value: TextSize
+  onChange: (v: TextSize) => void
+}) {
+  return (
+    <div className="textsize-bar" data-textsize-toggle>
+      <span className="textsize-label" id="textsize-label">
+        文字サイズ
+      </span>
+      <div className="textsize-seg" role="group" aria-labelledby="textsize-label">
+        <button
+          type="button"
+          data-textsize-option="standard"
+          aria-pressed={value === 'standard'}
+          onClick={() => onChange('standard')}
+        >
+          標準
+        </button>
+        <button
+          type="button"
+          data-textsize-option="large"
+          aria-pressed={value === 'large'}
+          onClick={() => onChange('large')}
+        >
+          大
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * 会場名はフレーズ単位でのみ改行させる（R6）: 機種幅によって
  * 「さくら / プラザ」のような文節の途中で割れないよう、2つのフレーズを
@@ -475,11 +522,22 @@ function Shell() {
   }, [staffSessionEmail])
   /** 予約完了画面の表示中か（AudienceBook から通知を受ける・R6・C-2） */
   const [bookingDone, setBookingDone] = useState(false)
+  /* 文字サイズ（R27）: 初期値は端末の保存値。初回描画から正しい大きさで
+     出るよう、遅延初期化で読み込む（描画後の切り替えちらつきなし） */
+  const [textSize, setTextSizeState] = useState<TextSize>(loadTextSize)
+  const setTextSize = (v: TextSize) => {
+    setTextSizeState(v)
+    try {
+      localStorage.setItem(TEXT_SIZE_KEY, v)
+    } catch {
+      /* 保存できなくても切り替え自体は有効 */
+    }
+  }
   const perf = data.performance
 
   if (mode === 'cloud' && loadError) {
     return (
-      <div className="app-shell">
+      <div className="app-shell" data-textsize={textSize}>
         <main className="main">
           <section className="card">
             <h2>接続できませんでした</h2>
@@ -495,14 +553,14 @@ function Shell() {
 
   if (mode === 'cloud' && !ready) {
     return (
-      <div className="app-shell">
+      <div className="app-shell" data-textsize={textSize}>
         <p className="loading-note">読み込み中…♪</p>
       </div>
     )
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-textsize={view === 'staff' ? 'standard' : textSize}>
       {mode === 'cloud' && syncState !== 'ok' && (
         <div
           className={`sync-banner sync-${syncState}`}
@@ -520,6 +578,10 @@ function Shell() {
         onLookup={() => go('lookup')}
         onStaff={() => go('staff')}
       />
+      {/* 文字サイズ切り替え（R27）: ヒーロー帯の直下に常置し、予約画面と
+          予約確認の両方で同じ場所から切り替えられるようにする。
+          スタッフ画面には出さない（スタッフ側は標準サイズで固定） */}
+      {view !== 'staff' && <TextSizeToggle value={textSize} onChange={setTextSize} />}
       <main className="main">
         {storageWarning && (
           <p className="storage-warning" data-storage-warning role="alert">

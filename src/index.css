@@ -30,9 +30,14 @@
      地（ワイン→藍グラス）と文字（クリーム）を1本化する */
   --float-bg: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
   --float-text: #f7ead2;
-  /* 劇場の掲示らしい明朝ディスプレイ書体（外部フォントは使わない） */
+  /* 書体トークン（R27）: 見出し＝明朝、本文＝ゴシック。端末標準フォントだけで
+     iOS / Android / Windows の表示を揃える（外部フォントは読み込まない）。
+     以前は本文に Web フォント（M PLUS Rounded 1c）を読み込んでいたが、
+     読み込み待ち・端末差・通信量の面で不利なため端末フォントへ一本化した。 */
   --font-display: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro', 'Yu Mincho',
     'YuMincho', 'Noto Serif JP', serif;
+  --font-body: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
+    'YuGothic', 'Noto Sans JP', sans-serif;
   --success: #2f9e66;
   --shadow-pink: 0 4px 16px rgba(146, 32, 52, 0.13);
 }
@@ -53,8 +58,7 @@ body {
   background-image: linear-gradient(180deg, rgba(179, 39, 61, 0.1), rgba(179, 39, 61, 0) 430px);
   background-repeat: no-repeat;
   color: var(--ink);
-  font-family: 'M PLUS Rounded 1c', 'Hiragino Maru Gothic ProN', 'Hiragino Sans',
-    'Noto Sans JP', 'Yu Gothic', sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -103,6 +107,25 @@ textarea {
   font: inherit;
 }
 
+/* 数字の桁揃え（R27）: 料金・残席・集計など、数値が並ぶ／増減する箇所は
+   等幅数字にして桁のブレやレイアウトのガタつきを防ぐ */
+.site-when,
+.site-meta,
+.site-deadline,
+.zbadge-count,
+.zone-remaining-chip,
+.type-table,
+.summary-value,
+.detail-total,
+.reservation-code,
+.last-res-code,
+.party-size,
+.today-times,
+.result-price,
+.door-selection-bar {
+  font-variant-numeric: tabular-nums;
+}
+
 .app-shell {
   max-width: 880px;
   margin: 0 auto;
@@ -118,7 +141,7 @@ textarea {
 .site-header {
   position: relative;
   overflow: hidden;
-  margin: 0 -12px 6px;
+  margin: 0 -12px 4px;
   text-align: center;
   color: #ffffff;
   background: var(--burgundy-deep);
@@ -138,7 +161,7 @@ textarea {
       rgba(0, 0, 0, 0) 13px 30px
     ),
     linear-gradient(180deg, #8e1f2f 0%, #71182a 55%, #571122 100%);
-  padding: 4px 18px 6px;
+  padding: 3px 18px 4px;
 }
 
 .hero-band .header-top {
@@ -166,7 +189,7 @@ textarea {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 10px 18px 12px;
+  padding: 7px 18px 8px;
   /* R24: 舞台上のスポットライトのような金の気配を上部に重ねる（背景のみ） */
   background:
     radial-gradient(120% 90% at 50% -10%, rgba(245, 196, 81, 0.14), rgba(245, 196, 81, 0) 55%),
@@ -1975,7 +1998,7 @@ button.seat-available:hover {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .page-share .btn {
@@ -2861,15 +2884,15 @@ button.seat-available:hover {
   margin-bottom: 6px;
 }
 .zone-lead {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: 12px;
   line-height: 1.45;
 }
 .zone-controls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 .party-row {
   display: flex;
@@ -2978,7 +3001,7 @@ button.seat-available:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   min-height: 18px;
 }
 /* R25（ラウンド10・G-2）: 補助文字を引き上げる（11px→12px） */
@@ -3321,7 +3344,7 @@ button.zseat-cell:active {
 /* マップ下のコンパクトなゾーン一覧（説明文はこちらに置く） */
 .zonelist {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 2px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -4114,3 +4137,158 @@ button.sseat-cell:active {
     #8d84a3 3px 6px
   );
 }
+
+/* ================= 文字サイズ設定（R27・お客様側のみ） =================
+   アプリは px 指定のため OS の文字サイズ設定が効かない。高齢のお客様向けに
+   「標準／大」の切り替えを用意する。仕組み:
+   - 切り替え状態は .app-shell の data-textsize 属性（スタッフ画面では
+     Shell が常に standard を付けるため、スタッフ画面は拡大されない）
+   - 大では土台の font-size を 16px → 19.2px（1.2倍）にし、継承で決まる
+     本文・見出し（em 基準）をまとめて拡大する
+   - px 明示の文字は下の上書き一覧で個別に拡大する（本文・補助 ≈1.2倍、
+     見出しはやや控えめ）
+   - 座席表の幾何（行番号・セル内文字・プランのラベル）と地図まわりの
+     凡例・ズーム表示は、図としての寸法を保つため拡大対象に含めない */
+.textsize-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  /* 上下の余白は絞る: 予約の入口がファーストビューに入る要件（R16・C-6）と
+     両立させるため、バー自体も薄く保つ */
+  margin: 2px 2px 0;
+}
+
+.textsize-label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--burgundy);
+}
+
+.textsize-seg {
+  display: inline-flex;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px;
+  gap: 2px;
+}
+
+.textsize-seg button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 4px 16px;
+  border-radius: 999px;
+  min-height: 30px;
+}
+
+.textsize-seg button[aria-pressed='true'] {
+  background: linear-gradient(160deg, var(--pink-soft), var(--pink) 55%, var(--burgundy-soft));
+  color: #fff;
+}
+
+.app-shell[data-textsize='large'] {
+  font-size: 19.2px;
+}
+
+.app-shell[data-textsize='large'] .textsize-label,
+.app-shell[data-textsize='large'] .textsize-seg button {
+  font-size: 16px;
+}
+
+/* ヘッダー（ヒーロー帯） */
+.app-shell[data-textsize='large'] .venue-line { font-size: 14px; }
+.app-shell[data-textsize='large'] .site-title { font-size: 23px; }
+.app-shell[data-textsize='large'] .site-when { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .site-meta { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .site-deadline { font-size: 16px; }
+.app-shell[data-textsize='large'] .site-note { font-size: 15px; }
+.app-shell[data-textsize='large'] .staff-link { font-size: 14px; }
+
+/* 共通の本文・操作要素 */
+.app-shell[data-textsize='large'] .small { font-size: 15px; }
+.app-shell[data-textsize='large'] .error-text,
+.app-shell[data-textsize='large'] .success-text { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .btn { font-size: 17.5px; }
+.app-shell[data-textsize='large'] .btn-small { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .site-footer { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .field > span,
+.app-shell[data-textsize='large'] .field-label { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .field input,
+.app-shell[data-textsize='large'] .field select,
+.app-shell[data-textsize='large'] .field textarea { font-size: 17px; }
+.app-shell[data-textsize='large'] .required { font-size: 12.5px; }
+.app-shell[data-textsize='large'] .check-line { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .poster-caption { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .form-subhead { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .seg-btn { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .notice-box { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .prototype-note { font-size: 15px; }
+.app-shell[data-textsize='large'] .modal-title { font-size: 24px; }
+.app-shell[data-textsize='large'] .modal-summary > div { font-size: 17.5px; }
+.app-shell[data-textsize='large'] .modal-note { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .modal-btn { font-size: 19px; }
+
+/* 予約フロー（ゾーン選択・人数・フォーム・確認） */
+.app-shell[data-textsize='large'] .zone-lead { font-size: 14.5px; }
+.app-shell[data-textsize='large'] .party-size { font-size: 21px; }
+.app-shell[data-textsize='large'] .stepper-btn { font-size: 23px; }
+.app-shell[data-textsize='large'] .party-cap-note { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .zseat-hint { font-size: 14px; }
+.app-shell[data-textsize='large'] .zbadge-letter { font-size: 14px; }
+.app-shell[data-textsize='large'] .zbadge-count { font-size: 13px; }
+.app-shell[data-textsize='large'] .zonelist-letter { font-size: 18px; }
+.app-shell[data-textsize='large'] .zonelist-name { font-size: 16px; }
+.app-shell[data-textsize='large'] .zonelist-desc { font-size: 13.5px; }
+.app-shell[data-textsize='large'] .zonelist-remain { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .zone-low-badge { font-size: 12.5px; }
+.app-shell[data-textsize='large'] .zonelist-soldout { font-size: 17px; }
+.app-shell[data-textsize='large'] .floor-tab { font-size: 16px; }
+.app-shell[data-textsize='large'] .zdb-zone { font-size: 17.5px; }
+.app-shell[data-textsize='large'] .zdb-meta { font-size: 14px; }
+.app-shell[data-textsize='large'] .zdb-btn { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .zone-bottom-notice { font-size: 16px; }
+.app-shell[data-textsize='large'] .detail-list dt { font-size: 16px; }
+.app-shell[data-textsize='large'] .detail-total { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .selection-empty,
+.app-shell[data-textsize='large'] .selection-seats { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .selection-total { font-size: 19px; }
+.app-shell[data-textsize='large'] .selection-warn { font-size: 15.5px; }
+
+/* 完了・結果・共有 */
+.app-shell[data-textsize='large'] .done-badge,
+.app-shell[data-textsize='large'] .checkedin-badge { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .reservation-code { font-size: 44px; }
+.app-shell[data-textsize='large'] .result-zone { font-size: 18.5px; }
+.app-shell[data-textsize='large'] .result-seats { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .result-price { font-size: 15px; }
+.app-shell[data-textsize='large'] .share-actions .btn,
+.app-shell[data-textsize='large'] .page-share .btn { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .qr-caption { font-size: 15.5px; }
+
+/* この端末の控え */
+.app-shell[data-textsize='large'] .last-res-code { font-size: 27px; }
+.app-shell[data-textsize='large'] .last-res-item.is-cancelled .last-res-code { font-size: 23px; }
+.app-shell[data-textsize='large'] .last-res-line,
+.app-shell[data-textsize='large'] .last-res-folded-line { font-size: 16px; }
+.app-shell[data-textsize='large'] .last-res-cancelled-note { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .last-res-cancelled-mark { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .cancelled-chip { font-size: 13px; }
+.app-shell[data-textsize='large'] .last-res-fold-toggle { font-size: 14px; }
+.app-shell[data-textsize='large'] .last-res-share-btn { font-size: 15px; }
+.app-shell[data-textsize='large'] .last-res-qr-hint,
+.app-shell[data-textsize='large'] .last-res-qr-loading { font-size: 12.5px; }
+
+/* 当日カード・お知らせ帯 */
+.app-shell[data-textsize='large'] .today-badge { font-size: 16px; }
+.app-shell[data-textsize='large'] .today-name { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .today-times { font-size: 18px; }
+.app-shell[data-textsize='large'] .today-venue { font-size: 14px; }
+.app-shell[data-textsize='large'] .today-scroll-btn { font-size: 17px; }
+.app-shell[data-textsize='large'] .sync-banner { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .storage-warning,
+.app-shell[data-textsize='large'] .local-mode-banner,
+.app-shell[data-textsize='large'] .draft-pruned-notice { font-size: 16px; }
