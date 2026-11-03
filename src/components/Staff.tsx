@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   ALL_SEATS,
   PARENT_ROOM_SEATS,
@@ -6,8 +6,6 @@ import {
   SIDE_R_SEATS,
   WHEELCHAIR_SEATS,
   seatIdsOfRow,
-  type Floor,
-  type SeatDef,
 } from '../data/seats'
 import {
   activeReservations,
@@ -35,12 +33,10 @@ import {
 } from '../lib/staffAuth'
 import { useToast } from '../lib/toast'
 import { downloadReservationsCsv } from '../lib/csv'
-import SeatMap, {
-  SeatLegend,
-  ZoomControls,
-  type SeatVisualState,
-  type SeatZoom,
-} from './SeatMap'
+import StaffSeatMap, {
+  StaffSeatLegend,
+  type StaffSeatState,
+} from './StaffSeatMap'
 import TicketTypePicker, { priceOfSeat } from './TicketTypePicker'
 import QrReception from './QrReception'
 import ReservationCard from './ReservationCard'
@@ -526,46 +522,6 @@ function Reception() {
   )
 }
 
-/* ---------------- 座席表の操作パネル（当日販売・販売設定で共用） ---------------- */
-
-function SeatControls({
-  floor,
-  setFloor,
-  zoom,
-  setZoom,
-  fitScale,
-  readoutRef,
-}: {
-  floor: Floor
-  setFloor: (f: Floor) => void
-  zoom: SeatZoom
-  setZoom: (z: SeatZoom) => void
-  fitScale: number | null
-  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
-  readoutRef?: RefObject<HTMLSpanElement | null>
-}) {
-  return (
-    <div className="seat-controls">
-      <div className="floor-tabs" role="tablist" aria-label="階の切り替え">
-        {([1, 2] as Floor[]).map((f) => (
-          <button
-            key={f}
-            type="button"
-            role="tab"
-            aria-selected={floor === f}
-            data-floor-tab={f}
-            className={`floor-tab${floor === f ? ' active' : ''}`}
-            onClick={() => setFloor(f)}
-          >
-            {f}階席
-          </button>
-        ))}
-      </div>
-      <ZoomControls zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={readoutRef} />
-    </div>
-  )
-}
-
 /* ---------------- 当日販売 ---------------- */
 
 /** 前回選んだ販売者の保持先（同じ端末・同じタブの間だけ引き継ぐ） */
@@ -582,14 +538,6 @@ function loadLastSeller(): string {
 function DoorSales() {
   const { data, reserve } = useStore()
   const perf = data.performance
-  const [floor, setFloor] = useState<Floor>(1)
-  // 当日販売は開いた直後から席を指で狙う作業なので、全体表示（約37%・
-  // 席が約11px）ではなく 100% を初期値にする（R6・O-3）。全体表示は
-  // ズームチップ「全体」からいつでも戻れる
-  const [zoom, setZoom] = useState<SeatZoom>(1)
-  const [fitScale, setFitScale] = useState<number | null>(null)
-  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
-  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
   const [selected, setSelected] = useState<string[]>([])
   /** 席ごとの券種指定（未指定はデフォルト券種） */
   const [typeBySeat, setTypeBySeat] = useState<Record<string, string>>({})
@@ -614,20 +562,20 @@ function DoorSales() {
 
   const total = selected.reduce((sum, id) => sum + priceOfSeat(perf, typeBySeat, id), 0)
 
-  const stateOf = (seat: SeatDef): SeatVisualState => {
-    if (selected.includes(seat.id)) return 'selected'
-    return seatStatus(data, seat.id)
+  const stateOf = (seatId: string): StaffSeatState => {
+    if (selected.includes(seatId)) return 'selected'
+    return seatStatus(data, seatId)
   }
 
-  const handleTap = (seat: SeatDef) => {
+  const handleTap = (seatId: string) => {
     setMessage('')
     setError('')
-    if (selected.includes(seat.id)) {
-      setSelected(selected.filter((id) => id !== seat.id))
+    if (selected.includes(seatId)) {
+      setSelected(selected.filter((id) => id !== seatId))
       return
     }
-    if (seatStatus(data, seat.id) !== 'available') return
-    setSelected([...selected, seat.id])
+    if (seatStatus(data, seatId) !== 'available') return
+    setSelected([...selected, seatId])
   }
 
   const handleSell = async () => {
@@ -658,9 +606,12 @@ function DoorSales() {
     <section className="card">
       <h3>当日販売</h3>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
-      <SeatLegend variant="staff" />
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
+      <StaffSeatLegend />
+      {/* R18: お客様側と同じ公式図面（統合プラン）。当日販売は開いた直後から
+          席を指で狙う作業なので、全体表示（席が約8px）ではなく拡大表示
+          （2.5倍・席が約20px）を初期値にする（R6・O-3 の考え方を継承）。
+          全体表示へはピンチ縮小か「全体表示に戻す」で戻れる */}
+      <StaffSeatMap data={data} stateOf={stateOf} onSeatTap={handleTap} initialScale={2.5} />
       {selected.length > 0 && (
         <p className="door-selection-bar" data-door-selection-bar>
           選択中：{formatSeatList(selected)}
@@ -733,15 +684,10 @@ function DoorSales() {
 function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
   const { showToast } = useToast()
-  const [floor, setFloor] = useState<Floor>(1)
-  const [zoom, setZoom] = useState<SeatZoom>('fit')
-  const [fitScale, setFitScale] = useState<number | null>(null)
-  /** 倍率読み出しスパンへの ref（ピンチ中のプレビュー表示を SeatMap と共有する） */
-  const zoomReadoutRef = useRef<HTMLSpanElement>(null)
   /** 占有席タップ時の理由表示（一時的に出す） */
   const [notice, setNotice] = useState('')
 
-  const stateOf = (seat: SeatDef): SeatVisualState => seatStatus(data, seat.id)
+  const stateOf = (seatId: string): StaffSeatState => seatStatus(data, seatId)
 
   // 失敗を無言にしない（R4-4）: 切替系の失敗はすべてトーストで知らせる
   const runToggle = (fn: () => Promise<void>) => {
@@ -750,15 +696,15 @@ function SeatSettings() {
     )
   }
 
-  const handleTap = (seat: SeatDef) => {
-    const status = seatStatus(data, seat.id)
+  const handleTap = (seatId: string) => {
+    const status = seatStatus(data, seatId)
     if (status === 'reserved' || status === 'paid') {
       // 無反応に見えないよう、切り替えできない理由を一時表示する
       setNotice('予約済みのため変更できません')
       return
     }
     setNotice('')
-    runToggle(() => toggleBlocked(seat.id))
+    runToggle(() => toggleBlocked(seatId))
   }
 
   // 理由表示は数秒で自動的に消す
@@ -787,14 +733,14 @@ function SeatSettings() {
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
-      <SeatControls floor={floor} setFloor={setFloor} zoom={zoom} setZoom={setZoom} fitScale={fitScale} readoutRef={zoomReadoutRef} />
-      <SeatLegend variant="staff" />
+      <StaffSeatLegend />
       {notice && (
         <p className="seat-settings-notice" data-seat-notice role="status">
           {notice}
         </p>
       )}
-      <SeatMap floor={floor} zoom={zoom} stateOf={stateOf} onSeatTap={handleTap} onFitScale={setFitScale} onZoomChange={setZoom} previewReadoutRef={zoomReadoutRef} />
+      {/* R18: お客様側と同じ公式図面（統合プラン）。初期表示は全体表示 */}
+      <StaffSeatMap data={data} stateOf={stateOf} onSeatTap={handleTap} />
       <h4>列ごとの一括切替</h4>
       <ul className="row-toggle-list">
         {groups.map((group) => {

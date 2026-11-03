@@ -3575,3 +3575,104 @@ button.zseat-cell:active {
   font-weight: 700;
   word-break: break-all;
 }
+
+/* ===== R18: スタッフ用席ピッカー（公式図プラン・席単位） =====
+   お客様側のゾーン座席表と同じ図面（PlanChrome＋zplan 配置）の上に、
+   状態色だけをスタッフ用に描き分ける。凡例（.sseat-swatch）と一致させる */
+.sseat-cell {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  /* 拡大時に出す座番。プラン幅に対するセルの比率は一定なので、
+     transform の拡大にそのまま追従する */
+  font-size: 6.8px;
+  letter-spacing: -0.02em;
+}
+button.sseat-cell:active {
+  filter: brightness(1.3);
+}
+.sseat-cell.is-diamond {
+  border-radius: 3px;
+}
+/* 空席: ゾーン色（お客様側の is-free と同じ見え方） */
+.sseat-cell.is-available {
+  background: var(--zc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: rgba(23, 11, 61, 0.8);
+}
+/* 車椅子席・親子室（ゾーン無し）の空席は中立色 */
+.sseat-cell.is-neutral.is-available {
+  background: rgba(232, 222, 252, 0.32);
+  color: rgba(232, 222, 252, 0.9);
+}
+/* 予約済み: 淡い灰紫（凡例の「淡」） */
+.sseat-cell.is-reserved {
+  background: #574e78;
+  color: rgba(232, 222, 252, 0.75);
+}
+/* 支払済・販売済み: 深い紺紫＋内側の輪（凡例の「濃」） */
+.sseat-cell.is-paid {
+  background: #150d2b;
+  box-shadow: inset 0 0 0 1.5px rgba(232, 222, 252, 0.45);
+  color: rgba(232, 222, 252, 0.55);
+}
+/* 販売しない: 斜線ハッチ */
+.sseat-cell.is-blocked {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(232, 222, 252, 0.3) 0 3px,
+    rgba(15, 9, 36, 0.6) 3px 6px
+  );
+  color: rgba(232, 222, 252, 0.6);
+}
+/* 選択中: 金色に光らせる（R17 の割当席ハイライトと同じ金・同じ鼓動） */
+.sseat-cell.is-selected {
+  background: #ffc21f;
+  color: #3a2703;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #e8a100,
+    0 0 14px 3px rgba(232, 161, 0, 0.9);
+  z-index: 2;
+  animation: zseat-highlight-pulse 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sseat-cell.is-selected {
+    animation: none;
+  }
+}
+/* 見切れ席の※印（拡大時のみセル内に出る） */
+.sseat-star {
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  font-size: 6px;
+  font-weight: 800;
+  color: #ffb340;
+}
+/* 凡例のスウォッチ（セルと同じ色使い） */
+.sseat-swatch.is-available {
+  background: #9a6bff;
+}
+.sseat-swatch.is-selected {
+  background: #ffc21f;
+  box-shadow: 0 0 0 2px #e8a100;
+}
+.sseat-swatch.is-reserved {
+  background: #574e78;
+}
+.sseat-swatch.is-paid {
+  background: #150d2b;
+  box-shadow: inset 0 0 0 1.5px rgba(120, 100, 180, 0.8);
+}
+.sseat-swatch.is-blocked {
+  background: repeating-linear-gradient(
+    45deg,
+    #cfc4de 0 3px,
+    #8d84a3 3px 6px
+  );
+}
