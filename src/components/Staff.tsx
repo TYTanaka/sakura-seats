@@ -64,6 +64,14 @@ function loadStaffSession(): string | null {
   }
 }
 
+/**
+ * このタブにスタッフセッション（合言葉）が残っているか（R21・ラウンド8 S-4）。
+ * App の初期表示の判定に使う。sessionStorage なのでタブを閉じれば消える。
+ */
+export function hasStaffSession(): boolean {
+  return loadStaffSession() !== null
+}
+
 function saveStaffSession(passcode: string) {
   try {
     sessionStorage.setItem(STAFF_SESSION_KEY, passcode)
@@ -404,6 +412,28 @@ function Reception() {
       )
   }
 
+  /**
+   * 支払いトグル（R21・ラウンド8 S-2）: 来場済みのゾーン予約を未払いに
+   * 戻しても席は保持される仕様になったため、その旨をその場で知らせる
+   * （席が残ったままなのを見て「戻っていない？」と誤解しないように）。
+   */
+  const handleTogglePaid = (res: Reservation) => {
+    void (async () => {
+      try {
+        await setPaid(res.id, !res.paid)
+        if (res.paid && res.checkedIn && res.zone && res.seatIds.length > 0) {
+          showToast('来場済みのため、席はそのまま保持しました', 'info')
+        }
+      } catch (e) {
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '操作に失敗しました。接続を確認してもう一度お試しください',
+        )
+      }
+    })()
+  }
+
   /** キャンセルの取り消し（R6・O-1）: 結果コードごとに案内を出し分ける */
   const handleUncancel = (res: Reservation) => {
     void (async () => {
@@ -511,7 +541,7 @@ function Reception() {
               res={res}
               onComplete={handleComplete}
               onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
-              onTogglePaid={(r) => runAction(() => setPaid(r.id, !r.paid))}
+              onTogglePaid={handleTogglePaid}
               onCancel={(r) => runAction(() => cancel(r.id))}
               onUncancel={handleUncancel}
             />
@@ -684,8 +714,6 @@ function DoorSales() {
 function SeatSettings() {
   const { data, toggleBlocked, setBlockedForSeats } = useStore()
   const { showToast } = useToast()
-  /** 占有席タップ時の理由表示（一時的に出す） */
-  const [notice, setNotice] = useState('')
 
   const stateOf = (seatId: string): StaffSeatState => seatStatus(data, seatId)
 
@@ -699,20 +727,15 @@ function SeatSettings() {
   const handleTap = (seatId: string) => {
     const status = seatStatus(data, seatId)
     if (status === 'reserved' || status === 'paid') {
-      // 無反応に見えないよう、切り替えできない理由を一時表示する
-      setNotice('予約済みのため変更できません')
+      // R21（ラウンド8・S-3）: 占有席タップ時の理由はトーストで出す。
+      // 以前はカード上部の注記だったが、座席表を拡大・スクロールして
+      // 操作していると画面外で見えず「無言で何も起きない」ように見えた。
+      // トーストは画面下部固定で、どこを操作していても必ず目に入る
+      showToast('予約が入っている席は変更できません', 'info')
       return
     }
-    setNotice('')
     runToggle(() => toggleBlocked(seatId))
   }
-
-  // 理由表示は数秒で自動的に消す
-  useEffect(() => {
-    if (!notice) return
-    const t = setTimeout(() => setNotice(''), 3500)
-    return () => clearTimeout(t)
-  }, [notice])
 
   const groups: { label: string; seatIds: string[] }[] = [
     ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map((row) => ({
@@ -734,11 +757,6 @@ function SeatSettings() {
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
       </p>
       <StaffSeatLegend />
-      {notice && (
-        <p className="seat-settings-notice" data-seat-notice role="status">
-          {notice}
-        </p>
-      )}
       {/* R18: お客様側と同じ公式図面（統合プラン）。初期表示は全体表示 */}
       <StaffSeatMap data={data} stateOf={stateOf} onSeatTap={handleTap} />
       <h4>列ごとの一括切替</h4>

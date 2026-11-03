@@ -512,7 +512,9 @@ export class CloudApi {
 
   /**
    * ゾーン予約を未払いに戻す（staff_unassign_and_unpay RPC・R12）。
-   * 割り当てた席を解放し、明細の seatId を空に戻す。
+   * 原則として割り当てた席を解放し、明細の seatId を空に戻す。
+   * R21: 来場済みの予約はサーバ側で席を解放せず 'reserved' として保持する
+   * （migration_sakura_r21。お客様が座っている席の二重割当を防ぐため）。
    */
   async staffUnassignAndUnpay(passcode: string, cloudId: string): Promise<void> {
     await this.call('staff_unassign_and_unpay', {

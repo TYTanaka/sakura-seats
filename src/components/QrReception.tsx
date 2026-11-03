@@ -369,6 +369,27 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
     )
   }
 
+  /**
+   * 支払いトグル（R21・ラウンド8 S-2、受付一覧と同じ）: 来場済みの
+   * ゾーン予約を未払いに戻しても席は保持されるため、その旨を知らせる。
+   */
+  const handleTogglePaid = (target: Reservation) => {
+    void (async () => {
+      try {
+        await setPaid(target.id, !target.paid)
+        if (target.paid && target.checkedIn && target.zone && target.seatIds.length > 0) {
+          showToast('来場済みのため、席はそのまま保持しました', 'info')
+        }
+      } catch (e) {
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '操作に失敗しました。接続を確認してもう一度お試しください',
+        )
+      }
+    })()
+  }
+
   /** 受付完了の成功トースト（R6・O-2、受付一覧と同じ文面に揃える） */
   const handleComplete = (target: Reservation) => {
     void completeReception(target.id)
@@ -593,7 +614,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
               res={res}
               onComplete={handleComplete}
               onToggleCheckIn={(r) => runAction(() => setCheckedIn(r.id, !r.checkedIn))}
-              onTogglePaid={(r) => runAction(() => setPaid(r.id, !r.paid))}
+              onTogglePaid={handleTogglePaid}
               onCancel={(r) => runAction(() => cancel(r.id))}
             />
           </div>

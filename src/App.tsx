@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ALL_SEATS } from './data/seats'
 import {
   formatMonthDayTime,
@@ -11,6 +11,7 @@ import {
   type Performance,
 } from './lib/logic'
 import { StoreProvider, useStore } from './lib/store'
+import { SEATS_UNDECIDED_NOTICE } from './lib/zones'
 import { ToastProvider } from './lib/toast'
 import { useNow } from './lib/useNow'
 import {
@@ -30,7 +31,7 @@ import AudienceBook from './components/AudienceBook'
 import Lookup from './components/Lookup'
 import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
 import { encodeQrPayload } from './lib/qrToken'
-import Staff from './components/Staff'
+import Staff, { hasStaffSession } from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
 
@@ -306,7 +307,7 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
             <p className="last-res-line">
               ゾーン：{snapshot.zoneLabel}（{snapshot.partySize}名）
               <br />
-              座席はお支払い後に確定します
+              {SEATS_UNDECIDED_NOTICE}
             </p>
           ) : (
             <p className="last-res-line">座席：{snapshot.seatLabels.join('、')}</p>
@@ -389,8 +390,29 @@ function SavedReservations({ onLookup }: { onLookup: () => void }) {
 }
 
 function Shell() {
-  const { data, mode, ready, loadError, retryLoad, storageWarning, syncState } = useStore()
-  const [view, setView] = useState<View>('book')
+  const { data, mode, ready, loadError, retryLoad, storageWarning, syncState, staffSessionEmail } =
+    useStore()
+  /**
+   * 初期ビュー（R21・ラウンド8 S-4）: スタッフセッションがこのタブに
+   * 残っていれば、再読み込み後もスタッフ画面へ直接戻る。当日スタッフは
+   * リロードで毎回お客様画面から入り直していた。セッションは元々
+   * スタッフ画面に入れば無操作で自動解除される設計（タブ内限定）で、
+   * 初期ビューの分岐追加は実質的な露出を変えない。
+   */
+  const [view, setView] = useState<View>(() => (hasStaffSession() ? 'staff' : 'book'))
+  /** ユーザーが明示的に画面遷移したか（自動復帰で上書きしないための印） */
+  const navigatedRef = useRef(false)
+  const go = (v: View) => {
+    navigatedRef.current = true
+    setView(v)
+  }
+  // クラウド（Google ログイン）のセッションが後から判明した場合も、
+  // まだ手動遷移していない初回だけスタッフ画面へ戻す
+  useEffect(() => {
+    if (staffSessionEmail && !navigatedRef.current) {
+      setView('staff')
+    }
+  }, [staffSessionEmail])
   /** 予約完了画面の表示中か（AudienceBook から通知を受ける・R6・C-2） */
   const [bookingDone, setBookingDone] = useState(false)
   const perf = data.performance
@@ -435,8 +457,8 @@ function Shell() {
       <TopHeader
         perf={perf}
         compact={view === 'staff'}
-        onLookup={() => setView('lookup')}
-        onStaff={() => setView('staff')}
+        onLookup={() => go('lookup')}
+        onStaff={() => go('staff')}
       />
       <main className="main">
         {storageWarning && (
@@ -449,16 +471,16 @@ function Shell() {
             「予約が完了しました」と予約番号がファーストビューに入り、
             QR・共有ボタンも完了カード側に一本化されて見える */}
         {view === 'book' && !bookingDone && (
-          <SavedReservations onLookup={() => setView('lookup')} />
+          <SavedReservations onLookup={() => go('lookup')} />
         )}
         {view === 'book' && (
           <AudienceBook perf={perf} onBookingDoneChange={setBookingDone} />
         )}
         {view === 'book' && bookingDone && (
-          <SavedReservations onLookup={() => setView('lookup')} />
+          <SavedReservations onLookup={() => go('lookup')} />
         )}
-        {view === 'lookup' && <Lookup onBack={() => setView('book')} />}
-        {view === 'staff' && <Staff onExit={() => setView('book')} />}
+        {view === 'lookup' && <Lookup onBack={() => go('book')} />}
+        {view === 'staff' && <Staff onExit={() => go('book')} />}
       </main>
       <footer className="site-footer">
         <p>

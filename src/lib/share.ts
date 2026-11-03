@@ -5,7 +5,7 @@ import {
   type Performance,
   type Reservation,
 } from './logic'
-import { zoneLabel } from './zones'
+import { SEATS_UNDECIDED_NOTICE, zoneLabel } from './zones'
 import type { LastReservationSnapshot } from './lastReservation'
 
 /**
@@ -17,8 +17,9 @@ import type { LastReservationSnapshot } from './lastReservation'
 
 function seatLines(reservation: Reservation): string {
   // R12: ゾーン予約で席が未確定の間は、席番号ではなくゾーンと案内を出す
+  // R21: 確定タイミングの文言は SEATS_UNDECIDED_NOTICE に統一（支払い/受付の早い方）
   if (reservation.zone && reservation.seatIds.length === 0) {
-    return `${zoneLabel(reservation.zone)}・${reservation.items.length}名\n座席はお支払い後に確定します`
+    return `${zoneLabel(reservation.zone)}・${reservation.items.length}名\n${SEATS_UNDECIDED_NOTICE}`
   }
   return reservation.items
     .map((item) => `${seatById(item.seatId).label}（${item.typeName} ${formatYen(item.price)}）`)
@@ -121,9 +122,9 @@ export function buildLineShareReservationUrl(
  */
 
 function snapshotSeatLines(snap: LastReservationSnapshot): string {
-  // R12: ゾーン予約の控えは席番号を持たない（お支払い後に確定する）
+  // R12: ゾーン予約の控えは席番号を持たない（確定はお支払い時または当日の受付時・R21）
   if (snap.zoneLabel) {
-    return `${snap.zoneLabel}・${snap.partySize ?? ''}名\n座席はお支払い後に確定します`
+    return `${snap.zoneLabel}・${snap.partySize ?? ''}名\n${SEATS_UNDECIDED_NOTICE}`
   }
   return snap.seatLabels.join('\n')
 }

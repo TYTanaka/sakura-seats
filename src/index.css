@@ -1159,6 +1159,20 @@ button.seat-available:hover {
   color: #ffe9a8;
 }
 
+/* 照会結果の「受付済み」チップ（R21・C-2）。スタッフカードの来場済チップと
+   同じ緑系で、状態が一目で分かるようにする */
+.checkedin-badge {
+  display: inline-block;
+  margin: 0 0 10px 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: #e2f4e8;
+  border: 1.5px solid #3d9d63;
+  color: #1e6b3c;
+  font-weight: 800;
+  font-size: 14px;
+}
+
 /* 完了画面の星のバースト（CSSのみ・1回だけ・控えめ） */
 .done-sparkles {
   position: absolute;
@@ -2191,18 +2205,7 @@ button.seat-available:hover {
   color: #146c4c;
 }
 
-/* 販売設定: 占有席タップ時の理由表示 */
-.seat-settings-notice {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  background: #fdeceb;
-  border: 1.5px dashed #e0492f;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #a02c1a;
-  text-align: center;
-}
+/* 販売設定: 占有席タップ時の理由表示は R21 でトーストに移行（.seat-settings-notice は廃止） */
 
 /* 予約締切後のお客様マップ: 席は不活性な見た目にする */
 .seat-picker.is-closed .seat {
@@ -2760,6 +2763,29 @@ button.seat-available:hover {
   border-radius: 999px;
   border: 1.5px solid var(--gold);
   background: rgba(245, 196, 81, 0.16);
+  color: var(--burgundy);
+  cursor: pointer;
+}
+/* エリアへのクイックジャンプ（R21・S-1）: スタッフ座席表のツールバー下に置く */
+.sseat-jumps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.sseat-jumps-label {
+  font-size: 11px;
+  color: var(--muted, #8a7f95);
+}
+.sseat-jump {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--violet, #7a5fd0);
+  background: rgba(122, 95, 208, 0.1);
   color: var(--burgundy);
   cursor: pointer;
 }

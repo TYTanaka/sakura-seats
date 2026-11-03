@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { encodeQrPayload, isQrToken } from '../lib/qrToken'
+import { formatCheckedInAt } from './ReservationCard'
 
 /**
  * QR の中身（payload 文字列）から画像 URL を取得する。
@@ -39,12 +40,22 @@ export function useReservationQrUrl(payload: string | null): string {
 export default function ReservationQr({
   code,
   token,
+  checkedInAt,
 }: {
   code: string
   token?: string | null
+  /**
+   * 受付済みのときの受付日時（R21・評価ラウンド8 C-2）。
+   * 渡されたら案内文を「受付済み」に切り替える（照会画面用）。
+   * 完了画面など受付前の表示では渡さない。
+   */
+  checkedInAt?: string | null
 }) {
   const payload = isQrToken(token) ? encodeQrPayload(token) : null
   const url = useReservationQrUrl(payload)
+  const checkedInCaption = checkedInAt
+    ? `受付済みです（${formatCheckedInAt(checkedInAt)}）`
+    : null
 
   if (!payload) {
     return (
@@ -53,7 +64,8 @@ export default function ReservationQr({
           予約番号 <strong>{code}</strong>
         </p>
         <p className="qr-caption">
-          当日は受付で予約番号をお伝えください（この予約にはQRコードがありません）
+          {checkedInCaption ??
+            '当日は受付で予約番号をお伝えください（この予約にはQRコードがありません）'}
         </p>
       </div>
     )
@@ -72,7 +84,9 @@ export default function ReservationQr({
       ) : (
         <p className="muted small reservation-qr-loading">QRコードを準備中…</p>
       )}
-      <p className="qr-caption">当日、受付でこのQRコードを見せてください</p>
+      <p className="qr-caption">
+        {checkedInCaption ?? '当日、受付でこのQRコードを見せてください'}
+      </p>
     </div>
   )
 }

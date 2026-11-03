@@ -507,8 +507,13 @@ export function zoneLabel(zone: string): string {
   return def ? `ゾーン${def.id}（${def.name}）` : `ゾーン${zone}`
 }
 
-/** 席未確定の案内文（お客様向けに統一する） */
-export const SEATS_UNDECIDED_NOTICE = '座席はお支払い後に確定します'
+/**
+ * 席未確定の案内文（お客様向けに統一する）。
+ * R21（評価ラウンド8・C-1）: R17 で当日の受付（チェックイン）でも席が
+ * 確定するようになったため、「お支払い後に確定」という旧文言は実挙動と
+ * 食い違っていた。支払い・受付のどちらか早い方で確定する、が正しい。
+ */
+export const SEATS_UNDECIDED_NOTICE = '座席はお支払い時、または当日の受付時に確定します'
 
 export interface ReservationSeatDisplay {
   /** ゾーン予約か */

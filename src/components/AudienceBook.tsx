@@ -526,7 +526,7 @@ export default function AudienceBook({
         </dl>
         <div className="notice-box">
           <p data-seats-undecided>
-            {SEATS_UNDECIDED_NOTICE}。お支払いが済みましたら、このページの
+            {SEATS_UNDECIDED_NOTICE}。お支払いまたは受付が済みましたら、このページの
             「予約確認」から座席番号をご確認いただけます。
           </p>
           <p>当日は受付でお名前と予約番号をお伝えのうえ、現金でお支払いください。</p>
@@ -605,7 +605,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              ゾーンをタップし、画面下の「このゾーンで進む」で決定。並んだ席をご用意します。座席番号はお支払い時に確定します。
+              ゾーンをタップし、画面下の「このゾーンで進む」で決定。座席番号はお支払い時、または当日の受付時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">
@@ -898,7 +898,7 @@ export default function AudienceBook({
             </div>
           </dl>
           <p className="muted small" data-seats-undecided>
-            {SEATS_UNDECIDED_NOTICE}。お支払い後、「予約確認」ページで座席番号をご確認いただけます。
+            {SEATS_UNDECIDED_NOTICE}。お支払いまたは受付の後、「予約確認」ページで座席番号をご確認いただけます。
           </p>
           {error && <p className="error-text">{error}</p>}
           <div className="btn-row">

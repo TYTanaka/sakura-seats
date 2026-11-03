@@ -9,6 +9,7 @@ import {
 import { SEATS_UNDECIDED_NOTICE, zoneLabel } from '../lib/zones'
 import { useStore } from '../lib/store'
 import ReservationQr from './ReservationQr'
+import { formatCheckedInAt } from './ReservationCard'
 
 /**
  * 予約確認ページ: 予約番号 + 電話番号で自分の予約を表示する。
@@ -160,8 +161,20 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
       {found && !found.cancelled && (
         <div className="lookup-result" data-lookup-result>
           <p className="done-badge">予約が見つかりました</p>
+          {/* R21（評価ラウンド8・C-2）: 受付済みなら状態を明示する。
+              これまでは受付後も「QRを見せてください」と案内し続け、
+              自分の受付が済んでいるか確認する手段がなかった */}
+          {found.checkedIn && (
+            <p className="checkedin-badge" data-lookup-checkedin>
+              受付済み（{formatCheckedInAt(found.checkedInAt)}）
+            </p>
+          )}
           <p className="reservation-code">{found.id}</p>
-          <ReservationQr code={found.id} token={found.qrToken} />
+          <ReservationQr
+            code={found.id}
+            token={found.qrToken}
+            checkedInAt={found.checkedIn ? found.checkedInAt : undefined}
+          />
           <dl className="detail-list">
             <div>
               <dt>公演</dt>
@@ -216,7 +229,11 @@ export default function Lookup({ onBack }: { onBack: () => void }) {
             </div>
           </dl>
           <div className="notice-box">
-            <p>当日は受付でお名前と予約番号をお伝えください。</p>
+            {found.checkedIn ? (
+              <p>受付は完了しています。そのまま会場へお越しください。</p>
+            ) : (
+              <p>当日は受付でお名前と予約番号をお伝えください。</p>
+            )}
             <p>変更は主催者までご連絡ください。キャンセルは下のボタンからもできます。</p>
           </div>
           <div className="self-cancel-area">

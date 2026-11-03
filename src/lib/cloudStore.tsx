@@ -480,6 +480,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           return
         }
         // R12: ゾーン予約を未払いに戻すと、割り当てた席も解放する
+        // R21（ラウンド8・S-2）: 来場済みの場合はサーバ側（staff_unassign_
+        // and_unpay）が席を解放せず 'reserved' として保持する。クライアントは
+        // 従来どおり RPC を呼び、再取得した状態（席が残る）をそのまま表示する
         if (isZoneBooking(target) && !value && target.paid && target.seatIds.length > 0) {
           await api().staffUnassignAndUnpay(staffPasscode(), target.cloudId)
           await refreshAll()

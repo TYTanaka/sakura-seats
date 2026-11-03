@@ -6,7 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { seatById } from '../data/seats'
+import { seatById, type SeatDef } from '../data/seats'
 import type { AppData, SeatStatus } from '../lib/logic'
 import {
   buildZoneMapLayout,
@@ -47,6 +47,40 @@ const ZOOM_MAX = 4
 const FIT_SNAP = 1.03
 /** 座番・※印をセル内に出す最小倍率 */
 const LABEL_MIN_SCALE = 1.8
+
+/**
+ * エリアへのクイックジャンプ（R21・評価ラウンド8 S-1）。
+ * 統合プラン（R18）では特定の1席を狙うのに全体表示からのピンチ拡大が
+ * 前提になり、旧マップの階タブより手順が増えた。チップを押すと対象
+ * エリアが指で狙える倍率まで拡大し、そのエリアの中央席へスクロールする。
+ * 倍率は当日販売の初期倍率（2.5倍・席が約20px）と同じ考え方。
+ */
+const JUMP_SCALE = 2.5
+
+interface JumpTarget {
+  key: string
+  label: string
+  /** アンカー席の条件（エリア中央付近の通常席に一致させる） */
+  match: (seat: SeatDef) => boolean
+}
+
+const JUMP_TARGETS: JumpTarget[] = [
+  {
+    key: 'f1-front',
+    label: '1階前方',
+    match: (s) => s.floor === 1 && s.kind === 'normal' && s.row === 6 && s.block === 'center',
+  },
+  {
+    key: 'f1-back',
+    label: '1階後方',
+    match: (s) => s.floor === 1 && s.kind === 'normal' && s.row === 14 && s.block === 'center',
+  },
+  {
+    key: 'f2',
+    label: '2階',
+    match: (s) => s.floor === 2 && s.kind === 'normal' && s.row === 22 && s.block === 'center',
+  },
+]
 
 interface PinchState {
   startDist: number
@@ -131,6 +165,32 @@ export default function StaffSeatMap({
   const [view, setView] = useState<{ w: number; h: number } | null>(null)
   const viewRef = useRef(view)
   viewRef.current = view
+  /* ---------------- クイックジャンプ（R21・S-1） ---------------- */
+  const jumpKeyRef = useRef<string | null>(null)
+  const [jumpNonce, setJumpNonce] = useState(0)
+
+  const handleJump = (key: string) => {
+    jumpKeyRef.current = key
+    setScale(JUMP_SCALE)
+    setJumpNonce((n) => n + 1)
+  }
+
+  // 倍率の確定後に、アンカー席が画面中央へ来るようスクロールする
+  // （お客様側 R14 のバッジスクロールと同じ scrollIntoView 方式）
+  useLayoutEffect(() => {
+    const key = jumpKeyRef.current
+    if (!key) return
+    jumpKeyRef.current = null
+    const target = JUMP_TARGETS.find((t) => t.key === key)
+    const ct = contentRef.current
+    if (!target || !ct) return
+    const anchors = layout.cells.filter((c) => target.match(seatById(c.seatId)))
+    const anchor = anchors[Math.floor(anchors.length / 2)]
+    if (!anchor) return
+    const el = ct.querySelector<HTMLElement>(`[data-seat-id="${anchor.seatId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  }, [jumpNonce, layout])
+
   const pinchRef = useRef<PinchState | null>(null)
   const pinchEndTimerRef = useRef<number | undefined>(undefined)
   const pendingPinchRef = useRef<{ dist: number; midX: number; midY: number } | null>(null)
@@ -371,6 +431,21 @@ export default function StaffSeatMap({
             全体表示に戻す
           </button>
         )}
+      </div>
+      {/* R21・S-1: エリアへのクイックジャンプ（拡大＋スクロールを1タップで） */}
+      <div className="sseat-jumps" role="group" aria-label="エリアへ移動">
+        <span className="sseat-jumps-label">エリア</span>
+        {JUMP_TARGETS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className="sseat-jump"
+            data-sseat-jump={t.key}
+            onClick={() => handleJump(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
       <div
         className={`zseat-viewport${scale > 1 ? ' is-zoomed' : ''}`}

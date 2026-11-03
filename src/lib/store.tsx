@@ -458,6 +458,10 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           return
         }
         // R12: ゾーン予約を未払いに戻すと、割り当てた席も解放する
+        // R21（ラウンド8・S-2）: ただし来場済みの予約は席を解放しない。
+        // お客様が座っている可能性がある席の押さえを消すと二重割当になる。
+        // 席は保持したまま支払いだけ戻す（席の状態は paid=false により
+        // 「予約済み」に戻る）。解放は来場を取り消してから行う
         if (
           target &&
           isZoneBooking(target) &&
@@ -465,6 +469,10 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           target.paid &&
           target.seatIds.length > 0
         ) {
+          if (target.checkedIn) {
+            mutate((prev) => setPaid(prev, reservationId, false))
+            return
+          }
           mutate((prev) =>
             setPaid(clearReservationSeats(prev, reservationId), reservationId, false),
           )
