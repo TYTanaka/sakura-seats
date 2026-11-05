@@ -974,10 +974,17 @@ export interface Totals {
   checkedInCount: number
   /** 来場済みの人数 */
   checkedInPeople: number
-  /** 未受付の予約件数 */
+  /** 未受付の予約件数（当日販売は含まない・R37） */
   notCheckedInCount: number
-  /** 未受付の人数 */
+  /** 未受付の人数（当日販売は含まない・R37） */
   notCheckedInPeople: number
+  /**
+   * 当日販売の件数（R37）。当日販売は購入時点で支払い・入場まで済んで
+   * いる前提のため、来場済み・未受付のどちらにも混ぜず分離して数える
+   */
+  doorSaleCount: number
+  /** 当日販売の人数（R37） */
+  doorSalePeople: number
   /** 予約済み（未払い）の席数 */
   reservedSeatCount: number
   /** 支払済みの席数 */
@@ -1021,6 +1028,8 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   let checkedInPeople = 0
   let notCheckedInCount = 0
   let notCheckedInPeople = 0
+  let doorSaleCount = 0
+  let doorSalePeople = 0
   for (const res of active) {
     // 席数は明細の件数（＝人数）で数える。ゾーン予約は支払いまで席が
     // 未確定（seatIds が空）でも、人数分の予約として数えるため（R12）。
@@ -1030,10 +1039,16 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
     if (res.paid) paidReservationCount++
     else unpaidReservationCount++
     // 来場（チェックイン）進捗（R33・スタッフ側改善 #1）。キャンセル済みは
-    // active の時点で除かれているため、受付一覧の既定表示とも一致する
+    // active の時点で除かれているため、受付一覧の既定表示とも一致する。
+    // R37: 当日販売（source='door'）は購入時点で支払い・入場まで済んでいる
+    // 前提なので「未受付」に数えない（第2ラウンド評価: 終演間際に未受付が
+    // 実態とずれて見える）。来場済みにも混ぜず、当日販売として分離する
     if (res.checkedIn) {
       checkedInCount++
       checkedInPeople += party
+    } else if (res.source === 'door') {
+      doorSaleCount++
+      doorSalePeople += party
     } else {
       notCheckedInCount++
       notCheckedInPeople += party
@@ -1095,6 +1110,8 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
     checkedInPeople,
     notCheckedInCount,
     notCheckedInPeople,
+    doorSaleCount,
+    doorSalePeople,
     reservedSeatCount,
     paidSeatCount,
     salesTotal,

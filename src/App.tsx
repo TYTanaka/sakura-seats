@@ -509,7 +509,7 @@ function SavedReservations({ onLookup }: { onLookup: () => void }) {
   if (items.length === 0) return null
   return (
     <section className="card last-reservation-card" data-last-reservation>
-      <h3>この端末で予約した控え</h3>
+      <h2>この端末で予約した控え</h2>
       {items.map((snapshot) => (
         <SavedReservationItem key={snapshot.code} snapshot={snapshot} />
       ))}

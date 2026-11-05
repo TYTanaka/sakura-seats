@@ -169,15 +169,21 @@ describe('支払いと集計', () => {
     expect(t.paidReservationCount).toBe(1)
     expect(t.unpaidReservationCount).toBe(1)
     expect(t.checkedInCount).toBe(0)
-    expect(t.notCheckedInCount).toBe(2)
-    expect(t.notCheckedInPeople).toBe(5)
+    // R37: 当日販売は購入時点で入場まで済んでいる前提のため「未受付」に
+    // 数えず、doorSale として分離する（旧仕様は未受付に混ぜていた）
+    expect(t.doorSaleCount).toBe(1)
+    expect(t.doorSalePeople).toBe(3)
+    expect(t.notCheckedInCount).toBe(1)
+    expect(t.notCheckedInPeople).toBe(2)
     // 来場済みにすると進捗が移る（キャンセル済みは母数に入らない）
     const arrived = setCheckedIn(data, r1.reservation.id, true)
     const t2 = totals(arrived, ALL_IDS)
     expect(t2.checkedInCount).toBe(1)
     expect(t2.checkedInPeople).toBe(2)
-    expect(t2.notCheckedInCount).toBe(1)
-    expect(t2.notCheckedInPeople).toBe(3)
+    expect(t2.notCheckedInCount).toBe(0)
+    expect(t2.notCheckedInPeople).toBe(0)
+    expect(t2.doorSaleCount).toBe(1)
+    expect(t2.doorSalePeople).toBe(3)
   })
 })
 

@@ -460,6 +460,34 @@ textarea {
   font-weight: 800;
 }
 
+/* R37: 見出し階層の是正（h1 の次に h3 が来るレベル飛びの解消）で
+   タグを繰り上げた見出しは、旧タグ相当の見た目（サイズ・余白・装飾）を
+   クラスで保ち、視覚デザインを変えない */
+.card h2.sec-h {
+  font-size: 1.17em; /* 旧 h3 の UA サイズ */
+}
+.card h3.sub-h {
+  font-size: 1em; /* 旧 h4 の UA サイズ */
+  margin: 16px 0 8px; /* 旧 .card h4 の余白 */
+}
+.card h3.sub-h::before {
+  content: none; /* 旧 h4 には星装飾がなかった */
+}
+/* form-subhead は h3 化しても旧 h4 の余白を保つ（星装飾・14px は元の指定どおり） */
+.card h3.form-subhead {
+  margin: 16px 0 8px;
+}
+/* お客様フローの form-subhead は、h3 化で見出し用の金装飾（◆・下線）が
+   付いてしまうため、旧 h4 時代の星装飾だけに戻す */
+.book-flow .card h3.form-subhead {
+  background-image: none;
+}
+.book-flow .card h3.form-subhead::before {
+  content: '✦';
+  font-size: 0.74em;
+  vertical-align: 0.12em;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -612,7 +640,7 @@ textarea {
 .lookup-card h2,
 .lookup-card h3,
 .done-card .reservation-code,
-.last-reservation-card h3,
+.last-reservation-card h2,
 .today-card .today-name,
 .detail-total,
 .book-flow .selection-total {
@@ -625,7 +653,7 @@ textarea {
 .book-flow .card h3::before,
 .lookup-card h2::before,
 .lookup-card h3::before,
-.last-reservation-card h3::before {
+.last-reservation-card h2::before {
   content: '◆';
   font-size: 0.58em;
   vertical-align: 0.22em;
@@ -634,7 +662,7 @@ textarea {
 .book-flow .card h3,
 .lookup-card h2,
 .lookup-card h3,
-.last-reservation-card h3 {
+.last-reservation-card h2 {
   background-image: linear-gradient(
     90deg,
     rgba(232, 161, 0, 0.75),
@@ -2068,7 +2096,7 @@ button.seat-available:hover {
   background: var(--paper);
 }
 
-.launch-check h4 {
+.launch-check h3.sub-h {
   margin: 0 0 4px;
 }
 
@@ -2902,7 +2930,7 @@ button.seat-available:hover {
 }
 
 /* 直前の予約カード（R4・F3 / R5-3 コンパクト表示） */
-.last-reservation-card h3 {
+.last-reservation-card h2 {
   margin-bottom: 8px;
   font-size: 16px;
 }
@@ -3154,7 +3182,7 @@ button.seat-available:hover {
 .zone-card {
   padding-top: 12px;
 }
-.zone-card h3 {
+.zone-card h2 {
   margin-bottom: 6px;
 }
 .zone-lead {
@@ -3472,6 +3500,18 @@ button.zseat-cell:active {
 }
 .zplan-cell.is-diamond {
   border-radius: 3px;
+}
+/* R37: プラン全面のタップ受け口。セル・バッジ（提示専用）の上に透明な
+   1枚を敷き、タップ位置からゾーンを決める（zoneAtPoint）。
+   バッジの選択リング（z-index 3）より上に置き、全面を覆う */
+.zplan-tap {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  cursor: pointer;
+}
+.zplan-tap.is-disabled {
+  cursor: default;
 }
 .zplan-cell.is-neutral {
   color: rgba(232, 222, 252, 0.85);

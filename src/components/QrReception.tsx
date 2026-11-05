@@ -441,7 +441,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
   return (
     <div className="qr-reception" data-qr-reception data-qr-decoder={decoder}>
       <div className="btn-row qr-reception-head">
-        <h4 className="qr-reception-title">QRで受付</h4>
+        <h3 className="qr-reception-title sub-h">QRで受付</h3>
         <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>
           ← 受付一覧に戻る
         </button>

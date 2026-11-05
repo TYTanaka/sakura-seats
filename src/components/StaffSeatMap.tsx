@@ -37,6 +37,11 @@ import PlanChrome from './PlanChrome'
  * 見切れ席の※印をセル内に出す（全体表示では小さすぎて読めないため）。
  * タップの可否・選択の意味づけは呼び出し側（Staff）の onSeatTap が決める
  * （旧 SeatMap と同じく、埋まった席のタップもそのまま通知する）。
+ *
+ * R37: 席ボタンは Tab 順序から外した（tabIndex=-1）。お客様側の座席表と
+ * 違い、こちらは「個別席を選ぶ」こと自体が仕事なのでボタン＋aria-label は
+ * 維持し、キーボードの到達可能性は画面側の操作子（エリア移動・一括切替等）
+ * で担保する。
  */
 
 export type StaffSeatState = SeatStatus | 'selected'
@@ -409,6 +414,11 @@ export default function StaffSeatMap({
         data-seat-id={c.seatId}
         data-seat-state={state}
         disabled={!enabled}
+        // R37: 席ボタン471個を Tab 順序から外す。スタッフの席選びは
+        // タッチ前提で、キーボードではエリア移動チップ・全体表示ボタン・
+        // 列ごとの一括切替（販売設定）など画面側の操作子で完結させる。
+        // aria-label は残し、支援技術の探索では席の状態が読めるようにする
+        tabIndex={-1}
         onClick={() => onSeatTap(c.seatId)}
         aria-label={`${seat.label}（${stateLabel(state)}${seat.restrictedView ? '・見切れ席' : ''}）`}
       >

@@ -40,9 +40,42 @@
       href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
+    <!-- R37: JS バンドル到達前の初期表示専用スタイル（外部 CSS がまだ
+         読めていない段階でも崩れないよう、この文書内に閉じて書く。
+         アプリ本体のスタイルとは共有しない） -->
+    <style>
+      .boot-shell {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 64px 16px;
+        text-align: center;
+        font-family: sans-serif;
+        color: #571122;
+      }
+      .boot-shell .boot-title {
+        font-size: 20px;
+        font-weight: 800;
+        margin: 0 0 10px;
+      }
+      .boot-shell .boot-note {
+        font-size: 14px;
+        margin: 0;
+        opacity: 0.75;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- R37: 初期ローディング表示。低速回線では JS 到達まで数秒かかる
+           ため、その間も「開いている」ことが分かるようアプリ名と
+           読み込み中表示を先に出す。React がマウントした時点で
+           この中身は実画面に置き換わる。アプリ内のデータ読み込み用
+           スケルトン（App.tsx）とは別レイヤー -->
+      <div class="boot-shell" role="status">
+        <p class="boot-title">劇団ツインリーブス 公演予約</p>
+        <p class="boot-note">読み込み中…♪</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

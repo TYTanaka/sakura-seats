@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
 import { seatById } from '../data/seats'
 import type { AppData } from '../lib/logic'
@@ -18,6 +19,7 @@ import {
   buildZoneMapLayout,
   PLAN_H,
   PLAN_W,
+  zoneAtPoint,
   type ZoneMapLayoutCell,
 } from '../lib/zoneMap'
 import PlanChrome from './PlanChrome'
@@ -27,9 +29,16 @@ import PlanChrome from './PlanChrome'
  *
  * ホール全体を公式座席表の図形どおりに1枚のプランで描き、席セルを
  * ゾーン色で塗る（R13: 単一プラン化＋扇形レイアウト）。
- * お客様は「ここがいいな」と思ったエリアの席（またはバッジ）をタップして
- * ゾーンを選ぶ。席そのものを選ぶのではなく、選ばれるのはゾーンで、
+ * お客様は「ここがいいな」と思ったエリアをタップしてゾーンを選ぶ。
+ * 席そのものを選ぶのではなく、選ばれるのはゾーンで、
  * 割当は従来どおりゾーン内自動割当（lib/zones.ts）に進む。
+ *
+ * R37: セルとバッジは提示専用（ボタンにしない）。全体表示では席が
+ * 約7pxしかなく、席ボタン方式では隣のゾーンを誤タップした（実測）。
+ * タップはプラン全面の受け口で受け、lib/zoneMap.ts の zoneAtPoint が
+ * 「最も近いゾーン席のゾーン」に寄せて決める。キーボード・支援技術では
+ * 座席表は提示として扱い（aria-hidden）、ゾーン選択の正規ルートは
+ * 下のゾーン一覧ボタンであることを見出しでも明示している（R36）。
  *
  * 図形（lib/zoneMap.ts の絶対座標モデルが正）:
  * - 舞台バーの右脇に非常用コーナー（R0）をハッチで描く。
@@ -117,6 +126,22 @@ export default function ZoneSeatMap({
     window.clearTimeout(flashTimerRef.current)
     flashTimerRef.current = window.setTimeout(() => setFlash(null), 550)
     onPick(zone, source)
+  }
+
+  /* R37: プラン全面のタップ受け口。クリック位置をプラン座標へ直し、
+     最も近いゾーン席のゾーンを選ぶ（zoneAtPoint）。ピンチ直後のクリックは
+     ビューポート側の capture リスナが従来どおり抑止する */
+  const planRef = useRef<HTMLDivElement>(null)
+  const handlePlanTap = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (disabled) return
+    const plan = planRef.current
+    if (!plan) return
+    const rect = plan.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const x = ((e.clientX - rect.left) / rect.width) * PLAN_W
+    const y = ((e.clientY - rect.top) / rect.height) * PLAN_H
+    const zone = zoneAtPoint(layout, x, y)
+    if (zone) handlePick(zone, 'map')
   }
   useEffect(() => () => window.clearTimeout(flashTimerRef.current), [])
 
@@ -373,21 +398,17 @@ export default function ZoneSeatMap({
       highlightCls +
       ' zplan-cell' +
       (c.shape === 'diamond' ? ' is-diamond' : '')
-    const seat = seatById(c.seatId)
     return (
-      <button
+      // R37: セルは提示専用。タップはプラン全面の受け口（zoneAtPoint）が
+      // ゾーン単位で受けるため、セル自体はボタンにしない
+      <span
         key={c.seatId}
-        type="button"
         className={cls}
         style={cellStyle(c)}
         data-zone-seat={c.seatId}
         data-zone={zone}
         data-seat-status={seatStatus}
         {...highlightAttr}
-        disabled={disabled || a.soldOut}
-        onClick={() => handlePick(zone, 'map')}
-        aria-pressed={selectedZone === zone}
-        aria-label={`${seat.label}（ゾーン${zone}${a.soldOut ? '・満席' : taken ? '・この席は埋まっていますがエリアは選べます' : ''}）`}
       />
     )
   }
@@ -437,25 +458,28 @@ export default function ZoneSeatMap({
               <div
                 className="zplan"
                 data-zplan
+                ref={planRef}
                 style={{ aspectRatio: `${PLAN_W} / ${PLAN_H}` }}
+                // R37: 座席表は提示（図）として扱う。ゾーン選択の操作は
+                // プランのタップ受け口（ポインタ専用）と下のゾーン一覧
+                // ボタンが担い、支援技術には一覧だけを正規ルートとして出す
+                aria-hidden="true"
               >
                 {/* 図面（輪郭・舞台・通路・箱・列番号）: スタッフ用と共通 */}
                 <PlanChrome rowLabels={layout.rowLabels} />
 
-                {/* 全席セル */}
+                {/* 全席セル（提示専用） */}
                 {layout.cells.map(renderCell)}
 
-                {/* ゾーンバッジ（席ハイライト表示では残り席数バッジが
+                {/* ゾーンバッジ（提示専用。席ハイライト表示では残り席数バッジが
                     お客様の席を隠すので出さない） */}
                 {highlightSet.size === 0 &&
                   layout.anchors.map((an) => {
                   const a = availability[an.zone]
-                  const def = ZONE_DEF_BY_ID.get(an.zone)!
                   const state = a.soldOut ? 'soldout' : a.low ? 'low' : 'open'
                   return (
-                    <button
+                    <span
                       key={an.zone}
-                      type="button"
                       className={
                         `zbadge zc-${an.zone.toLowerCase()} is-${state}` +
                         (flash === an.zone ? ' is-flash' : '') +
@@ -465,18 +489,24 @@ export default function ZoneSeatMap({
                       data-zone-badge={an.zone}
                       data-zone-state={state}
                       data-zone-remaining={a.available}
-                      disabled={disabled || a.soldOut}
-                      onClick={() => handlePick(an.zone, 'map')}
-                      aria-pressed={selectedZone === an.zone}
-                      aria-label={`ゾーン${an.zone} ${def.name}（${a.soldOut ? '満席' : `残り${a.available}席`}）`}
                     >
                       <span className="zbadge-letter">{an.zone}</span>
                       <span className="zbadge-count">
                         {a.soldOut ? '満席' : `残り${a.available}席`}
                       </span>
-                    </button>
+                    </span>
                   )
                 })}
+
+                {/* R37: タップ受け口（プラン全面・ポインタ専用）。
+                    確認用の静止画（mini）では出さない */}
+                {!mini && (
+                  <div
+                    className={`zplan-tap${disabled ? ' is-disabled' : ''}`}
+                    data-zplan-tap
+                    onClick={handlePlanTap}
+                  />
+                )}
               </div>
             </div>
           </div>

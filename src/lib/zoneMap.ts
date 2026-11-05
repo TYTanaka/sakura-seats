@@ -352,6 +352,54 @@ export function buildZoneMapLayout(data: AppData): ZoneMapLayout {
   return { width: PLAN_W, height: PLAN_H, cells, anchors, rowLabels }
 }
 
+/* ---------------- ゾーン単位のタップ判定（R37） ---------------- */
+
+/**
+ * タップ位置（プラン座標）からゾーンを決める。
+ *
+ * R36 までは席セル1つずつがボタンで、全体表示では席が約7pxしかなく
+ * 「狙ったゾーンの隣が選ばれる」誤タップが実測された（第2ラウンド評価・高）。
+ * R37 では座席表のセルを提示専用にし、タップはこの関数で「最も近い
+ * ゾーン席のゾーン」へ寄せる。ゾーン同士の境界は自然に中点（ボロノイ境界）
+ * になり、席と席の間をタップしても近い方のゾーンが選ばれる。
+ *
+ * - 車椅子席・親子室（ゾーン外）のセルの上は null（従来どおりタップ対象外。
+ *   備考欄で受け付ける）。判定はセルの矩形＋わずかな余白で行う。
+ * - どのゾーン席からも遠い場所（舞台・余白）は null。舞台際などを
+ *   タップしても勝手にゾーンが選ばれないようにするための上限。
+ */
+export const ZONE_TAP_MAX_DIST = 44
+
+export function zoneAtPoint(
+  layout: ZoneMapLayout,
+  x: number,
+  y: number,
+): ZoneId | null {
+  let best: ZoneId | null = null
+  let bestDist = Number.POSITIVE_INFINITY
+  for (const c of layout.cells) {
+    if (!c.zone) {
+      // ゾーン外セル（車椅子・親子室）の矩形内はゾーン選択にしない
+      const m = 3
+      if (
+        x >= c.cx - c.w / 2 - m &&
+        x <= c.cx + c.w / 2 + m &&
+        y >= c.cy - c.h / 2 - m &&
+        y <= c.cy + c.h / 2 + m
+      ) {
+        return null
+      }
+      continue
+    }
+    const d = Math.hypot(x - c.cx, y - c.cy)
+    if (d < bestDist) {
+      bestDist = d
+      best = c.zone
+    }
+  }
+  return bestDist <= ZONE_TAP_MAX_DIST ? best : null
+}
+
 /**
  * 各ゾーンのバッジを、そのゾーンの席の重心位置に置くためのアンカーを計算する。
  * x は列内の席位置（ブロック間の通路も単位に含む）、y は行位置

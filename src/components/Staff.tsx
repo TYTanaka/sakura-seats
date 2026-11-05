@@ -416,7 +416,7 @@ function ZoneRemainingTable() {
   }, [data])
   return (
     <>
-      <h4>ゾーン別残り席・販売</h4>
+      <h3 className="sub-h">ゾーン別残り席・販売</h3>
       <table className="type-table zone-table">
         <thead>
           <tr>
@@ -776,11 +776,11 @@ function Reception() {
 
   return (
     <section className="card">
-      <h3 data-reception-heading>
+      <h2 className="sec-h" data-reception-heading>
         {filtering
           ? `受付（全${baseCount}件中 ${list.length}件を表示）`
           : `受付（${active.length}件の予約）`}
-      </h3>
+      </h2>
       <label className="field">
         <span>検索（名前・予約番号・電話番号）</span>
         <input
@@ -893,48 +893,56 @@ function Reception() {
         </button>
       </div>
       {qrMode && <QrReception onClose={() => setQrMode(false)} />}
-      <p className="reception-summary" data-reception-summary>
-        表示中 {summary.count}件・{summary.people}名・合計 {formatYen(summary.amount)}
-        {list.some((r) => r.cancelled) && (
-          <span className="muted small">（人数・金額はキャンセル済みを除く）</span>
-        )}
-      </p>
-      {list.length === 0 && (
+      {/* R37: QR受付を開いている間は受付一覧を出さない。QR側の結果表示と
+          一覧側のカードで同じ予約が二重に並び、ラッシュ時に「どちらの
+          カードを操作したか」が曖昧になる事故を防ぐため（第2ラウンド評価・中）。
+          QRを閉じれば一覧はそのまま（絞り込み状態も保持したまま）に戻る */}
+      {!qrMode && (
         <>
-          <p className="muted empty-note">該当する予約がありません。</p>
-          {/* R36（低6）: 絞り込み起因の0件では、解除の次の手を出す */}
-          {filtering && (
-            <p>
-              <button
-                type="button"
-                className="btn btn-ghost btn-small"
-                data-clear-filters
-                onClick={() =>
-                  updateFilters({ query: '', zone: 'all', paid: 'all', checkin: 'all', source: 'all' })
-                }
-              >
-                絞り込みをクリア
-              </button>
-            </p>
+          <p className="reception-summary" data-reception-summary>
+            表示中 {summary.count}件・{summary.people}名・合計 {formatYen(summary.amount)}
+            {list.some((r) => r.cancelled) && (
+              <span className="muted small">（人数・金額はキャンセル済みを除く）</span>
+            )}
+          </p>
+          {list.length === 0 && (
+            <>
+              <p className="muted empty-note">該当する予約がありません。</p>
+              {/* R36（低6）: 絞り込み起因の0件では、解除の次の手を出す */}
+              {filtering && (
+                <p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    data-clear-filters
+                    onClick={() =>
+                      updateFilters({ query: '', zone: 'all', paid: 'all', checkin: 'all', source: 'all' })
+                    }
+                  >
+                    絞り込みをクリア
+                  </button>
+                </p>
+              )}
+            </>
           )}
+          <ul className="reservation-list">
+            {groups
+              ? groups.map((g) => {
+                  const gs = sumActive(g.items)
+                  return (
+                    <Fragment key={g.zone ?? 'none'}>
+                      <li className="zone-group-header" data-zone-group={g.zone ?? 'none'}>
+                        {g.zone ? zoneLabel(g.zone) : 'ゾーン未定'} ― {g.items.length}件・{gs.people}
+                        名・{formatYen(gs.amount)}
+                      </li>
+                      {g.items.map((res) => renderItem(res))}
+                    </Fragment>
+                  )
+                })
+              : list.map((res) => renderItem(res))}
+          </ul>
         </>
       )}
-      <ul className="reservation-list">
-        {groups
-          ? groups.map((g) => {
-              const gs = sumActive(g.items)
-              return (
-                <Fragment key={g.zone ?? 'none'}>
-                  <li className="zone-group-header" data-zone-group={g.zone ?? 'none'}>
-                    {g.zone ? zoneLabel(g.zone) : 'ゾーン未定'} ― {g.items.length}件・{gs.people}
-                    名・{formatYen(gs.amount)}
-                  </li>
-                  {g.items.map((res) => renderItem(res))}
-                </Fragment>
-              )
-            })
-          : list.map((res) => renderItem(res))}
-      </ul>
     </section>
   )
 }
@@ -1021,7 +1029,7 @@ function DoorSales() {
 
   return (
     <section className="card">
-      <h3>当日販売</h3>
+      <h2 className="sec-h">当日販売</h2>
       <p className="muted">空席をタップして選び、その場で販売済み（支払済）として記録します。</p>
       <ZoneRemainingChips />
       <StaffSeatLegend />
@@ -1037,7 +1045,7 @@ function DoorSales() {
       )}
       {selected.length > 0 && (
         <>
-          <h4 className="form-subhead">席ごとの券種</h4>
+          <h3 className="form-subhead">席ごとの券種</h3>
           {/* R33（#7）: 家族連れ等の当日販売で、選択中の全席へ券種を一括指定する。
               ボタンは公演設定の券種から生成する（個別指定は下のピッカーで従来どおり） */}
           {perf.ticketTypes.length > 1 && (
@@ -1170,7 +1178,7 @@ function SeatSettings() {
 
   return (
     <section className="card">
-      <h3>販売設定</h3>
+      <h2 className="sec-h">販売設定</h2>
       <p className="muted">
         「販売しない」席をタップで切り替えます（関係者席・使用しない席など）。
         予約が入っている席は切り替えできません。デフォルトは全席販売です。
@@ -1182,7 +1190,7 @@ function SeatSettings() {
       <StaffSeatLegend />
       {/* R18: お客様側と同じ公式図面（統合プラン）。初期表示は全体表示 */}
       <StaffSeatMap data={data} stateOf={stateOf} onSeatTap={handleTap} />
-      <h4>列ごとの一括切替</h4>
+      <h3 className="sub-h">列ごとの一括切替</h3>
       <ul className="row-toggle-list">
         {groups.map((group) => {
           const blockedCount = group.seatIds.filter(
@@ -1271,7 +1279,7 @@ function Summary() {
     .sort((a, b) => a.id.localeCompare(b.id))
   return (
     <section className="card">
-      <h3>集計</h3>
+      <h2 className="sec-h">集計</h2>
       <div className="btn-row no-print">
         <button
           type="button"
@@ -1298,7 +1306,9 @@ function Summary() {
           予約 {t.reservationCount}件・{t.totalPeople}名 ／ 支払済 {t.paidReservationCount}件・
           {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
           ／ 未払い {formatYen(t.unpaidTotal)}（{t.unpaidReservationCount}件・{t.reservedSeatCount}席分）
-          ／ 来場済み {t.checkedInCount}件・{t.checkedInPeople}名 ／ 残り {availableNow}席
+          ／ 来場済み {t.checkedInCount}件・{t.checkedInPeople}名 ／ 当日販売 {t.doorSaleCount}
+          件・{t.doorSalePeople}名（購入時に入場済みとして扱い、未受付に含まない） ／ 残り{' '}
+          {availableNow}席
         </p>
         <table>
           <thead>
@@ -1384,6 +1394,16 @@ function Summary() {
           </span>
           <span className="summary-label">未受付</span>
         </div>
+        {/* R37: 当日販売は購入時点で入場まで済んでいる前提のため、未受付に
+            混ぜず別掲する（第2ラウンド評価・中）。販売があるときだけ出す */}
+        {t.doorSaleCount > 0 && (
+          <div className="summary-item">
+            <span className="summary-value" data-summary="doorSaleCount">
+              {t.doorSaleCount}件・{t.doorSalePeople}名
+            </span>
+            <span className="summary-label">当日販売（入場済み扱い）</span>
+          </div>
+        )}
         <div className="summary-item">
           <span className="summary-value" data-summary="availableSeatCount">
             {availableNow}席
@@ -1398,7 +1418,7 @@ function Summary() {
         </div>
       </div>
       <ZoneRemainingTable />
-      <h4>券種別内訳</h4>
+      <h3 className="sub-h">券種別内訳</h3>
       <table className="type-table">
         <thead>
           <tr>
@@ -1421,7 +1441,7 @@ function Summary() {
       </table>
       {t.bySeller.length > 0 && (
         <>
-          <h4>販売者別内訳（手売り・当日販売）</h4>
+          <h3 className="sub-h">販売者別内訳（手売り・当日販売）</h3>
           <table className="type-table">
             <thead>
               <tr>
@@ -1451,6 +1471,7 @@ function Summary() {
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
         変更しても、記録済みの売上は変わりません。「未払い席数」は未払い（予約中）の席数です。
         「残り席数」はお客様画面の残り席数と同じ数え方で、席が未確定のゾーン予約分も差し引いています。
+        当日販売は購入時点で入場まで済んでいる前提のため、「未受付」には含めず「当日販売（入場済み扱い）」として別掲しています。
       </p>
     </section>
   )
@@ -1656,7 +1677,7 @@ function LaunchChecklist() {
 
   return (
     <div className="launch-check" data-launch-checklist>
-      <h4>本番前チェック</h4>
+      <h3 className="sub-h">本番前チェック</h3>
       <p className="muted small">
         本番運用で事故になりやすい項目を、現在の設定とデータから自動で確認します。
         この一覧は表示のみで、設定は変更しません。
@@ -1865,7 +1886,7 @@ function PerformanceSettings({
 
   return (
     <section className="card">
-      <h3>公演設定</h3>
+      <h2 className="sec-h">公演設定</h2>
       <p className="muted">
         公演は1回のみです。公演名・日時・券種（大人・子供などの料金種別）・メモを編集できます。
         券種の変更は新しい予約から反映され、記録済みの予約の券種名・料金は変わりません。
@@ -2094,7 +2115,7 @@ function PerformanceSettings({
       {mode === 'local' && (
         <>
           <hr className="divider" />
-          <h4>試作データ</h4>
+          <h3 className="sub-h">試作データ</h3>
       <p className="muted small">
         予約・販売設定をすべて消して、初期状態（サンプル公演のみ・予約なし）に戻します。
       </p>
@@ -2187,7 +2208,7 @@ function PasscodeSettings({
 
   return (
     <>
-      <h4>スタッフパスコード</h4>
+      <h3 className="sub-h">スタッフパスコード</h3>
       <form onSubmit={handleChange}>
         <label className="field">
           <span>現在のパスコード</span>
@@ -2299,7 +2320,7 @@ function StaffAccessSettings({ googleStaff }: { googleStaff: boolean }) {
 
   return (
     <div data-staff-allowlist>
-      <h4>スタッフ許可リスト（Googleログイン）</h4>
+      <h3 className="sub-h">スタッフ許可リスト（Googleログイン）</h3>
       <p className="muted small">
         ここに登録された Google アカウントだけが、Googleログインで入室できます。
       </p>

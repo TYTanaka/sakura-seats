@@ -625,7 +625,7 @@ export default function AudienceBook({
             <span className="muted small">家族や友だちにLINEで共有できます</span>
           </div>
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
-            <h3>ゾーンを選んで予約</h3>
+            <h2 className="sec-h">ゾーンを選んで予約</h2>
             <p className="muted small zone-lead">
               ゾーンをタップし、画面下の<span className="u-nowrap">「このゾーンで進む」</span>で決定。座席表の下のゾーン一覧からも選べます。座席番号はお支払い時、または当日の受付時に確定します。
             </p>
@@ -705,7 +705,7 @@ export default function AudienceBook({
             </p>
           </section>
           <section className="card poster-card">
-            <h3>公演ポスター</h3>
+            <h2 className="sec-h">公演ポスター</h2>
             <a
               className="poster-link"
               href={posterMainUrl}
@@ -788,7 +788,7 @@ export default function AudienceBook({
 
       {step === 'form' && zoneId && (
         <section className="card">
-          <h3>お申し込み情報</h3>
+          <h2 className="sec-h">お申し込み情報</h2>
           <p className="chosen-seats" data-chosen-zone>
             ゾーン：{zoneLabel(zoneId)}／{partySize}名
           </p>
@@ -807,7 +807,7 @@ export default function AudienceBook({
               selectedZone={zoneId}
             />
           </div>
-          <h4 className="form-subhead">人数と券種</h4>
+          <h3 className="form-subhead">人数と券種</h3>
           <PartyTypePicker
             perf={perf}
             typeIds={typeIds}
@@ -909,7 +909,7 @@ export default function AudienceBook({
 
       {step === 'confirm' && zoneId && (
         <section className="card">
-          <h3>お申し込み内容の確認</h3>
+          <h2 className="sec-h">お申し込み内容の確認</h2>
           <dl className="detail-list">
             <div>
               <dt>公演</dt>
