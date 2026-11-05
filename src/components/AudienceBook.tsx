@@ -627,7 +627,7 @@ export default function AudienceBook({
           <section id="seat-picker" className={`card zone-card${closed ? ' is-closed' : ''}`}>
             <h3>ゾーンを選んで予約</h3>
             <p className="muted small zone-lead">
-              ゾーンをタップし、画面下の<span className="u-nowrap">「このゾーンで進む」</span>で決定。座席番号はお支払い時、または当日の受付時に確定します。
+              ゾーンをタップし、画面下の<span className="u-nowrap">「このゾーンで進む」</span>で決定。座席表の下のゾーン一覧からも選べます。座席番号はお支払い時、または当日の受付時に確定します。
             </p>
             <div className="zone-controls">
               <div className="party-row">

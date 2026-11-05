@@ -565,7 +565,7 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
             <>
               <p className="qr-outcome-title">QR受付はサーバ更新の準備中です</p>
               <p className="small">
-                サーバ更新（migration_sakura_r7）が適用されるまで QR
+                サーバ更新の準備が終わるまで QR
                 受付は使えません。当面は下の欄に予約番号を入力して受付してください。
               </p>
             </>
@@ -645,7 +645,14 @@ export default function QrReception({ onClose }: { onClose: () => void }) {
               onAssignSeats={handleAssignSeats}
             />
           </div>
-          <button type="button" className="btn btn-primary btn-block" onClick={scanNext}>
+          {/* R36（中8）: カード側の受付が未完了の間は「次のQR」を主ボタンに
+              しない。先に押すと未完了のまま次へ進む事故の形になるため、
+              完了（支払済＋来場済）までは ghost に落とし、完了後に主へ戻す */}
+          <button
+            type="button"
+            className={`btn btn-block ${res.paid && res.checkedIn ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={scanNext}
+          >
             次のQRを読み取る
           </button>
         </div>

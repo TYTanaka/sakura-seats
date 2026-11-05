@@ -26,6 +26,20 @@
   --line: #e2cdb2; /* 温かいサンドゴールドの境界 */
   --error: #bd2f47; /* R24・D-3: 旧 #d6455b はクリーム上で 4.01:1 と AA 未満だった */
   --gold-deep: #e8a100; /* 選択リング等の濃い金（スタッフ選択中と共通の金） */
+  /* R36: 暗赤テキスト色の統一（旧 a02c1a / a02c22 の2種混在を1本化） */
+  --danger-text: #a02c22;
+  /* R36: 警告色（橙赤）。「残りわずか」は金（ゾーンA色・おすすめ）と意味を分ける */
+  --warn: #e0492f;
+  /* R36: タイポスケール（12/13/14/16/18/20/24/32）。0.5px刻みは廃止し、
+     UIテキストはこの段へ寄せる（座席図の幾何ラベルは図の寸法に紐づくため対象外） */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
   /* 浮動要素の共通トークン（R24・ラウンド9 D-2）: 確定バーとトーストで
      地（ワイン→藍グラス）と文字（クリーム）を1本化する */
   --float-bg: linear-gradient(165deg, rgba(42, 7, 20, 0.97), rgba(28, 16, 56, 0.97));
@@ -364,7 +378,7 @@ textarea {
   border-radius: 999px;
   background: rgba(245, 196, 81, 0.96);
   color: #33270a;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 800;
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px rgba(10, 6, 32, 0.45);
@@ -373,7 +387,7 @@ textarea {
 .site-note {
   margin: 6px auto 0;
   max-width: 560px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   line-height: 1.6;
   color: #efdfc8;
   text-shadow: 0 1px 6px rgba(10, 6, 32, 0.7);
@@ -383,7 +397,7 @@ textarea {
   flex: none;
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 700;
@@ -451,7 +465,7 @@ textarea {
 }
 
 .small {
-  font-size: 12.5px;
+  font-size: var(--fs-13);
 }
 
 .error-text {
@@ -533,8 +547,9 @@ textarea {
 }
 
 .btn-small {
-  /* R35: 小ボタンでもタップ高さ 40px を下限にする（旧 36px） */
-  min-height: 40px;
+  /* R35: 小ボタンでもタップ高さ 40px を下限にする（旧 36px）
+     R36: 基準を 44px に引き上げ */
+  min-height: 44px;
   padding: 6px 12px;
   font-size: 13px;
 }
@@ -545,7 +560,7 @@ textarea {
 
 .btn-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
 }
@@ -712,8 +727,8 @@ textarea {
   gap: 8px;
   font-size: 14px;
   margin-bottom: 12px;
-  /* R35: 行全体をタップ領域として 40px を確保 */
-  min-height: 40px;
+  /* R35: 行全体をタップ領域として 40px を確保。R36: 44px に引き上げ */
+  min-height: 44px;
 }
 
 .check-line input {
@@ -792,7 +807,7 @@ textarea {
 .floor-tab {
   border: none;
   background: transparent;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 18px;
   border-radius: 999px;
   font-weight: 800;
@@ -815,10 +830,10 @@ textarea {
 .zoom-btn {
   border: 1.5px solid #e3cfae;
   background: #fff;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 10px;
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
   color: var(--muted);
 }
@@ -834,7 +849,7 @@ textarea {
   margin-left: 4px;
   min-width: 54px;
   text-align: right;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 800;
   color: var(--burgundy);
   font-variant-numeric: tabular-nums;
@@ -962,7 +977,7 @@ textarea {
 
 .special-note {
   margin-left: 10px;
-  font-size: 11.5px;
+  font-size: var(--fs-12);
   color: var(--muted);
 }
 
@@ -1146,7 +1161,7 @@ button.seat-available:hover {
   background: #fdf6dd;
   border: 1.5px dashed var(--gold);
   border-radius: 12px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
   color: #7a5c10;
 }
@@ -1207,7 +1222,7 @@ button.seat-available:hover {
   flex: 0 0 76px;
   font-weight: 700;
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: var(--fs-14);
 }
 
 .detail-list dd {
@@ -1460,7 +1475,7 @@ button.seat-available:hover {
   background: #fff6da;
   border: 1.5px dashed #e5c15c;
   border-radius: 12px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
   color: #7a5c10;
 }
@@ -1472,8 +1487,8 @@ button.seat-available:hover {
 .staff-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .staff-tab {
@@ -1481,6 +1496,11 @@ button.seat-available:hover {
   background: #fff;
   color: var(--muted);
   padding: 9px 16px;
+  /* R36: min-height が無く実質42px程度だったため、44px を明示する */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   font-weight: 700;
   font-size: 14px;
@@ -1580,10 +1600,11 @@ button.seat-available:hover {
 }
 
 .source-badge {
-  font-size: 11px;
+  /* R36: .state-chip と合わせて 13px へ底上げ */
+  font-size: var(--fs-13);
   font-weight: 700;
   border-radius: 999px;
-  padding: 1px 8px;
+  padding: 2px 8px;
   background: var(--mint-pale);
   color: #1e7a5a;
   border: 1px solid #a9dfc9;
@@ -1617,14 +1638,14 @@ button.seat-available:hover {
 }
 
 .toggle-btn {
-  min-height: 40px;
+  min-height: 44px;
   padding: 7px 14px;
   border-radius: 999px;
   border: 1.5px solid var(--pink-soft);
   background: #fff;
   color: var(--burgundy);
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
 }
 
 .toggle-btn.on {
@@ -1731,7 +1752,7 @@ button.seat-available:hover {
 .seg-btn {
   border: none;
   background: transparent;
-  min-height: 40px;
+  min-height: 44px;
   padding: 7px 12px;
   border-radius: 999px;
   font-weight: 700;
@@ -2014,7 +2035,7 @@ button.seat-available:hover {
 }
 
 .summary-item-warn .summary-value {
-  color: #a02c1a;
+  color: var(--danger-text);
 }
 
 /* R33（スタッフ側改善 #6）: 販売設定タブ上部の「販売しない席」合計バー */
@@ -2070,7 +2091,7 @@ button.seat-available:hover {
   margin-top: 1px;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: var(--fs-12);
   font-weight: 800;
   white-space: nowrap;
 }
@@ -2082,7 +2103,7 @@ button.seat-available:hover {
 
 .launch-check-chip.is-warn {
   background: #fdeceb;
-  color: #a02c1a;
+  color: var(--danger-text);
 }
 
 .launch-check-chip.is-muted {
@@ -2165,21 +2186,10 @@ button.seat-available:hover {
   border: 1.5px solid #e0aa28;
 }
 
-.low-seats-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #e0492f;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .closed-notice {
   background: #fdeceb;
   border: 1.5px dashed #e0492f;
-  color: #a02c1a;
+  color: var(--danger-text);
   border-radius: 14px;
   padding: 10px 12px;
   font-weight: 700;
@@ -2241,7 +2251,7 @@ button.seat-available:hover {
 }
 
 .page-share .btn {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 18px;
   font-size: 14px;
   white-space: nowrap;
@@ -2461,7 +2471,7 @@ button.seat-available:hover {
 }
 
 .reservation-name {
-  font-size: 16.5px;
+  font-size: var(--fs-16);
 }
 
 .reservation-head .reservation-code-small {
@@ -2478,10 +2488,11 @@ button.seat-available:hover {
 }
 
 .state-chip {
-  font-size: 11px;
+  /* R36: 11px は金銭・来場の判断材料として小さすぎたため 13px へ底上げ */
+  font-size: var(--fs-13);
   font-weight: 700;
   border-radius: 999px;
-  padding: 1px 8px;
+  padding: 2px 8px;
   border: 1px solid;
 }
 
@@ -2507,19 +2518,19 @@ button.seat-available:hover {
    未払いチップ（橙）より強い赤系で、当日の案内が止まる状態だと分かるように */
 .state-chip.is-seat-pending {
   background: #fdeceb;
-  color: #a02c22;
+  color: var(--danger-text);
   border-color: #f0a49d;
 }
 
 .reservation-seats.is-seat-pending {
-  color: #a02c22;
+  color: var(--danger-text);
 }
 
 /* 席未確定（来場済み）のときの「席を指定する」は警告色で目立たせる */
 .toggle-btn.sub.warn {
   background: #fdeceb;
   border-color: #e0694f;
-  color: #a02c22;
+  color: var(--danger-text);
   font-weight: 700;
 }
 
@@ -2598,9 +2609,9 @@ button.seat-available:hover {
   background: #fdeceb;
   border: 1.5px dashed #e0492f;
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
-  color: #a02c1a;
+  color: var(--danger-text);
   line-height: 1.4;
   display: flex;
   align-items: center;
@@ -2676,7 +2687,7 @@ button.seat-available:hover {
   background: var(--gold);
   color: #33270a;
   font-weight: 800;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   letter-spacing: 0.08em;
 }
 
@@ -2688,7 +2699,7 @@ button.seat-available:hover {
 
 .today-times {
   margin: 0 0 8px;
-  font-size: 15.5px;
+  font-size: var(--fs-16);
   font-weight: 800;
   color: #f6e7bd;
 }
@@ -2703,9 +2714,9 @@ button.seat-available:hover {
   background: var(--gold);
   color: #33270a;
   border-color: #c99b2e;
-  min-height: 40px;
+  min-height: 44px;
   padding: 7px 22px;
-  font-size: 14.5px;
+  font-size: var(--fs-14);
   box-shadow: 0 3px 10px rgba(10, 6, 32, 0.35);
 }
 
@@ -2768,7 +2779,7 @@ button.seat-available:hover {
   background: #fff6da;
   border: 1.5px dashed #e5c15c;
   border-radius: 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
   color: #7a5c10;
   text-align: center;
@@ -2804,9 +2815,9 @@ button.seat-available:hover {
   background: #fdeceb;
   border: 1.5px solid #e0492f;
   border-radius: 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
-  color: #a02c1a;
+  color: var(--danger-text);
   line-height: 1.6;
 }
 
@@ -2817,9 +2828,9 @@ button.seat-available:hover {
   background: #fdeceb;
   border: 2px solid #e0492f;
   border-radius: 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 800;
-  color: #a02c1a;
+  color: var(--danger-text);
   line-height: 1.6;
 }
 
@@ -2962,7 +2973,7 @@ button.seat-available:hover {
   border: 2px solid #d84f43;
   border-radius: 14px;
   background: #fdeceb;
-  color: #a02c22;
+  color: var(--danger-text);
   font-size: 14px;
   font-weight: 800;
   line-height: 1.5;
@@ -2972,12 +2983,13 @@ button.seat-available:hover {
 .cancelled-chip {
   flex: none;
   margin-top: 6px;
-  font-size: 11.5px;
+  /* R36: 状態チップ群と合わせて 13px へ */
+  font-size: var(--fs-13);
   font-weight: 800;
   border-radius: 999px;
   padding: 2px 9px;
   background: #fdeceb;
-  color: #a02c22;
+  color: var(--danger-text);
   border: 1px solid #f0a49d;
 }
 
@@ -2998,14 +3010,14 @@ button.seat-available:hover {
   font-size: 13px;
   line-height: 1.6;
   font-weight: 700;
-  color: #a02c22;
+  color: var(--danger-text);
   /* R35: 長文のため .site-note と同じく keep-all を外す（後掲の
      「長文の説明文」ルールと同じ指定をここにも明示） */
   word-break: normal;
 }
 
 .last-res-folded-cancelled {
-  color: #a02c22;
+  color: var(--danger-text);
   font-weight: 800;
 }
 
@@ -3048,7 +3060,7 @@ button.seat-available:hover {
      40px を確保する。margin-left: auto で折り返した行でも右端に置く */
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   margin-top: 0;
   margin-left: auto;
   padding: 2px 8px;
@@ -3073,7 +3085,7 @@ button.seat-available:hover {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
   color: var(--burgundy);
   white-space: nowrap;
@@ -3097,12 +3109,12 @@ button.seat-available:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 4px 12px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
   background: #fff;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
   color: var(--burgundy-soft);
   text-decoration: none;
@@ -3118,7 +3130,7 @@ button.seat-available:hover {
 
 .last-res-line {
   margin: 0 0 2px;
-  font-size: 13.5px;
+  font-size: var(--fs-14);
 }
 
 .last-reservation-card .reservation-qr {
@@ -3276,8 +3288,8 @@ button.seat-available:hover {
   /* R35: タップ高さ 40px を確保（旧は約26px） */
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  font-size: 11.5px;
+  min-height: 44px;
+  font-size: var(--fs-12);
   font-weight: 800;
   padding: 4px 12px;
   border-radius: 999px;
@@ -3303,7 +3315,7 @@ button.seat-available:hover {
   /* R35: タップ高さ 40px を確保（旧は約29px） */
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   font-size: 12px;
   font-weight: 800;
   padding: 5px 12px;
@@ -3336,7 +3348,7 @@ button.seat-available:hover {
 }
 .zseat-floor-label {
   margin: 0 0 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 800;
   color: var(--burgundy);
 }
@@ -3599,8 +3611,9 @@ button.zseat-cell:active {
   line-height: 1;
 }
 .zbadge.is-low {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 1.5px rgba(245, 196, 81, 0.55), 0 2px 8px rgba(0, 0, 0, 0.45);
+  /* R36: 残りわずかは金ではなく警告橙で囲う（ゾーンA色・選択リングと分離） */
+  border-color: var(--warn);
+  box-shadow: 0 0 0 1.5px rgba(224, 73, 47, 0.55), 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 .zbadge.is-soldout {
   background: #06060a;
@@ -3625,15 +3638,16 @@ button.zseat-cell:active {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 .zonelist-item {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   text-align: left;
-  padding: 9px 12px;
+  /* R36: 一覧を行として大きくし、主導線として読める寸法にする */
+  padding: 12px;
   border-radius: 12px;
   border: 1.5px solid rgba(179, 39, 61, 0.35);
   background: linear-gradient(180deg, rgba(179, 39, 61, 0.1), rgba(87, 17, 34, 0.1));
@@ -3674,11 +3688,11 @@ button.zseat-cell:active {
   color: var(--burgundy);
 }
 .zonelist-name {
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 800;
 }
 .zonelist-desc {
-  font-size: 11.5px;
+  font-size: var(--fs-12);
   line-height: 1.45;
   color: var(--muted, #8a7f95);
 }
@@ -3692,12 +3706,13 @@ button.zseat-cell:active {
   color: var(--burgundy);
 }
 .zone-low-badge {
-  font-size: 11.5px;
+  /* R36: 13px へ底上げ。色は金（ゾーンA色・おすすめと混同）から警告橙へ分離 */
+  font-size: var(--fs-13);
   font-weight: 800;
-  padding: 1px 7px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: var(--gold);
-  color: #4a3200;
+  background: var(--warn);
+  color: #fff;
 }
 .zonelist-soldout {
   flex: none;
@@ -3707,7 +3722,7 @@ button.zseat-cell:active {
   color: rgba(255, 255, 255, 0.75);
 }
 .zonelist-item.is-low {
-  border-color: var(--gold);
+  border-color: var(--warn);
 }
 /* 満席ゾーンは黒く塗って選べなくする */
 .zonelist-item.is-soldout {
@@ -3905,7 +3920,7 @@ button.zseat-cell:active {
   background: var(--pink-pale);
   border: 1.5px solid rgba(179, 39, 61, 0.45);
   color: var(--burgundy);
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
   line-height: 1.55;
   box-shadow: 0 8px 24px rgba(10, 6, 32, 0.35);
@@ -3981,7 +3996,7 @@ button.zseat-cell:active {
 }
 .result-price {
   margin: 0 0 12px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 700;
   color: var(--burgundy);
 }
@@ -4075,7 +4090,7 @@ button.zseat-cell:active {
 
 .site-header.is-compact .staff-link {
   /* R35: タップ高さは共通の 40px に揃える（旧 34px は小さすぎた） */
-  min-height: 40px;
+  min-height: 44px;
   padding: 4px 12px;
 }
 
@@ -4085,12 +4100,12 @@ button.zseat-cell:active {
   /* R35: タップ高さ 40px を確保（旧は約29px） */
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 5px 12px;
   border-radius: 999px;
   border: 1.5px solid #e0492f;
   background: #fff;
-  color: #a02c1a;
+  color: var(--danger-text);
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
@@ -4121,7 +4136,7 @@ button.zseat-cell:active {
   margin: 4px 0 10px;
   padding-left: 20px;
   font-weight: 800;
-  color: #a02c1a;
+  color: var(--danger-text);
 }
 
 /* ---------------- ホール全体オーバービュー（割当結果） ----------------
@@ -4130,7 +4145,7 @@ button.zseat-cell:active {
    is-cand-N クラスで色をそろえる。 */
 .candidate-overview-title {
   margin: 0 0 2px;
-  font-size: 14.5px;
+  font-size: var(--fs-14);
   color: var(--burgundy);
 }
 .candidate-overview-note {
@@ -4163,7 +4178,7 @@ button.zseat-cell:active {
 }
 .overview-floor-label {
   margin: 0 0 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-13);
   font-weight: 800;
   color: var(--burgundy);
 }
@@ -4423,11 +4438,11 @@ button.sseat-cell:active {
   );
 }
 
-/* ================= 文字サイズ設定（R27・お客様側のみ） =================
+/* ================= 文字サイズ設定（R27・R36でスタッフ側にも適用） =================
    アプリは px 指定のため OS の文字サイズ設定が効かない。高齢のお客様向けに
    「標準／大」の切り替えを用意する。仕組み:
-   - 切り替え状態は .app-shell の data-textsize 属性（スタッフ画面では
-     Shell が常に standard を付けるため、スタッフ画面は拡大されない）
+   - 切り替え状態は .app-shell の data-textsize 属性（R36: スタッフ画面でも
+     Shell が選択値をそのまま付け、スタッフ側にも切り替えを出す）
    - 大では土台の font-size を 16px → 19.2px（1.2倍）にし、継承で決まる
      本文・見出し（em 基準）をまとめて拡大する
    - px 明示の文字は下の上書き一覧で個別に拡大する（本文・補助 ≈1.2倍、
@@ -4445,7 +4460,7 @@ button.sseat-cell:active {
 }
 
 .textsize-label {
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
   color: var(--burgundy);
 }
@@ -4463,13 +4478,13 @@ button.sseat-cell:active {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: var(--fs-14);
   font-weight: 700;
   padding: 4px 16px;
   border-radius: 999px;
   /* R34・R13-5: この切り替えを最も必要とする人（低視力・高齢）のタップ
-     目標が最小級だったため、高さを 40px 以上に確保する */
-  min-height: 40px;
+     目標が最小級だったため、高さを 40px 以上に確保する。R36: 44px に引き上げ */
+  min-height: 44px;
 }
 
 .textsize-seg button[aria-pressed='true'] {
@@ -4489,8 +4504,8 @@ button.sseat-cell:active {
 /* ヘッダー（ヒーロー帯） */
 .app-shell[data-textsize='large'] .venue-line { font-size: 14px; }
 .app-shell[data-textsize='large'] .site-title { font-size: 23px; }
-.app-shell[data-textsize='large'] .site-when { font-size: 19.5px; }
-.app-shell[data-textsize='large'] .site-meta { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .site-when { font-size: var(--fs-20); }
+.app-shell[data-textsize='large'] .site-meta { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .site-deadline { font-size: 16px; }
 .app-shell[data-textsize='large'] .site-note { font-size: 15px; }
 .app-shell[data-textsize='large'] .staff-link { font-size: 14px; }
@@ -4498,46 +4513,46 @@ button.sseat-cell:active {
 /* 共通の本文・操作要素 */
 .app-shell[data-textsize='large'] .small { font-size: 15px; }
 .app-shell[data-textsize='large'] .error-text,
-.app-shell[data-textsize='large'] .success-text { font-size: 16.5px; }
-.app-shell[data-textsize='large'] .btn { font-size: 17.5px; }
-.app-shell[data-textsize='large'] .btn-small { font-size: 15.5px; }
-.app-shell[data-textsize='large'] .site-footer { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .success-text { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .btn { font-size: var(--fs-18); }
+.app-shell[data-textsize='large'] .btn-small { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .site-footer { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .field > span,
-.app-shell[data-textsize='large'] .field-label { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .field-label { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .field input,
 .app-shell[data-textsize='large'] .field select,
 .app-shell[data-textsize='large'] .field textarea { font-size: 17px; }
-.app-shell[data-textsize='large'] .required { font-size: 12.5px; }
-.app-shell[data-textsize='large'] .check-line { font-size: 16.5px; }
-.app-shell[data-textsize='large'] .poster-caption { font-size: 15.5px; }
-.app-shell[data-textsize='large'] .form-subhead { font-size: 16.5px; }
-.app-shell[data-textsize='large'] .seg-btn { font-size: 15.5px; }
-.app-shell[data-textsize='large'] .notice-box { font-size: 16.5px; }
-.app-shell[data-textsize='large'] .privacy-note { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .required { font-size: var(--fs-13); }
+.app-shell[data-textsize='large'] .check-line { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .poster-caption { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .form-subhead { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .seg-btn { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .notice-box { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .privacy-note { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .prototype-note { font-size: 15px; }
 .app-shell[data-textsize='large'] .modal-title { font-size: 24px; }
-.app-shell[data-textsize='large'] .modal-summary > div { font-size: 17.5px; }
-.app-shell[data-textsize='large'] .modal-note { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .modal-summary > div { font-size: var(--fs-18); }
+.app-shell[data-textsize='large'] .modal-note { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .modal-btn { font-size: 19px; }
 
 /* 予約フロー（ゾーン選択・人数・フォーム・確認） */
-.app-shell[data-textsize='large'] .zone-lead { font-size: 14.5px; }
+.app-shell[data-textsize='large'] .zone-lead { font-size: var(--fs-14); }
 .app-shell[data-textsize='large'] .party-size { font-size: 21px; }
 .app-shell[data-textsize='large'] .stepper-btn { font-size: 23px; }
-.app-shell[data-textsize='large'] .party-cap-note { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .party-cap-note { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .zseat-hint { font-size: 14px; }
 .app-shell[data-textsize='large'] .zbadge-letter { font-size: 14px; }
 .app-shell[data-textsize='large'] .zbadge-count { font-size: 13px; }
 .app-shell[data-textsize='large'] .zonelist-letter { font-size: 18px; }
 .app-shell[data-textsize='large'] .zonelist-name { font-size: 16px; }
-.app-shell[data-textsize='large'] .zonelist-desc { font-size: 13.5px; }
-.app-shell[data-textsize='large'] .zonelist-remain { font-size: 15.5px; }
-.app-shell[data-textsize='large'] .zone-low-badge { font-size: 12.5px; }
+.app-shell[data-textsize='large'] .zonelist-desc { font-size: var(--fs-14); }
+.app-shell[data-textsize='large'] .zonelist-remain { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .zone-low-badge { font-size: 15px; }
 .app-shell[data-textsize='large'] .zonelist-soldout { font-size: 17px; }
 .app-shell[data-textsize='large'] .floor-tab { font-size: 16px; }
-.app-shell[data-textsize='large'] .zdb-zone { font-size: 17.5px; }
+.app-shell[data-textsize='large'] .zdb-zone { font-size: var(--fs-18); }
 .app-shell[data-textsize='large'] .zdb-meta { font-size: 14px; }
-.app-shell[data-textsize='large'] .zdb-btn { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .zdb-btn { font-size: var(--fs-16); }
 /* R34・R13-2: 「大」では横並びだと情報側が潰れてゾーン名の塊が途中で
    切れた。狭幅（380px以下）と同じくバーを縦積みにし、ゾーン名を
    削らずに読める幅を確保する（座席表の幾何には触れない） */
@@ -4561,44 +4576,99 @@ button.sseat-cell:active {
 }
 .app-shell[data-textsize='large'] .zone-bottom-notice { font-size: 16px; }
 .app-shell[data-textsize='large'] .detail-list dt { font-size: 16px; }
-.app-shell[data-textsize='large'] .detail-total { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .detail-total { font-size: var(--fs-20); }
 .app-shell[data-textsize='large'] .selection-empty,
-.app-shell[data-textsize='large'] .selection-seats { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .selection-seats { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .selection-total { font-size: 19px; }
-.app-shell[data-textsize='large'] .selection-warn { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .selection-warn { font-size: var(--fs-16); }
 
 /* 完了・結果・共有 */
 .app-shell[data-textsize='large'] .done-badge,
-.app-shell[data-textsize='large'] .checkedin-badge { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .checkedin-badge { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .reservation-code { font-size: 44px; }
-.app-shell[data-textsize='large'] .result-zone { font-size: 18.5px; }
-.app-shell[data-textsize='large'] .result-seats { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .result-zone { font-size: var(--fs-18); }
+.app-shell[data-textsize='large'] .result-seats { font-size: var(--fs-20); }
 .app-shell[data-textsize='large'] .result-price { font-size: 15px; }
 .app-shell[data-textsize='large'] .share-actions .btn,
-.app-shell[data-textsize='large'] .page-share .btn { font-size: 16.5px; }
-.app-shell[data-textsize='large'] .qr-caption { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .page-share .btn { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .qr-caption { font-size: var(--fs-16); }
 
 /* この端末の控え */
 .app-shell[data-textsize='large'] .last-res-code { font-size: 27px; }
 .app-shell[data-textsize='large'] .last-res-item.is-cancelled .last-res-code { font-size: 23px; }
 .app-shell[data-textsize='large'] .last-res-line,
 .app-shell[data-textsize='large'] .last-res-folded-line { font-size: 16px; }
-.app-shell[data-textsize='large'] .last-res-cancelled-note { font-size: 15.5px; }
-.app-shell[data-textsize='large'] .last-res-cancelled-mark { font-size: 16.5px; }
+.app-shell[data-textsize='large'] .last-res-cancelled-note { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .last-res-cancelled-mark { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .cancelled-chip { font-size: 13px; }
 .app-shell[data-textsize='large'] .last-res-fold-toggle { font-size: 14px; }
 .app-shell[data-textsize='large'] .last-res-share-btn { font-size: 15px; }
-.app-shell[data-textsize='large'] .last-res-qr-hint { font-size: 12.5px; }
+.app-shell[data-textsize='large'] .last-res-qr-hint { font-size: var(--fs-13); }
 /* R35: 「番号で受付」（5文字）が 64px の箱に収まる上限に留める */
-.app-shell[data-textsize='large'] .last-res-qr-loading { font-size: 11.5px; }
+.app-shell[data-textsize='large'] .last-res-qr-loading { font-size: var(--fs-12); }
 
 /* 当日カード・お知らせ帯 */
 .app-shell[data-textsize='large'] .today-badge { font-size: 16px; }
-.app-shell[data-textsize='large'] .today-name { font-size: 19.5px; }
+.app-shell[data-textsize='large'] .today-name { font-size: var(--fs-20); }
 .app-shell[data-textsize='large'] .today-times { font-size: 18px; }
 .app-shell[data-textsize='large'] .today-venue { font-size: 14px; }
 .app-shell[data-textsize='large'] .today-scroll-btn { font-size: 17px; }
-.app-shell[data-textsize='large'] .sync-banner { font-size: 15.5px; }
+.app-shell[data-textsize='large'] .sync-banner { font-size: var(--fs-16); }
 .app-shell[data-textsize='large'] .storage-warning,
 .app-shell[data-textsize='large'] .local-mode-banner,
 .app-shell[data-textsize='large'] .draft-pruned-notice { font-size: 16px; }
+
+/* ================= R36: 監査対応 =================
+   - 中5: スタッフ画面でも文字サイズ「大」を効かせる。Shell がスタッフでも
+     data-textsize を固定しなくなったため、スタッフ固有クラス（タブ・
+     状態チップ・集計・受付カードのメタ）にも大モードの上書きを用意する
+   - 中2: ゾーン一覧を主導線として読める見出しを付ける
+   - 低7: 初回読み込みの簡易スケルトン（ヒーロー＋カード） */
+.app-shell[data-textsize='large'] .staff-tab { font-size: var(--fs-16); }
+.app-shell[data-textsize='large'] .state-chip,
+.app-shell[data-textsize='large'] .source-badge { font-size: 15px; }
+.app-shell[data-textsize='large'] .reservation-meta { font-size: 15px; }
+.app-shell[data-textsize='large'] .reception-summary { font-size: var(--fs-18); }
+.app-shell[data-textsize='large'] .summary-label { font-size: var(--fs-14); }
+.app-shell[data-textsize='large'] .summary-value { font-size: var(--fs-24); }
+.app-shell[data-textsize='large'] .zonelist-heading { font-size: var(--fs-16); }
+
+/* ゾーン一覧の見出し: 座席表のバッジだけでなく、一覧の行からも選べることを
+   主導線として明示する（中2） */
+.zonelist-heading {
+  margin: 16px 2px 8px;
+  font-size: var(--fs-14);
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+/* 初回読み込みスケルトン: 実物のヒーローとカードの輪郭だけを先に出し、
+   「壊れている」不安を与えない（低7）。中身は読み込み完了で実物に替わる */
+.skeleton-hero,
+.skeleton-card {
+  border-radius: 16px;
+  background: linear-gradient(100deg, var(--pink-pale) 40%, #fdf3ec 50%, var(--pink-pale) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-hero {
+  height: 120px;
+  margin-bottom: 16px;
+}
+.skeleton-card {
+  height: 180px;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-hero,
+  .skeleton-card {
+    animation: none;
+  }
+}

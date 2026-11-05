@@ -284,7 +284,14 @@ export default function ReservationCard({
                   else onComplete(res)
                 }}
               >
-                受付完了（支払い＋来場）
+                {/* R36（低8）: 残っている手続きだけを文言に出す。
+                    支払済なのに「支払い＋来場」と出ると、済ませたことに
+                    なるのか一瞬迷うため */}
+                {res.paid
+                  ? '受付完了（来場のみ）'
+                  : res.checkedIn
+                    ? '受付完了（支払いのみ）'
+                    : '受付完了（支払い＋来場）'}
               </button>
             ))}
           <div className="reservation-subactions">

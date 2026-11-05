@@ -416,14 +416,14 @@ function ZoneRemainingTable() {
   }, [data])
   return (
     <>
-      <h4>ゾーン別残席・販売</h4>
+      <h4>ゾーン別残り席・販売</h4>
       <table className="type-table zone-table">
         <thead>
           <tr>
             <th>ゾーン</th>
             <th>販売</th>
             <th>売上</th>
-            <th>残席</th>
+            <th>残り</th>
             <th>総席数</th>
           </tr>
         </thead>
@@ -450,7 +450,7 @@ function ZoneRemainingTable() {
         </tbody>
       </table>
       <p className="muted small">
-        残席はお客様画面のゾーン表示と同じ数え方です（席が未確定のゾーン予約分も差し引いています）。
+        残り席数はお客様画面のゾーン表示と同じ数え方です（席が未確定のゾーン予約分も差し引いています）。
         販売・売上はキャンセル済みを除く有効な予約の集計で、売上には未払い分も含みます
         （ゾーン別売上の合計＝上の「売上（支払済合計）」＋「未払い合計」）。
         {sales.unzonedCount > 0 &&
@@ -469,7 +469,7 @@ function ZoneRemainingChips() {
   const { data } = useStore()
   const availability = allZoneAvailability(data)
   return (
-    <p className="zone-remaining-chips" data-zone-remaining-chips aria-label="ゾーン別残席">
+    <p className="zone-remaining-chips" data-zone-remaining-chips aria-label="ゾーン別残り席数">
       {ZONE_DEFS.map((z) => {
         const a = availability[z.id]
         return (
@@ -899,7 +899,26 @@ function Reception() {
           <span className="muted small">（人数・金額はキャンセル済みを除く）</span>
         )}
       </p>
-      {list.length === 0 && <p className="muted empty-note">該当する予約がありません。</p>}
+      {list.length === 0 && (
+        <>
+          <p className="muted empty-note">該当する予約がありません。</p>
+          {/* R36（低6）: 絞り込み起因の0件では、解除の次の手を出す */}
+          {filtering && (
+            <p>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                data-clear-filters
+                onClick={() =>
+                  updateFilters({ query: '', zone: 'all', paid: 'all', checkin: 'all', source: 'all' })
+                }
+              >
+                絞り込みをクリア
+              </button>
+            </p>
+          )}
+        </>
+      )}
       <ul className="reservation-list">
         {groups
           ? groups.map((g) => {
@@ -1279,7 +1298,7 @@ function Summary() {
           予約 {t.reservationCount}件・{t.totalPeople}名 ／ 支払済 {t.paidReservationCount}件・
           {t.paidSeatCount}席 ／ 売上 {formatYen(t.salesTotal)}
           ／ 未払い {formatYen(t.unpaidTotal)}（{t.unpaidReservationCount}件・{t.reservedSeatCount}席分）
-          ／ 来場済み {t.checkedInCount}件・{t.checkedInPeople}名 ／ 残席 {availableNow}席
+          ／ 来場済み {t.checkedInCount}件・{t.checkedInPeople}名 ／ 残り {availableNow}席
         </p>
         <table>
           <thead>
@@ -1328,9 +1347,9 @@ function Summary() {
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="paidSeatCount">
-            {t.paidReservationCount}件・{t.paidSeatCount}名
+            {t.paidReservationCount}件・{t.paidSeatCount}席
           </span>
-          <span className="summary-label">支払済数</span>
+          <span className="summary-label">支払済席数</span>
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="salesTotal">
@@ -1369,7 +1388,7 @@ function Summary() {
           <span className="summary-value" data-summary="availableSeatCount">
             {availableNow}席
           </span>
-          <span className="summary-label">残席（販売中）</span>
+          <span className="summary-label">残り席（販売中）</span>
         </div>
         <div className="summary-item">
           <span className="summary-value" data-summary="blockedSeatCount">
@@ -1431,7 +1450,7 @@ function Summary() {
         金額は各予約に記録された金額
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
         変更しても、記録済みの売上は変わりません。「未払い席数」は未払い（予約中）の席数です。
-        「残席」はお客様画面の空席数と同じ数え方で、席が未確定のゾーン予約分も差し引いています。
+        「残り席数」はお客様画面の残り席数と同じ数え方で、席が未確定のゾーン予約分も差し引いています。
       </p>
     </section>
   )

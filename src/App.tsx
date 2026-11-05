@@ -34,9 +34,9 @@ import Staff, { hasStaffSession } from './components/Staff'
 
 type View = 'book' | 'lookup' | 'staff'
 
-/* 文字サイズ設定（R27・お客様側のみ）: アプリは px 指定のため OS の文字
-   サイズ設定が効かない。高齢のお客様向けに端末へ保存する切り替えを持つ。
-   スタッフ画面では Shell が data-textsize を常に standard に固定する。 */
+/* 文字サイズ設定（R27・R36でスタッフ側にも適用）: アプリは px 指定のため
+   OS の文字サイズ設定が効かない。高齢のお客様・スタッフ向けに端末へ保存する
+   切り替えを持つ。R36 以前はスタッフ画面で standard に固定していた。 */
 type TextSize = 'standard' | 'large'
 const TEXT_SIZE_KEY = 'sakura-seats-text-size-v1'
 function loadTextSize(): TextSize {
@@ -213,7 +213,7 @@ function TopHeader({
             </span>
           ))}
           <span className="u-nowrap">（当日現金払い）／</span>{' '}
-          <span className="meta-available u-nowrap">空席 {available}席</span>
+          <span className="meta-available u-nowrap">残り {available}席</span>
         </p>
         {showDeadline && (
           <p className="site-deadline" data-booking-deadline-display>
@@ -436,6 +436,14 @@ function SavedReservationItem({ snapshot }: { snapshot: LastReservationSnapshot 
               再度ご予約をご希望の場合は、新しくお申し込みください。
             </p>
           )}
+          {/* R36（低9）: 電話番号のない旧控えは照会 RPC でキャンセル状況を
+              取り直せない。その控えだけ、自動確認できない旨と確認手段を
+              控えめに併記する（照会できる控えには出さない） */}
+          {!cancelled && !storeRes && mode === 'cloud' && !snapshot.phone && (
+            <p className="muted small">
+              この控えではキャンセル状況を自動で確認できません。最新の状態は「予約確認」でご確認ください。
+            </p>
+          )}
         </div>
       </div>
       {!cancelled && qrExpanded && (
@@ -575,13 +583,21 @@ function Shell() {
   if (mode === 'cloud' && !ready) {
     return (
       <div className="app-shell" data-textsize={textSize}>
-        <p className="loading-note">読み込み中…♪</p>
+        {/* R36（低7）: 初回はテキスト1行でなく、ヒーロー＋カードの輪郭
+            （スケルトン）を先に出して「壊れている」不安を与えない */}
+        <main className="main" aria-busy="true">
+          <div className="skeleton-hero" aria-hidden="true" />
+          <div className="skeleton-card" aria-hidden="true" />
+          <p className="loading-note" role="status">
+            読み込み中…♪
+          </p>
+        </main>
       </div>
     )
   }
 
   return (
-    <div className="app-shell" data-textsize={view === 'staff' ? 'standard' : textSize}>
+    <div className="app-shell" data-textsize={textSize}>
       {mode === 'cloud' && syncState !== 'ok' && (
         <div
           className={`sync-banner sync-${syncState}`}
@@ -601,8 +617,10 @@ function Shell() {
       />
       {/* 文字サイズ切り替え（R27）: ヒーロー帯の直下に常置し、予約画面と
           予約確認の両方で同じ場所から切り替えられるようにする。
-          スタッフ画面には出さない（スタッフ側は標準サイズで固定） */}
-      {view !== 'staff' && <TextSizeToggle value={textSize} onChange={setTextSize} />}
+          R36（中5）: スタッフ画面にも出す。スタッフ側にも高齢の担い手が
+          おり、受付カードの小さい文字が当日の読み取り負荷になっていたため、
+          お客様側と同じ切り替え・保存の仕組みをそのまま使う */}
+      <TextSizeToggle value={textSize} onChange={setTextSize} />
       <main className="main">
         {storageWarning && (
           <p className="storage-warning" data-storage-warning role="alert">

@@ -484,6 +484,10 @@ export default function ZoneSeatMap({
       </div>
 
       {!mini && (
+        <>
+        {/* R36（中2）: 座席表のセルは図の性質上大きくできないため、大きな
+            行の一覧を「こちらからも選べる」主導線として見出しで格上げする */}
+        <p className="zonelist-heading">ゾーン一覧（こちらからも選べます）</p>
         <ul className="zonelist">
           {ZONE_IDS.map((z) => {
             const def = ZONE_DEF_BY_ID.get(z)!
@@ -526,6 +530,7 @@ export default function ZoneSeatMap({
             )
           })}
         </ul>
+        </>
       )}
     </div>
   )

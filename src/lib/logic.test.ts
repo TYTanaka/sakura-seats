@@ -483,8 +483,15 @@ describe('販売設定（ブロック席）', () => {
 })
 
 describe('予約締切（Phase 2）', () => {
-  const past = new Date(Date.now() - 60_000).toISOString().slice(0, 16)
-  const future = new Date(Date.now() + 60_000).toISOString().slice(0, 16)
+  // bookingDeadline はローカル時刻の文字列として解釈されるため、
+  // toISOString()（UTC）で作ると TZ によって過去/未来が入れ替わる。
+  // ローカル時刻で文字列化して環境に依存しないようにする。
+  const toLocalInputValue = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  const past = toLocalInputValue(new Date(Date.now() - 120_000))
+  const future = toLocalInputValue(new Date(Date.now() + 120_000))
 
   it('締切未設定なら閉じていない', async () => {
     const { isBookingClosed } = await import('./logic')
