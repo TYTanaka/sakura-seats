@@ -20,18 +20,21 @@ import {
   type Reservation,
 } from './logic'
 import {
-  assignZoneSeats,
   manualAssignmentError,
+  planAssignmentFor,
   planListCheckIn,
+  planReservationAssignment,
   type ZoneId,
 } from './zones'
 import { createCloudApi, type CloudApi } from './cloud'
+import { getCurrentOperator } from './operator'
 import { isQrToken } from './qrToken'
 import { currentSiteUrl } from './share'
 import {
   StoreContext,
   type CheckInOutcome,
   type Store,
+  type WaitlistInput,
   type ZoneBookingInput,
 } from './store'
 
@@ -103,6 +106,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       blocked: staff.blockedSeats,
       bookingDeadline: staff.bookingDeadline,
       reservations: staff.reservations,
+      // R38: キャンセル待ち一覧（スタッフ側表示用）
+      waitlist: staff.waitlist,
     }))
   }, [])
 
@@ -268,6 +273,10 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         perfDate: perf.date,
         perfName: perf.name,
         zone: input.zone,
+        // R38: 希望（車椅子席・親子室）。申込直後の表示にも出す
+        ...(input.accessNeeds && input.accessNeeds.length > 0
+          ? { accessNeeds: [...input.accessNeeds] }
+          : {}),
       }
     }
 
@@ -291,12 +300,14 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       }
       for (let attempt = 0; attempt <= 2; attempt++) {
         await refreshAll()
-        const assignment = assignZoneSeats(
+        // R38: 希望がある予約は専用席を先に割り当てる
+        const seatIds = planAssignmentFor(
           dataRef.current,
           zone as ZoneId,
           partySize,
+          summary?.accessNeeds,
         )
-        if (!assignment) {
+        if (!seatIds) {
           throw new Error(
             '席を自動で割り当てできませんでした（このゾーンに空席が足りません）。受付一覧から席を確認して、手動で受付してください',
           )
@@ -304,7 +315,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         const outcome = await api().staffCheckIn(
           staffPasscode(),
           token,
-          assignment.seatIds,
+          seatIds,
+          getCurrentOperator(),
         )
         if (outcome.result === 'SEAT_TAKEN') {
           if (attempt < 2) continue
@@ -341,7 +353,12 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
       const token = target.qrToken
       if (isQrToken(token)) {
         try {
-          let outcome = await api().staffCheckIn(staffPasscode(), token, null)
+          let outcome = await api().staffCheckIn(
+            staffPasscode(),
+            token,
+            null,
+            getCurrentOperator(),
+          )
           if (outcome.result === 'NEEDS_SEATS') {
             outcome = await checkInAssigningSeats(token, outcome.reservation)
           }
@@ -387,6 +404,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         paid: target.paid,
         checkedIn: true,
         status: 'active',
+        operator: getCurrentOperator(),
       })
       await refreshAll()
     }
@@ -435,6 +453,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             note: input.note,
             zone: input.zone,
             typeIds: input.typeIds,
+            // R38: 希望（車椅子席・親子室）
+            accessNeeds: input.accessNeeds,
           })
           const reservation = buildZoneReservation(input, res.code, res.amount, res.token)
           await refreshAll()
@@ -472,7 +492,12 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         try {
           // R17: まず席なしで照合する。未割当のゾーン予約なら NEEDS_SEATS が
           // 返るので、席を詰めてから再送し、割当と受付を原子的に行う
-          let outcome = await api().staffCheckIn(staffPasscode(), token, null)
+          let outcome = await api().staffCheckIn(
+            staffPasscode(),
+            token,
+            null,
+            getCurrentOperator(),
+          )
           if (outcome.result === 'NEEDS_SEATS') {
             outcome = await checkInAssigningSeats(token, outcome.reservation)
           }
@@ -506,6 +531,8 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           paid: target.paid,
           checkedIn: value,
           status: target.cancelled ? 'cancelled' : 'active',
+          // R38: 受付の処理者を記録する（旧 DB では RPC 側で落とす）
+          operator: getCurrentOperator(),
         })
         await refreshStaff()
       },
@@ -520,12 +547,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           value &&
           !target.cancelled
         ) {
-          const assignment = assignZoneSeats(
-            dataRef.current,
-            target.zone as ZoneId,
-            target.items.length,
-          )
-          if (!assignment) {
+          // R38: 希望がある予約は専用席を先に割り当てる
+          const seatIds = planReservationAssignment(dataRef.current, target)
+          if (!seatIds) {
             throw new Error(
               'このゾーンに割り当てられる席がありません（空席が不足しています）。支払い済みにはしませんでした',
             )
@@ -533,8 +557,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           await api().staffAssignAndPay(
             staffPasscode(),
             target.cloudId,
-            assignment.seatIds,
+            seatIds,
             false,
+            getCurrentOperator(),
           )
           await refreshAll()
           return
@@ -554,6 +579,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             target.cloudId,
             target.seatIds,
             target.checkedIn,
+            getCurrentOperator(),
           )
           await refreshAll()
           return
@@ -571,6 +597,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           paid: value,
           checkedIn: target.checkedIn,
           status: target.cancelled ? 'cancelled' : 'active',
+          operator: getCurrentOperator(),
         })
         await refreshStaff()
       },
@@ -621,12 +648,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
         // R12: 未割当のゾーン予約の受付完了は、席の割当＋支払い＋来場を
         // staff_assign_and_pay（p_checked_in=true）で原子的に行う
         if (isUnassignedZoneBooking(target) && !target.cancelled) {
-          const assignment = assignZoneSeats(
-            dataRef.current,
-            target.zone as ZoneId,
-            target.items.length,
-          )
-          if (!assignment) {
+          // R38: 希望がある予約は専用席を先に割り当てる
+          const seatIds = planReservationAssignment(dataRef.current, target)
+          if (!seatIds) {
             throw new Error(
               'このゾーンに割り当てられる席がありません（空席が不足しています）。受付完了にはしませんでした',
             )
@@ -634,8 +658,9 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           await api().staffAssignAndPay(
             staffPasscode(),
             target.cloudId,
-            assignment.seatIds,
+            seatIds,
             true,
+            getCurrentOperator(),
           )
           await refreshAll()
           return
@@ -653,6 +678,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             target.cloudId,
             target.seatIds,
             true,
+            getCurrentOperator(),
           )
           await refreshAll()
           return
@@ -662,7 +688,45 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
           paid: true,
           checkedIn: true,
           status: target.cancelled ? 'cancelled' : 'active',
+          operator: getCurrentOperator(),
         })
+        await refreshStaff()
+      },
+      // R38: 返金済みの記録（公演中止時の返金管理）。状態系は現状維持で
+      // refunded だけを更新する（r38 未適用の DB では cloud.ts が案内を投げる）
+      setRefunded: async (reservationId, value) => {
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target?.cloudId) throw new Error('予約が見つかりません')
+        await api().staffUpdateReservation(staffPasscode(), target.cloudId, {
+          paid: target.paid,
+          checkedIn: target.checkedIn,
+          status: target.cancelled ? 'cancelled' : 'active',
+          refunded: value,
+        })
+        await refreshStaff()
+      },
+      // R38: キャンセル待ち登録（検証・採番はサーバ側 add_waitlist）
+      joinWaitlist: async (input: WaitlistInput) => {
+        const res = await api().addWaitlist({
+          name: input.name,
+          phone: normalizePhone(input.phone),
+          zone: input.zone,
+          partySize: input.partySize,
+        })
+        const entry = {
+          id: res.code,
+          zone: input.zone,
+          partySize: input.partySize,
+          name: input.name.trim(),
+          phone: normalizePhone(input.phone),
+          createdAt: new Date().toISOString(),
+        }
+        // スタッフ入室中なら一覧も取り直す（未入室なら次回取得時に出る）
+        if (passcodeRef.current !== null) await refreshStaff()
+        return entry
+      },
+      removeWaitlist: async (entryId) => {
+        await api().staffRemoveWaitlist(staffPasscode(), entryId)
         await refreshStaff()
       },
       lookupReservation: async (code, phone) =>
@@ -695,6 +759,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             blocked: staff.blockedSeats,
             bookingDeadline: staff.bookingDeadline,
             reservations: staff.reservations,
+            waitlist: staff.waitlist,
           }))
           return true
         } catch {
@@ -720,6 +785,7 @@ export function CloudStoreProvider({ children }: { children: ReactNode }) {
             blocked: staff.blockedSeats,
             bookingDeadline: staff.bookingDeadline,
             reservations: staff.reservations,
+            waitlist: staff.waitlist,
           }))
           return true
         } catch {

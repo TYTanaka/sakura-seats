@@ -28,7 +28,8 @@ describe('reservationsToCsv', () => {
     const csv = reservationsToCsv(sampleReservations())
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     const header = csv.slice(1).split('\r\n')[0]
-    expect(header).toBe('予約番号,名前,電話,ゾーン,席,券種内訳,金額,支払い,来場,種別,販売者,申込日時')
+    // R38: 希望（車椅子席・親子室）と備考の列を末尾に追加
+    expect(header).toBe('予約番号,名前,電話,ゾーン,席,券種内訳,金額,支払い,来場,種別,販売者,申込日時,希望,備考')
   })
 
   it('ゾーン予約はゾーン列に入り、席列は割当まで空欄（R12）', () => {

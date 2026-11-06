@@ -14,19 +14,25 @@ import {
   checkInByToken as applyCheckInByToken,
   clearReservationSeats,
   createReservation,
+  createWaitlistEntry,
   createZoneReservation,
   emptyData,
   findReservationByCodePhone,
   isUnassignedZoneBooking,
+  isValidPhone,
   isZoneBooking,
   normalizeAppData,
+  normalizePhone,
+  removeWaitlistEntry,
   selfCancelEligibility,
   setBlockedForSeats,
   setCheckedIn,
   setPaid,
+  setRefunded,
   toggleBlocked,
   uncancelReservation as applyUncancelReservation,
   updatePerformance,
+  type AccessNeed,
   type AppData,
   type CheckInResult,
   type NewReservationInput,
@@ -34,14 +40,18 @@ import {
   type Reservation,
   type SelfCancelResult,
   type UncancelResult,
+  type WaitlistEntry,
 } from './logic'
 import {
-  assignZoneSeats,
   manualAssignmentError,
   planListCheckIn,
+  planReservationAssignment,
   zoneAvailability,
+  zoneUncancelBlock,
   type ZoneId,
 } from './zones'
+// 注: 席の割当計画は R38 から planReservationAssignment（希望込み）に統一した
+import { getCurrentOperator } from './operator'
 import { cloudEnabled } from './config'
 import { isStaleRevision, nextRevision, parseRevision } from './revision'
 import type { StaffAllowlist } from './staffAuth'
@@ -79,6 +89,17 @@ export interface ZoneBookingInput {
   name: string
   phone: string
   note: string
+  /** 座席の希望（R38・車椅子席/親子室） */
+  accessNeeds?: AccessNeed[]
+}
+
+/** キャンセル待ち登録の入力（R38） */
+export interface WaitlistInput {
+  /** 希望ゾーン。null は「どこでもよい」 */
+  zone: ZoneId | null
+  partySize: number
+  name: string
+  phone: string
 }
 
 export interface Store {
@@ -135,6 +156,20 @@ export interface Store {
   assignSeats: (reservationId: string, seatIds: string[]) => Promise<void>
   /** 受付完了ワンタップ: 支払い済み＋来場済みを一度に設定する */
   completeReception: (reservationId: string) => Promise<void>
+  /**
+   * 返金済みの記録（R38・公演中止時の返金管理）。
+   * ローカル: setRefunded（logic）で記録する。
+   * クラウド: staff_update_reservation の p_refunded で記録する。
+   */
+  setRefunded: (reservationId: string, value: boolean) => Promise<void>
+  /**
+   * キャンセル待ちを登録する（R38）。電話番号は正規化して保存する。
+   * クラウド: add_waitlist RPC が検証（電話形式・同一電話の上限）まで行う。
+   * ローカル: 同じ規則で検証してから端末内に記録する。
+   */
+  joinWaitlist: (input: WaitlistInput) => Promise<WaitlistEntry>
+  /** キャンセル待ちを取り下げる（スタッフ操作。連絡済み・不要分） */
+  removeWaitlist: (entryId: string) => Promise<void>
   toggleBlocked: (seatId: string) => Promise<void>
   setBlockedForSeats: (seatIds: string[], blocked: boolean) => Promise<void>
   /** 公演設定と予約締切をまとめて保存する */
@@ -368,6 +403,7 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           name: input.name,
           phone: input.phone,
           note: input.note,
+          accessNeeds: input.accessNeeds,
         })
         // reserve と同じく、保存できて初めて「予約完了」とする
         const rev = nextRevision(revRef.current)
@@ -389,6 +425,14 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
       uncancelReservation: async (reservationId) => {
         // 他タブの更新を取り込んでから判定し直す（席の占有は最新状態で見る）
         refreshIfStale()
+        const target = dataRef.current.reservations.find((r) => r.id === reservationId)
+        if (!target) return 'NOT_FOUND' as UncancelResult
+        if (!target.cancelled) return 'NOT_CANCELLED' as UncancelResult
+        // R38（M1）: 未割当のゾーン予約は、復活で増えるホールドがゾーンの
+        // 残席を超えるならオーバーセルになるため拒否する
+        if (zoneUncancelBlock(dataRef.current, target) === 'ZONE_FULL') {
+          return 'ZONE_FULL' as UncancelResult
+        }
         const { data: next, result } = applyUncancelReservation(dataRef.current, reservationId)
         if (result === 'OK') commit(next)
         return result
@@ -408,12 +452,13 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
                 assignSeatsToReservation(prev, reservationId, plan.seatIds),
                 reservationId,
                 true,
+                getCurrentOperator(),
               ),
             )
             return
           }
         }
-        mutate((prev) => setCheckedIn(prev, reservationId, value))
+        mutate((prev) => setCheckedIn(prev, reservationId, value, getCurrentOperator()))
       },
       checkInByToken: async (token) => {
         // 他タブの更新を取り込んでから判定し直す（二重受付の防止）
@@ -421,6 +466,8 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         const { data: next, result, reservation } = applyCheckInByToken(
           dataRef.current,
           token,
+          new Date(),
+          getCurrentOperator(),
         )
         if (result !== 'OK') {
           return {
@@ -433,21 +480,14 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         // （支払い時と同じ詰め方。支払い状態は触らない）。
         // 席を用意できない場合は受付を取り消して（commit しない）例外にする
         if (reservation && isUnassignedZoneBooking(reservation)) {
-          const assignment = assignZoneSeats(
-            next,
-            reservation.zone as ZoneId,
-            reservation.items.length,
-          )
-          if (!assignment) {
+          // R38: 希望がある予約は専用席（車椅子席・親子室）も含めて割り当てる
+          const seatIds = planReservationAssignment(next, reservation)
+          if (!seatIds) {
             throw new Error(
               '席を自動で割り当てできませんでした（このゾーンに空席が足りません）。受付一覧から席を確認して、手動で受付してください',
             )
           }
-          const withSeats = assignSeatsToReservation(
-            next,
-            reservation.id,
-            assignment.seatIds,
-          )
+          const withSeats = assignSeatsToReservation(next, reservation.id, seatIds)
           commit(withSeats)
           const updated =
             withSeats.reservations.find((r) => r.id === reservation.id) ?? null
@@ -471,21 +511,19 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         // 割り当ててから支払い済みにする。割り当てられなければ例外にし、
         // 支払い済みにはしない（スタッフに理由が伝わる）
         if (target && isUnassignedZoneBooking(target) && value && !target.cancelled) {
-          const assignment = assignZoneSeats(
-            dataRef.current,
-            target.zone as ZoneId,
-            target.items.length,
-          )
-          if (!assignment) {
+          // R38: 希望がある予約は専用席を先に割り当てる
+          const seatIds = planReservationAssignment(dataRef.current, target)
+          if (!seatIds) {
             throw new Error(
               'このゾーンに割り当てられる席がありません（空席が不足しています）。支払い済みにはしませんでした',
             )
           }
           mutate((prev) =>
             setPaid(
-              assignSeatsToReservation(prev, reservationId, assignment.seatIds),
+              assignSeatsToReservation(prev, reservationId, seatIds),
               reservationId,
               true,
+              getCurrentOperator(),
             ),
           )
           return
@@ -503,15 +541,20 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           target.seatIds.length > 0
         ) {
           if (target.checkedIn) {
-            mutate((prev) => setPaid(prev, reservationId, false))
+            mutate((prev) => setPaid(prev, reservationId, false, getCurrentOperator()))
             return
           }
           mutate((prev) =>
-            setPaid(clearReservationSeats(prev, reservationId), reservationId, false),
+            setPaid(
+              clearReservationSeats(prev, reservationId),
+              reservationId,
+              false,
+              getCurrentOperator(),
+            ),
           )
           return
         }
-        mutate((prev) => setPaid(prev, reservationId, value))
+        mutate((prev) => setPaid(prev, reservationId, value, getCurrentOperator()))
       },
       assignSeats: async (reservationId, seatIds) => {
         // R25: 席の手動指定。支払い・来場には触らず席だけを確定する。
@@ -529,12 +572,9 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
         const target = dataRef.current.reservations.find((r) => r.id === reservationId)
         // R12: 未割当のゾーン予約の受付完了は、席の割当＋支払い＋来場を一度に行う
         if (target && isUnassignedZoneBooking(target) && !target.cancelled) {
-          const assignment = assignZoneSeats(
-            dataRef.current,
-            target.zone as ZoneId,
-            target.items.length,
-          )
-          if (!assignment) {
+          // R38: 希望がある予約は専用席を先に割り当てる
+          const seatIds = planReservationAssignment(dataRef.current, target)
+          if (!seatIds) {
             throw new Error(
               'このゾーンに割り当てられる席がありません（空席が不足しています）。受付完了にはしませんでした',
             )
@@ -542,19 +582,55 @@ function LocalStoreProvider({ children }: { children: ReactNode }) {
           mutate((prev) =>
             setCheckedIn(
               setPaid(
-                assignSeatsToReservation(prev, reservationId, assignment.seatIds),
+                assignSeatsToReservation(prev, reservationId, seatIds),
                 reservationId,
                 true,
+                getCurrentOperator(),
               ),
               reservationId,
               true,
+              getCurrentOperator(),
             ),
           )
           return
         }
         mutate((prev) =>
-          setCheckedIn(setPaid(prev, reservationId, true), reservationId, true),
+          setCheckedIn(
+            setPaid(prev, reservationId, true, getCurrentOperator()),
+            reservationId,
+            true,
+            getCurrentOperator(),
+          ),
         )
+      },
+      // R38: 返金済みの記録（公演中止時の返金管理）
+      setRefunded: async (reservationId, value) => {
+        mutate((prev) => setRefunded(prev, reservationId, value))
+      },
+      // R38: キャンセル待ち登録（ローカル）。クラウドと同じ規則で検証する
+      joinWaitlist: async (input) => {
+        refreshIfStale()
+        const phone = normalizePhone(input.phone)
+        if (!isValidPhone(phone)) {
+          throw new Error('電話番号の形式が正しくありません')
+        }
+        const samePhone = dataRef.current.waitlist.filter(
+          (w) => w.phone === phone,
+        ).length
+        if (samePhone >= 3) {
+          throw new Error('この電話番号でのキャンセル待ち登録は、すでにいくつかいただいています')
+        }
+        const result = createWaitlistEntry(dataRef.current, {
+          zone: input.zone,
+          partySize: input.partySize,
+          name: input.name,
+          phone,
+        })
+        mutate(() => result.data)
+        return result.entry
+      },
+      removeWaitlist: async (entryId) => {
+        mutate((prev) => removeWaitlistEntry(prev, entryId))
       },
       toggleBlocked: async (seatId) => {
         mutate((prev) => toggleBlocked(prev, seatId))

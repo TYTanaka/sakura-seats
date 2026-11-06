@@ -16,6 +16,7 @@ import {
   formatYen,
   normalizePhone,
   normalizeSellerNames,
+  refundChecklist,
   reservationTypeSummary,
   seatStatus,
   totals,
@@ -27,6 +28,7 @@ import {
   allZoneAvailability,
   reservationSeatDisplay,
   reservationZone,
+  specialSeatTakeWarning,
   totalAvailableSeats,
   zoneLabel,
   ZONE_DEFS,
@@ -34,6 +36,7 @@ import {
   type ZoneId,
 } from '../lib/zones'
 import { DEFAULT_PASSCODE, useStore } from '../lib/store'
+import { useCurrentOperator } from '../lib/operator'
 import {
   authBadgeLabel,
   googleDeniedMessage,
@@ -42,7 +45,7 @@ import {
   type StaffAuthMethod,
 } from '../lib/staffAuth'
 import { useToast } from '../lib/toast'
-import { downloadReservationsCsv } from '../lib/csv'
+import { downloadRefundChecklistCsv, downloadReservationsCsv } from '../lib/csv'
 import StaffSeatMap, {
   StaffSeatLegend,
   type StaffSeatState,
@@ -108,6 +111,45 @@ function LocalModeBanner() {
       ⚠ ローカルモードで動作しています：データはこの端末内にのみ保存され、
       他の端末とは同期されません。
     </p>
+  )
+}
+
+/**
+ * 受付担当者の選択（R38）: 「今この端末を操作している人」を選ぶと、
+ * チェックイン・支払い確定の処理者として予約に記録され、集計の
+ * 担当者別内訳（誰が・いくら受け取ったか）に反映される。
+ * 候補は公演設定の販売者名リストを流用する（当日販売の販売者と同じ母集団）。
+ * 端末ごとに保持される（operator.ts）ため、受付端末が複数でも混ざらない。
+ */
+function OperatorSelector() {
+  const { data } = useStore()
+  const [operator, setOperator] = useCurrentOperator()
+  const names = data.performance.sellerNames
+  return (
+    <div className="staff-operator" data-operator-selector>
+      <label className="field">
+        <span>受付担当者（記録用）</span>
+        <select
+          value={operator}
+          onChange={(e) => setOperator(e.target.value)}
+          data-operator-select
+        >
+          <option value="">（未選択）</option>
+          {names.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+          {operator && !names.includes(operator) && (
+            <option value={operator}>{operator}</option>
+          )}
+        </select>
+      </label>
+      <p className="muted small">
+        選ぶと、来場チェックインと支払い確定に「{operator || '担当者'}」の記録が残り、
+        集計で担当者ごとの受付件数・受取額を確認できます。
+      </p>
+    </div>
   )
 }
 
@@ -342,6 +384,8 @@ export default function Staff({ onExit }: { onExit: () => void }) {
         )}
       </div>
 
+      <OperatorSelector />
+
       <nav className="staff-tabs" aria-label="スタッフメニュー">
         {(
           [
@@ -559,6 +603,60 @@ function sumActive(items: Reservation[]) {
   return { people, amount }
 }
 
+/**
+ * キャンセル待ち一覧（R38）: 完売時に観客が登録した待ち行列。
+ * キャンセルが出たら上から順に電話連絡するための表示（通知送信はしない）。
+ * 「取り下げる」で連絡済み・不要分を一覧から外す。
+ */
+function WaitlistPanel() {
+  const { data, removeWaitlist } = useStore()
+  const { showToast } = useToast()
+  const entries = data.waitlist
+  if (entries.length === 0) return null
+  const handleRemove = (id: string) => {
+    void removeWaitlist(id)
+      .then(() => showToast(`${id} をキャンセル待ちから外しました`, 'info'))
+      .catch((e: unknown) =>
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '取り下げに失敗しました。接続を確認してもう一度お試しください',
+        ),
+      )
+  }
+  return (
+    <div className="waitlist-panel" data-waitlist-panel>
+      <h3 className="waitlist-title">
+        キャンセル待ち（{entries.length}件）
+      </h3>
+      <p className="muted small">
+        キャンセルが出たら、上から順に電話でご連絡ください。連絡がついた方・
+        不要になった登録は「取り下げる」で外してください。
+      </p>
+      <ul className="waitlist-list">
+        {entries.map((w) => (
+          <li key={w.id} className="waitlist-item" data-waitlist-item>
+            <span className="waitlist-code">{w.id}</span>
+            <span>
+              {w.zone ? `ゾーン${w.zone}` : 'どこでも'}／{w.partySize}名
+            </span>
+            <span>{w.name} 様</span>
+            <a href={`tel:${w.phone}`}>{w.phone}</a>
+            <button
+              type="button"
+              className="btn btn-ghost btn-small"
+              data-waitlist-remove={w.id}
+              onClick={() => handleRemove(w.id)}
+            >
+              取り下げる
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function Reception() {
   const {
     data,
@@ -663,6 +761,11 @@ function Reception() {
         } else if (result === 'SEAT_TAKEN') {
           showToast(
             '席が他の予約で使われているため、キャンセルを取り消せません',
+          )
+        } else if (result === 'ZONE_FULL') {
+          // R38（M1）: 復活させるとゾーンの定員を超える（オーバーセル防止）
+          showToast(
+            'ゾーンの空きが足りないため、キャンセルを取り消せません（定員を超えてしまいます）',
           )
         } else {
           showToast('キャンセルを取り消せませんでした')
@@ -781,6 +884,7 @@ function Reception() {
           ? `受付（全${baseCount}件中 ${list.length}件を表示）`
           : `受付（${active.length}件の予約）`}
       </h2>
+      <WaitlistPanel />
       <label className="field">
         <span>検索（名前・予約番号・電話番号）</span>
         <input
@@ -1043,6 +1147,14 @@ function DoorSales() {
           選択中：{formatSeatList(selected)}
         </p>
       )}
+      {/* R38（H1）: 専用席を当日販売で取ると、希望のある予約の席が確保できなく
+          なる事故があり得る。尽きてしまう場合だけ強めに知らせる（販売自体は
+          止めない: 当日の車椅子利用者が来た場合はこちらが正しい） */}
+      {selected.length > 0 && specialSeatTakeWarning(data, selected) && (
+        <p className="error-text" data-door-special-warning role="alert">
+          ⚠ {specialSeatTakeWarning(data, selected)}
+        </p>
+      )}
       {selected.length > 0 && (
         <>
           <h3 className="form-subhead">席ごとの券種</h3>
@@ -1267,6 +1379,101 @@ function SeatSettings() {
 
 /* ---------------- 集計 ---------------- */
 
+/**
+ * 返金チェックリスト（R38・M3/公演中止モード）: 支払済みの予約を1件ずつ
+ * 並べ、返金が済んだらその場で記録する。公演中止時はこの画面のまま
+ * 印刷／CSV で作業リストとして使える（印刷シートにも同じ表が入る）。
+ * 対象にはキャンセル済みでも支払済みの予約を含む（お金を預かっている分は
+ * 返金が必要なため）。一括キャンセルは行わない（誤操作の被害が大きいため、
+ * 返金の記録だけを安全に積み上げる形にした）。
+ */
+function RefundChecklistSection() {
+  const { data, setRefunded } = useStore()
+  const { showToast } = useToast()
+  const t = totals(data, ALL_SEAT_IDS)
+  const list = refundChecklist(data)
+  if (list.length === 0) return null
+
+  // 画面側の件数（キャンセル済みの支払済みも含む全件ベース）
+  const doneCount = list.filter((r) => r.refunded).length
+
+  const handleToggle = (res: Reservation, value: boolean) => {
+    void setRefunded(res.id, value)
+      .then(() =>
+        showToast(
+          value
+            ? `${res.id} を返金済みにしました`
+            : `${res.id} の返金済みを取り消しました`,
+          'info',
+        ),
+      )
+      .catch((e: unknown) =>
+        showToast(
+          e instanceof Error && e.message
+            ? e.message
+            : '返金の記録に失敗しました。接続を確認してもう一度お試しください',
+        ),
+      )
+  }
+
+  return (
+    <div className="refund-section" data-refund-section>
+      <h3 className="sub-h">返金チェックリスト（公演中止時）</h3>
+      <p className="muted small">
+        支払済みの予約 {list.length}件のうち、返金済み {doneCount}件 ／
+        まだお返ししていない分 {t.refundDueCount}件・{formatYen(t.refundDueAmount)}
+        （有効な予約分。キャンセル済みでも支払済みの予約は下の表に含まれます）。
+        返金したら「返金済みにする」で記録してください。
+      </p>
+      <div className="btn-row no-print">
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          data-refund-csv
+          onClick={() => downloadRefundChecklistCsv(data)}
+        >
+          返金チェックリストをCSVでダウンロード
+        </button>
+      </div>
+      <table className="type-table">
+        <thead>
+          <tr>
+            <th>予約番号</th>
+            <th>名前</th>
+            <th>電話</th>
+            <th>金額</th>
+            <th>状態</th>
+            <th>返金</th>
+            <th className="no-print">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((r) => (
+            <tr key={r.id} data-refund-row={r.id}>
+              <td>{r.id}</td>
+              <td>{r.name}</td>
+              <td>{r.phone}</td>
+              <td>{formatYen(r.amount)}</td>
+              <td>{r.cancelled ? 'キャンセル済み' : '有効'}</td>
+              <td data-refund-cell="state">{r.refunded ? '返金済み' : '未返金'}</td>
+              <td className="no-print">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-small"
+                  data-refund-toggle={r.id}
+                  onClick={() => handleToggle(r, !r.refunded)}
+                >
+                  {r.refunded ? '返金済みを取り消す' : '返金済みにする'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Summary() {
   const { data } = useStore()
   const t = totals(data, ALL_SEAT_IDS)
@@ -1323,6 +1530,8 @@ function Summary() {
               <th>来場</th>
               <th>種別</th>
               <th>販売者</th>
+              <th>希望</th>
+              <th>備考</th>
             </tr>
           </thead>
           <tbody>
@@ -1338,10 +1547,49 @@ function Summary() {
                 <td>{r.checkedIn ? '来場済' : ''}</td>
                 <td>{r.source === 'door' ? '当日販売' : '予約'}</td>
                 <td>{r.seller ?? ''}</td>
+                {/* R38（H1）: 開場前の準備資料で希望・備考を拾えるようにする */}
+                <td>
+                  {(r.accessNeeds ?? [])
+                    .map((n) => (n === 'wheelchair' ? '車椅子席' : '親子室'))
+                    .join('・')}
+                </td>
+                <td>{r.note}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {/* R38（M3）: 公演中止時の返金チェックリストも同じ印刷に含める */}
+        {refundChecklist(data).length > 0 && (
+          <>
+            <h3>返金チェックリスト</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>予約番号</th>
+                  <th>名前</th>
+                  <th>電話</th>
+                  <th>金額</th>
+                  <th>状態</th>
+                  <th>返金</th>
+                  <th>確認欄</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refundChecklist(data).map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.id}</td>
+                    <td>{r.name}</td>
+                    <td>{r.phone}</td>
+                    <td>{formatYen(r.amount)}</td>
+                    <td>{r.cancelled ? 'キャンセル済み' : '有効'}</td>
+                    <td>{r.refunded ? '返金済み' : '未返金'}</td>
+                    <td>□</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
       {/* R33（スタッフ側改善 #1/#2）: 全タイルを「件数＋人数」の2値表記に
           統一し、来場（チェックイン）進捗のタイルを追加。未払いは0円で
@@ -1466,6 +1714,37 @@ function Summary() {
           </p>
         </>
       )}
+      {t.byOperator.length > 0 && (
+        <>
+          <h3 className="sub-h">担当者別内訳（受付・受取）</h3>
+          <table className="type-table">
+            <thead>
+              <tr>
+                <th>担当者</th>
+                <th>受付件数</th>
+                <th>受取件数</th>
+                <th>受取額</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.byOperator.map((row) => (
+                <tr key={row.operator} data-operator-row={row.operator}>
+                  <td>{row.operator}</td>
+                  <td data-operator-cell="checkin">{row.checkedInCount}件</td>
+                  <td data-operator-cell="received">{row.receivedCount}件</td>
+                  <td data-operator-cell="amount">{formatYen(row.receivedAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted small">
+            スタッフ画面上部の「受付担当者」で選んだ担当者が、来場チェックイン・
+            支払い確定の処理者として記録された分だけを集計しています
+            （キャンセル済みは除く）。閉場後の現金照合に使ってください。
+          </p>
+        </>
+      )}
+      <RefundChecklistSection />
       <p className="muted small">
         金額は各予約に記録された金額
         （予約時点の券種ごとの料金の合計）で集計しています。後から公演設定の料金を
@@ -1673,6 +1952,31 @@ function LaunchChecklist() {
         : '予約はまだありません',
   })
 
+  /* R38（M2）: 予約のスナップショットと現在の公演設定の不一致。
+     公演名・日付を変えると、その前に受け付けた予約の QR が照合で弾かれて
+     受付できなくなる。変更そのものは設定側で確認を取るが、ここでも
+     「すでに食い違っている予約」を開場前に検出できるようにする */
+  const snapshotMismatches = data.reservations.filter(
+    (r) =>
+      !r.cancelled &&
+      ((typeof r.perfName === 'string' && r.perfName !== perf.name) ||
+        (typeof r.perfDate === 'string' && r.perfDate !== perf.date)),
+  )
+  rows.push({
+    key: 'snapshot',
+    label: '予約の公演情報',
+    value:
+      snapshotMismatches.length === 0
+        ? 'すべての予約が現在の公演設定と一致'
+        : `${snapshotMismatches.length}件の予約が現在の公演設定と不一致`,
+    tone: snapshotMismatches.length > 0 ? 'warn' : 'ok',
+    chip: snapshotMismatches.length > 0 ? '要確認' : 'OK',
+    guidance:
+      snapshotMismatches.length > 0
+        ? '公演名・日付を変更した後に残っている予約です。これらの予約は QR 受付で「別の公演の予約」と判定され受付できません。設定を元に戻すか、該当のお客様へ個別に連絡してください'
+        : '予約時点の公演名・公演日と、現在の公演設定が揃っています',
+  })
+
   const warnCount = rows.filter((r) => r.tone === 'warn').length
 
   return (
@@ -1776,11 +2080,18 @@ function PerformanceSettings({
   const [typeSeq, setTypeSeq] = useState(0)
   /** 極端な料金変更の確認待ち（R6・O-6）。null でない間は保存を止める */
   const [pendingExtreme, setPendingExtreme] = useState<string[] | null>(null)
+  /**
+   * 公演名・日付の変更確認待ち（R38・M2）。有効な予約がある状態で公演名や
+   * 日付を変えると、既存予約の QR が照合で弾かれて受付できなくなるため、
+   * 件数を出して確認を取らない限り保存しない。
+   */
+  const [pendingPerfChange, setPendingPerfChange] = useState<number | null>(null)
 
   const touch = () => {
     setSaved('')
     // 設定を触り直したら料金の確認待ちは解除する（再保存時に再判定される）
     setPendingExtreme(null)
+    setPendingPerfChange(null)
   }
 
   const addType = () => {
@@ -1804,7 +2115,11 @@ function PerformanceSettings({
     touch()
   }
 
-  const handleSave = async (e?: FormEvent, bypassExtreme = false) => {
+  const handleSave = async (
+    e?: FormEvent,
+    bypassExtreme = false,
+    bypassPerfChange = false,
+  ) => {
     e?.preventDefault()
     // 保存エラーはフォーム内表示に加えてトーストでも出す（画面外でも気づけるように）
     const fail = (message: string) => {
@@ -1859,6 +2174,17 @@ function PerformanceSettings({
         return
       }
     }
+    // R38（M2）: 公演名・日付の変更ガード。有効な予約がある状態で変えると、
+    // 既存の予約○件の QR が使えなくなる（照合で「別の公演」と判定される）。
+    // 件数を明示して確認を取らない限り保存しない
+    if (!bypassPerfChange && (name.trim() !== perf.name || date !== perf.date)) {
+      const activeCount = data.reservations.filter((r) => !r.cancelled).length
+      if (activeCount > 0) {
+        setError('')
+        setPendingPerfChange(activeCount)
+        return
+      }
+    }
     const next: Performance = {
       name: name.trim(),
       date,
@@ -1873,6 +2199,7 @@ function PerformanceSettings({
       await saveSettings(next, deadline ? deadline : null)
       setError('')
       setPendingExtreme(null)
+      setPendingPerfChange(null)
       setSaved('公演設定を保存しました')
     } catch (e) {
       // 保存できなかった場合は成功表示を出さず、理由のあるエラーだけを出す（R5-2）
@@ -2064,6 +2391,35 @@ function PerformanceSettings({
         </label>
         {error && <p className="error-text">{error}</p>}
         {saved && <p className="success-text">{saved}</p>}
+        {pendingPerfChange !== null && (
+          <div className="price-extreme-confirm" data-perf-change-confirm>
+            <p className="error-text">
+              公演名・日付を変更すると、既存の予約{pendingPerfChange}
+              件のQRコードが使えなくなります（受付で「別の公演の予約」と判定されます）。
+              本当に変更しますか？
+            </p>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-danger btn-small"
+                data-perf-change-ok
+                onClick={() => {
+                  setPendingPerfChange(null)
+                  void handleSave(undefined, true, true)
+                }}
+              >
+                それでも変更する
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-small"
+                onClick={() => setPendingPerfChange(null)}
+              >
+                やめる
+              </button>
+            </div>
+          </div>
+        )}
         {pendingExtreme && (
           <div className="price-extreme-confirm" data-price-extreme-confirm>
             <p className="error-text">

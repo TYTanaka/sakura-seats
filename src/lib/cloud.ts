@@ -1,11 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  normalizeAccessNeeds,
   normalizePerformance,
+  normalizeWaitlistEntry,
   type CheckInResult,
   type Performance,
   type Reservation,
   type SelfCancelResult,
   type UncancelResult,
+  type WaitlistEntry,
 } from './logic'
 import { isQrToken } from './qrToken'
 import {
@@ -44,6 +47,8 @@ export interface StaffData {
   blockedSeats: string[]
   bookingDeadline: string | null
   reservations: Reservation[]
+  /** キャンセル待ち登録の一覧（R38。r38 未適用の DB では空） */
+  waitlist: WaitlistEntry[]
 }
 
 /**
@@ -115,6 +120,16 @@ interface RawReservationRow {
   perfName?: string | null
   /** ゾーン予約のゾーンID（R12。従来型の予約・R12 未適用の DB では null/無し） */
   zone?: string | null
+  /** 座席の希望（R38。車椅子席/親子室。旧 DB では無し） */
+  accessNeeds?: unknown
+  /** 返金済みかどうか（R38。staff_get_all のみ） */
+  refunded?: boolean | null
+  /** 返金済みにした日時（R38） */
+  refundedAt?: string | null
+  /** 受付を処理した担当者名（R38。staff_get_all のみ） */
+  checkedInBy?: string | null
+  /** 支払い確定を処理した担当者名（R38。staff_get_all のみ） */
+  paidBy?: string | null
 }
 
 /** DB行 → クライアントの Reservation への変換 */
@@ -143,6 +158,19 @@ export function mapReservationRow(row: RawReservationRow): Reservation {
     perfDate: typeof row.perfDate === 'string' && row.perfDate ? row.perfDate : undefined,
     perfName: typeof row.perfName === 'string' && row.perfName ? row.perfName : undefined,
     zone: typeof row.zone === 'string' && row.zone ? row.zone : undefined,
+    // R38: 希望・返金・担当者（返ってこない DB では既定値に落とす）
+    ...(normalizeAccessNeeds(row.accessNeeds).length > 0
+      ? { accessNeeds: normalizeAccessNeeds(row.accessNeeds) }
+      : {}),
+    ...(row.refunded === true ? { refunded: true } : {}),
+    refundedAt:
+      typeof row.refundedAt === 'string' && row.refundedAt ? row.refundedAt : null,
+    ...(typeof row.checkedInBy === 'string' && row.checkedInBy.trim()
+      ? { checkedInBy: row.checkedInBy.trim() }
+      : {}),
+    ...(typeof row.paidBy === 'string' && row.paidBy.trim()
+      ? { paidBy: row.paidBy.trim() }
+      : {}),
   }
 }
 
@@ -152,7 +180,7 @@ interface RawConfig {
   bookingDeadline?: unknown
 }
 
-function mapConfig(raw: RawConfig): Omit<StaffData, 'reservations'> {
+function mapConfig(raw: RawConfig): Omit<StaffData, 'reservations' | 'waitlist'> {
   return {
     performance: normalizePerformance(raw.performance),
     blockedSeats: Array.isArray(raw.blockedSeats)
@@ -187,12 +215,22 @@ export function mapPublicState(raw: unknown): PublicState {
 
 /** staff_get_all の戻り値 → StaffData */
 export function mapStaffData(raw: unknown): StaffData {
-  const rec = (raw ?? {}) as { config?: RawConfig; reservations?: unknown }
+  const rec = (raw ?? {}) as {
+    config?: RawConfig
+    reservations?: unknown
+    waitlist?: unknown
+  }
   const config = mapConfig(rec.config ?? {})
   const reservations = Array.isArray(rec.reservations)
     ? (rec.reservations as RawReservationRow[]).map(mapReservationRow)
     : []
-  return { ...config, reservations }
+  // R38: キャンセル待ち（r38 未適用の DB ではキー自体が無いため空になる）
+  const waitlist = Array.isArray(rec.waitlist)
+    ? rec.waitlist
+        .map((w) => normalizeWaitlistEntry(w))
+        .filter((w): w is WaitlistEntry => w !== null)
+    : []
+  return { ...config, reservations, waitlist }
 }
 
 /** lookup_reservation の戻り値 → Reservation（無ければ null） */
@@ -241,6 +279,15 @@ function rpcErrorToMessage(error: { message: string }): Error {
   ) {
     return new Error(
       '席の手動指定は、サーバ更新（migration_sakura_r25 の適用）後に使えるようになります',
+    )
+  }
+  // R38 の RPC が未適用の DB ではキャンセル待ち登録だけがこの文面になる
+  if (
+    (msg.includes('add_waitlist') || msg.includes('staff_remove_waitlist')) &&
+    (msg.includes('Could not find') || msg.includes('PGRST'))
+  ) {
+    return new Error(
+      'キャンセル待ちは、サーバ更新（migration_sakura_r38 の適用）後に使えるようになります',
     )
   }
   // R12 の RPC が未適用の DB ではゾーン予約・支払い時割当だけがこの文面になる
@@ -313,12 +360,27 @@ function rpcErrorToMessage(error: { message: string }): Error {
   }
   if (msg.includes('NAME_REQUIRED')) return new Error('お名前を入力してください')
   if (msg.includes('PHONE_REQUIRED')) return new Error('電話番号を入力してください')
+  if (msg.includes('NOT_FOUND')) {
+    return new Error('対象が見つかりませんでした。画面を更新して確認してください')
+  }
   // R15 の厳格チェック（サーバ側トリガ）。クライアント側でも同じ規則で
   // 弾くため通常は届かないが、直接 RPC を叩かれた場合等の最終表示。
   if (msg.includes('PHONE_INVALID')) {
     return new Error('電話番号の形式が正しくないようです。番号をご確認ください')
   }
   return new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
+}
+
+/**
+ * PostgREST の「関数が見つからない」エラーかどうか。
+ * R38 で引数を増やした RPC は、旧 DB ではシグネチャ不一致でこのエラーになる。
+ * その場合は旧引数で再試行し、担当者記録だけが省略される形に劣化させる
+ * （受付・支払い自体は止めない）ために使う。
+ */
+function isFunctionNotFound(error: { message: string } | null): boolean {
+  if (!error) return false
+  const msg = error.message ?? ''
+  return msg.includes('Could not find') || msg.includes('PGRST202')
 }
 
 export class CloudApi {
@@ -484,17 +546,37 @@ export class CloudApi {
     note: string
     zone: string
     typeIds: string[]
+    /** 座席の希望（R38・車椅子席/親子室） */
+    accessNeeds?: string[]
   }): Promise<{ code: string; amount: number; token?: string }> {
-    const raw = await this.call<{ code: string; amount: number; token?: unknown }>(
-      'book_zone',
-      {
-        p_name: input.name,
-        p_phone: input.phone,
-        p_note: input.note,
-        p_zone: input.zone,
-        p_type_ids: input.typeIds,
-      },
-    )
+    const needs = input.accessNeeds ?? []
+    const baseArgs = {
+      p_name: input.name,
+      p_phone: input.phone,
+      p_note: input.note,
+      p_zone: input.zone,
+      p_type_ids: input.typeIds,
+    }
+    let raw: { code: string; amount: number; token?: unknown }
+    if (needs.length === 0) {
+      // 希望なしは従来どおり（旧 DB でもそのまま動く）
+      raw = await this.call('book_zone', baseArgs)
+    } else {
+      // 希望ありは r38 版 book_zone が必要。旧 DB では案内文面で投げる
+      const { data, error } = await this.client.rpc('book_zone', {
+        ...baseArgs,
+        p_access_needs: needs,
+      })
+      if (error) {
+        if (isFunctionNotFound(error)) {
+          throw new Error(
+            '車椅子席・親子室の希望申込は、サーバ更新（migration_sakura_r38 の適用）後に使えるようになります',
+          )
+        }
+        throw rpcErrorToMessage(error)
+      }
+      raw = data as { code: string; amount: number; token?: unknown }
+    }
     return {
       code: raw.code,
       amount: raw.amount,
@@ -513,13 +595,30 @@ export class CloudApi {
     cloudId: string,
     seatIds: string[],
     checkedIn: boolean,
+    /** R38: 支払い確定（受付完了時は受付も）の処理者名。未選択は省略 */
+    operator?: string,
   ): Promise<void> {
-    await this.call('staff_assign_and_pay', {
+    const baseArgs = {
       p_passcode: passcode,
       p_id: cloudId,
       p_seat_ids: seatIds,
       p_checked_in: checkedIn,
+    }
+    if (!operator?.trim()) {
+      await this.call('staff_assign_and_pay', baseArgs)
+      return
+    }
+    const { error } = await this.client.rpc('staff_assign_and_pay', {
+      ...baseArgs,
+      p_operator: operator.trim(),
     })
+    if (!error) return
+    if (isFunctionNotFound(error)) {
+      // 旧 DB: 担当者記録なしで従来どおり確定する（操作自体は止めない）
+      await this.call('staff_assign_and_pay', baseArgs)
+      return
+    }
+    throw rpcErrorToMessage(error)
   }
 
   /**
@@ -626,7 +725,14 @@ export class CloudApi {
       p_code: code,
     })
     const result = (raw as { result?: unknown } | null)?.result
-    const known: UncancelResult[] = ['OK', 'NOT_FOUND', 'NOT_CANCELLED', 'SEAT_TAKEN']
+    // R38: ZONE_FULL は未割当ゾーン予約の復活が定員超過になる場合（M1）
+    const known: UncancelResult[] = [
+      'OK',
+      'NOT_FOUND',
+      'NOT_CANCELLED',
+      'SEAT_TAKEN',
+      'ZONE_FULL',
+    ]
     if (typeof result === 'string' && (known as string[]).includes(result)) {
       return result as UncancelResult
     }
@@ -651,16 +757,30 @@ export class CloudApi {
     passcode: string,
     token: string,
     seatIds: string[] | null = null,
+    /** R38: 受付の処理者名。未選択は省略（旧 DB では自動で従来呼び出しに落とす） */
+    operator?: string,
   ): Promise<{
     result: StaffCheckInResult
     reservation: Reservation | null
     checkedInAt: string | null
   }> {
-    const raw = (await this.call<unknown>('staff_check_in', {
+    const baseArgs = {
       p_passcode: passcode,
       p_token: token,
       p_seat_ids: seatIds,
-    })) as {
+    }
+    let rawUnknown: unknown
+    if (operator?.trim()) {
+      const { data, error } = await this.client.rpc('staff_check_in', {
+        ...baseArgs,
+        p_operator: operator.trim(),
+      })
+      if (error && !isFunctionNotFound(error)) throw rpcErrorToMessage(error)
+      rawUnknown = error ? await this.call<unknown>('staff_check_in', baseArgs) : data
+    } else {
+      rawUnknown = await this.call<unknown>('staff_check_in', baseArgs)
+    }
+    const raw = rawUnknown as {
       result?: unknown
       code?: unknown
       name?: unknown
@@ -672,6 +792,7 @@ export class CloudApi {
       checkedInAt?: unknown
       perfDate?: unknown
       perfName?: unknown
+      accessNeeds?: unknown
     } | null
     const known: StaffCheckInResult[] = [
       'OK',
@@ -708,6 +829,8 @@ export class CloudApi {
         perfDate: typeof raw.perfDate === 'string' ? raw.perfDate : null,
         perfName: typeof raw.perfName === 'string' ? raw.perfName : null,
         zone: typeof raw.zone === 'string' ? raw.zone : null,
+        // R38: 受付時の席詰めで専用席も割り当てるため、希望も要約に含める
+        accessNeeds: raw.accessNeeds,
       })
     }
     return { result: result as StaffCheckInResult, reservation, checkedInAt }
@@ -716,14 +839,78 @@ export class CloudApi {
   async staffUpdateReservation(
     passcode: string,
     cloudId: string,
-    patch: { paid: boolean; checkedIn: boolean; status: 'active' | 'cancelled' },
+    patch: {
+      paid: boolean
+      checkedIn: boolean
+      status: 'active' | 'cancelled'
+      /** R38: 返金済みフラグ（指定した場合のみ更新する） */
+      refunded?: boolean
+      /** R38: 操作の処理者名（支払い確定・受付の記録用） */
+      operator?: string
+    },
   ): Promise<void> {
-    await this.call('staff_update_reservation', {
+    const baseArgs = {
       p_passcode: passcode,
       p_id: cloudId,
       p_paid: patch.paid,
       p_checked_in: patch.checkedIn,
       p_status: patch.status,
+    }
+    const extra: Record<string, unknown> = {}
+    if (patch.refunded !== undefined) extra.p_refunded = patch.refunded
+    if (patch.operator?.trim()) extra.p_operator = patch.operator.trim()
+    if (Object.keys(extra).length === 0) {
+      await this.call('staff_update_reservation', baseArgs)
+      return
+    }
+    const { error } = await this.client.rpc('staff_update_reservation', {
+      ...baseArgs,
+      ...extra,
+    })
+    if (!error) return
+    if (isFunctionNotFound(error)) {
+      // 旧 DB: 返金だけの更新は案内を出す（状態は変えない）。担当者のみの
+      // 更新は従来呼び出しに落として操作自体は通す
+      if (patch.refunded !== undefined) {
+        throw new Error(
+          '返金済みの記録は、サーバ更新（migration_sakura_r38 の適用）後に使えるようになります',
+        )
+      }
+      await this.call('staff_update_reservation', baseArgs)
+      return
+    }
+    throw rpcErrorToMessage(error)
+  }
+
+  /**
+   * キャンセル待ち登録（add_waitlist RPC・R38）。
+   * 検証（電話形式・人数・ゾーン・同一電話の上限）はサーバ側で行い、
+   * 採番した登録番号（WL-0001 形式）を返す。RPC 未適用の DB では
+   * rpcErrorToMessage が専用文面（r38 案内）にする。
+   */
+  async addWaitlist(input: {
+    name: string
+    phone: string
+    zone: string | null
+    partySize: number
+  }): Promise<{ code: string }> {
+    const raw = await this.call<{ code?: unknown }>('add_waitlist', {
+      p_name: input.name,
+      p_phone: input.phone,
+      p_zone: input.zone,
+      p_party_size: input.partySize,
+    })
+    if (typeof raw?.code !== 'string' || !raw.code) {
+      throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください')
+    }
+    return { code: raw.code }
+  }
+
+  /** キャンセル待ちの取り下げ（staff_remove_waitlist RPC・R38。要スタッフ認証） */
+  async staffRemoveWaitlist(passcode: string, code: string): Promise<void> {
+    await this.call('staff_remove_waitlist', {
+      p_passcode: passcode,
+      p_code: code,
     })
   }
 

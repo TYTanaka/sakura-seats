@@ -16,7 +16,7 @@
  * - H: 2階 通常席 21〜23列（78席）
  * - I: 2階 サイド席 L/R（14席）
  * 合計 461席。車椅子席（2）・親子室（6）はどのゾーンにも含めない
- * （希望者は従来どおり申込フォームの備考欄で受付）。
+ * （R38: 申込時に「希望」として受け付け、受付時の割当で専用席を割り当てる）。
  * 料金はゾーンによらず一律（券種のみで決まる）。
  *
  * 割当ルール（ゾーン内）:
@@ -30,19 +30,23 @@
  */
 import {
   ALL_SEATS,
+  PARENT_ROOM_SEATS,
   RECOMMENDED_SEAT_IDS,
   ROW_LAYOUT_1F,
   ROW_LAYOUT_2F,
   SIDE_L_SEATS,
   SIDE_R_SEATS,
+  WHEELCHAIR_SEATS,
   seatById,
   type SeatDef,
 } from '../data/seats'
 import {
+  ACCESS_NEED_LABELS,
   formatSeatList,
   isUnassignedZoneBooking,
   isZoneBooking,
   seatStatus,
+  type AccessNeed,
   type AppData,
   type Reservation,
 } from './logic'
@@ -521,6 +525,155 @@ export function assignZoneSeats(
   return findZoneSplit(data, zone, partySize, true, excluded)
 }
 
+/* ---------------- 専用席（車椅子席・親子室）の割当（R38） ---------------- */
+
+/**
+ * 席が専用席なら、その希望種別を返す（通常席・サイド席は null）。
+ * 車椅子席・親子室はゾーンに属さないため、割当は「希望」ベースで扱う。
+ */
+export function seatAccessNeed(seat: SeatDef | undefined): AccessNeed | null {
+  if (!seat) return null
+  if (seat.kind === 'wheelchair') return 'wheelchair'
+  if (seat.kind === 'parentRoom') return 'parentRoom'
+  return null
+}
+
+/** 希望種別ごとの専用席ID（レイアウト順） */
+export function specialSeatIds(need: AccessNeed): string[] {
+  return (need === 'wheelchair' ? WHEELCHAIR_SEATS : PARENT_ROOM_SEATS).map((s) => s.id)
+}
+
+/**
+ * 割当計画（R38）: 希望がある予約には専用席を先に割り当て、残りをゾーン内で
+ * 詰める。席の並びは「専用席 → ゾーン席」の順（明細の順序＝表示順になる）。
+ * - 車椅子席は数が少ない（2席）ため親子室より先に確保する
+ * - 専用席が足りない分はゾーン席で補う（希望は「できる限り」の扱い）
+ * - ゾーン側で残りをまかなえなければ全体として null（割当なし）
+ * 希望が無い場合は従来の assignZoneSeats と同じ結果になる。
+ */
+export function planAssignmentFor(
+  data: AppData,
+  zone: ZoneId,
+  partySize: number,
+  accessNeeds?: readonly AccessNeed[],
+): string[] | null {
+  if (partySize < 1) return null
+  const needs = accessNeeds ?? []
+  const special: string[] = []
+  if (needs.length > 0) {
+    const order: AccessNeed[] = ['wheelchair', 'parentRoom']
+    for (const need of order) {
+      if (!needs.includes(need)) continue
+      // 車椅子席は希望者ご本人分として1席まで（付き添いの方はゾーン席。
+      // 2席しかない専用席を1組で使い切らないため）。親子室は同室で
+      // 過ごす前提のため人数分まで割り当てる
+      const cap = need === 'wheelchair' ? 1 : partySize
+      let assigned = 0
+      for (const seatId of specialSeatIds(need)) {
+        if (special.length >= partySize || assigned >= cap) break
+        if (seatStatus(data, seatId) === 'available') {
+          special.push(seatId)
+          assigned++
+        }
+      }
+    }
+  }
+  const rest = partySize - special.length
+  if (rest === 0) return special
+  const zoneAssignment = assignZoneSeats(data, zone, rest)
+  if (!zoneAssignment) return null
+  return [...special, ...zoneAssignment.seatIds]
+}
+
+/**
+ * 未割当のゾーン予約に対する割当計画（希望込み）。
+ * 対象でない予約（ゾーン予約でない・割当済み）には null を返す。
+ */
+export function planReservationAssignment(
+  data: AppData,
+  reservation: Reservation,
+): string[] | null {
+  if (!isUnassignedZoneBooking(reservation)) return null
+  return planAssignmentFor(
+    data,
+    reservation.zone as ZoneId,
+    reservation.items.length,
+    reservation.accessNeeds,
+  )
+}
+
+/**
+ * スタッフの手動指定で、その席をその予約に選べるか（R38で専用席を追加）。
+ * - ゾーン内の空席: 従来どおり選べる
+ * - 専用席（車椅子席・親子室）: 予約がその種別を希望している場合だけ選べる
+ * それ以外は選べない。
+ */
+export function canPickSeatForReservation(
+  data: AppData,
+  reservation: Reservation,
+  seatId: string,
+): boolean {
+  if (seatStatus(data, seatId) !== 'available') return false
+  const seat = seatById(seatId)
+  if (zoneOfSeat(seat) === reservation.zone) return true
+  const need = seatAccessNeed(seat)
+  return need !== null && (reservation.accessNeeds?.includes(need) ?? false)
+}
+
+/**
+ * 専用席を「希望のない予約・当日販売」で取ろうとしたときの注意喚起（R38）。
+ * 希望のある未割当の予約が残っていて、その種別の専用席がこの取得で
+ * 尽きてしまう場合に、対象の予約番号を含む警告文を返す（問題なければ null）。
+ * ハードな拒否ではなくスタッフへの「配慮」の提示に使う。
+ */
+export function specialSeatTakeWarning(
+  data: AppData,
+  seatIds: readonly string[],
+  selfReservationId?: string,
+): string | null {
+  for (const seatId of seatIds) {
+    const need = seatAccessNeed(seatById(seatId))
+    if (!need) continue
+    const needy = data.reservations.find(
+      (r) =>
+        !r.cancelled &&
+        r.id !== selfReservationId &&
+        (r.accessNeeds?.includes(need) ?? false) &&
+        // すでに同種の専用席が割り当たっている予約は確保済みとして除く
+        !r.seatIds.some((id) => seatAccessNeed(seatById(id)) === need),
+    )
+    if (!needy) continue
+    const remaining = specialSeatIds(need).filter(
+      (id) => seatStatus(data, id) === 'available' && !seatIds.includes(id),
+    ).length
+    if (remaining <= 0) {
+      return `${ACCESS_NEED_LABELS[need]}を希望している予約（${needy.id}）があります。この席を使うと、その方の席が確保できなくなるおそれがあります`
+    }
+  }
+  return null
+}
+
+/**
+ * キャンセル取り消しのゾーン容量判定（R38・第3ラウンド評価 M1）。
+ * 未割当のゾーン予約を復活させると、その人数分だけゾーンのホールドが増える。
+ * 復活後のホールドがゾーンの残席（物理空席 − 現在のホールド）を超える場合は
+ * 'ZONE_FULL' を返し、復活を拒否する（当日受付で割り当て不能になる
+ * オーバーセルを防ぐ）。対象外・問題なしは null。
+ * クラウドでは staff_uncancel_reservation RPC が同じ判定をして ZONE_FULL を返す。
+ */
+export function zoneUncancelBlock(
+  data: AppData,
+  reservation: Reservation,
+): 'ZONE_FULL' | null {
+  if (!reservation.cancelled) return null
+  if (!isUnassignedZoneBooking(reservation)) return null
+  const zone = reservation.zone as ZoneId
+  if (zoneAvailability(data, zone).available < reservation.items.length) {
+    return 'ZONE_FULL'
+  }
+  return null
+}
+
 /**
  * 席の手動指定（R25・ラウンド10 S-1）のクライアント側検証。
  * スタッフが座席表から選んだ席を未割当のゾーン予約へ割り当てられるか、
@@ -544,9 +697,15 @@ export function manualAssignmentError(
   if (new Set(seatIds).size !== seatIds.length) return '同じ席が重複しています'
   const zone = reservation.zone as ZoneId
   for (const seatId of seatIds) {
-    if (zoneOfSeat(seatById(seatId)) !== zone) {
-      return 'ゾーン外の席が含まれています'
+    if (zoneOfSeat(seatById(seatId)) === zone) continue
+    // R38: 専用席（車椅子席・親子室）は、予約がその種別を希望している場合に限り
+    // ゾーン外でも割り当てられる。それ以外のゾーン外は従来どおり不可
+    const need = seatAccessNeed(seatById(seatId))
+    if (need) {
+      if (reservation.accessNeeds?.includes(need)) continue
+      return `${ACCESS_NEED_LABELS[need]}は、希望のある予約にのみ割り当てられます`
     }
+    return 'ゾーン外の席が含まれています'
   }
   for (const seatId of seatIds) {
     if (seatStatus(data, seatId) !== 'available') {
@@ -580,19 +739,16 @@ export function planListCheckIn(
   reservation: Reservation,
 ): ListCheckInPlan {
   if (!isUnassignedZoneBooking(reservation)) return { kind: 'plain' }
-  const assignment = assignZoneSeats(
-    data,
-    reservation.zone as ZoneId,
-    reservation.items.length,
-  )
-  if (!assignment) {
+  // R38: 希望がある予約は専用席を先に割り当てる計画にする（planReservationAssignment）
+  const seatIds = planReservationAssignment(data, reservation)
+  if (!seatIds) {
     return {
       kind: 'blocked',
       reason:
         '席を自動で割り当てできませんでした（このゾーンに割り当てられる席がありません）。受付はしていません。カードの「席を指定する」から手動で席を選んでください',
     }
   }
-  return { kind: 'assign', seatIds: assignment.seatIds }
+  return { kind: 'assign', seatIds }
 }
 
 /* ---------------- 予約の座席表示（R12） ---------------- */

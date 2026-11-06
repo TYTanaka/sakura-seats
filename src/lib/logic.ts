@@ -41,6 +41,41 @@ export interface Performance {
 
 export type ReservationSource = 'online' | 'door'
 
+/**
+ * 座席の希望（R38）: 車椅子席・親子室はゾーンに属さない専用席のため、
+ * ゾーン予約とは別に「希望」として申込時に受け付け、受付時の割当で
+ * 専用席を割り当てられるようにする。値は DB の access_needs（text[]）と一致。
+ */
+export type AccessNeed = 'wheelchair' | 'parentRoom'
+
+export const ACCESS_NEEDS: AccessNeed[] = ['wheelchair', 'parentRoom']
+
+export const ACCESS_NEED_LABELS: Record<AccessNeed, string> = {
+  wheelchair: '車椅子席',
+  parentRoom: '親子室',
+}
+
+/** 希望の正規化: 'wheelchair' / 'parentRoom' の文字列だけを重複なく拾う */
+export function normalizeAccessNeeds(raw: unknown): AccessNeed[] {
+  if (!Array.isArray(raw)) return []
+  const out: AccessNeed[] = []
+  for (const value of raw) {
+    if (
+      (value === 'wheelchair' || value === 'parentRoom') &&
+      !out.includes(value)
+    ) {
+      out.push(value)
+    }
+  }
+  return out
+}
+
+/** 希望の表示文（「車椅子席・親子室」の形。無ければ空文字） */
+export function accessNeedsSummary(needs: readonly AccessNeed[] | undefined): string {
+  if (!needs || needs.length === 0) return ''
+  return needs.map((n) => ACCESS_NEED_LABELS[n]).join('・')
+}
+
 /** 予約の明細行：席ごとの券種スナップショット */
 export interface ReservationItem {
   seatId: string
@@ -94,6 +129,47 @@ export interface Reservation {
    * 支払い時に席が割り当てられて初めて seatIds が入る。
    */
   zone?: string
+  /**
+   * 座席の希望（R38）: 車椅子席・親子室の希望。申込時に受け付け、
+   * 受付時の割当で専用席を割り当てるために使う。希望なしは未設定/空。
+   */
+  accessNeeds?: AccessNeed[]
+  /**
+   * 返金済みかどうか（R38・公演中止時の返金管理用）。
+   * 支払済みの予約に対してスタッフが返金したら記録する。
+   */
+  refunded?: boolean
+  /** 返金済みにした日時 ISO（未返金は null/未設定） */
+  refundedAt?: string | null
+  /**
+   * 受付（来場チェックイン）を処理した担当者名（R38）。
+   * スタッフ画面で選択中の担当者（販売者リスト流用）が記録される。
+   * 記録がない予約・担当者未選択時は未設定。
+   */
+  checkedInBy?: string
+  /**
+   * 支払い確定を処理した担当者名（R38）。checkedInBy と同じ作法。
+   * 集計の「担当者別内訳（受取）」の根拠になる。
+   */
+  paidBy?: string
+}
+
+/**
+ * キャンセル待ちの登録（R38）。完売時に観客がゾーン＋人数＋電話番号で
+ * 登録し、スタッフがキャンセル発生時に電話連絡するための一覧。
+ * 通知送信は行わない（一覧までが役割）。
+ */
+export interface WaitlistEntry {
+  /** 登録番号 WL-0001 形式 */
+  id: string
+  /** 希望ゾーン（'A'〜'I'）。null は「どこでもよい」 */
+  zone: string | null
+  /** 人数（1〜8） */
+  partySize: number
+  name: string
+  /** 正規化済みの電話番号（数字のみ） */
+  phone: string
+  createdAt: string
 }
 
 export interface AppData {
@@ -121,6 +197,10 @@ export interface AppData {
    * reservations から同じ数を導出する（zones.ts の zoneAvailability）。
    */
   zoneHolds?: Record<string, number>
+  /** キャンセル待ち登録の一覧（R38） */
+  waitlist: WaitlistEntry[]
+  /** キャンセル待ちの採番カウンタ（R38） */
+  waitlistSeq: number
 }
 
 export type SeatStatus = 'available' | 'reserved' | 'paid' | 'blocked'
@@ -166,6 +246,8 @@ export function emptyData(): AppData {
     blocked: [],
     seq: 0,
     bookingDeadline: null,
+    waitlist: [],
+    waitlistSeq: 0,
   }
 }
 
@@ -367,6 +449,40 @@ export function normalizeReservation(
       ? { perfName: rec.perfName }
       : {}),
     ...(zone ? { zone } : {}),
+    // R38: 希望・返金・担当者（旧データには無いため、値があるものだけ引き継ぐ）
+    ...(normalizeAccessNeeds(rec.accessNeeds).length > 0
+      ? { accessNeeds: normalizeAccessNeeds(rec.accessNeeds) }
+      : {}),
+    ...(rec.refunded === true ? { refunded: true } : {}),
+    refundedAt:
+      typeof rec.refundedAt === 'string' && rec.refundedAt ? rec.refundedAt : null,
+    ...(typeof rec.checkedInBy === 'string' && rec.checkedInBy.trim()
+      ? { checkedInBy: rec.checkedInBy.trim() }
+      : {}),
+    ...(typeof rec.paidBy === 'string' && rec.paidBy.trim()
+      ? { paidBy: rec.paidBy.trim() }
+      : {}),
+  }
+}
+
+/** キャンセル待ち登録の正規化（壊れた要素は落とす） */
+export function normalizeWaitlistEntry(raw: unknown): WaitlistEntry | null {
+  const rec = asRecord(raw)
+  if (!rec) return null
+  const id = asString(rec.id, '')
+  if (!id) return null
+  const partySize =
+    typeof rec.partySize === 'number' && Number.isFinite(rec.partySize)
+      ? Math.min(MAX_ONLINE_SEATS, Math.max(1, Math.floor(rec.partySize)))
+      : 1
+  return {
+    id,
+    zone:
+      typeof rec.zone === 'string' && rec.zone.trim() ? rec.zone.trim() : null,
+    partySize,
+    name: asString(rec.name, ''),
+    phone: asString(rec.phone, ''),
+    createdAt: asString(rec.createdAt, new Date().toISOString()),
   }
 }
 
@@ -390,6 +506,16 @@ export function normalizeAppData(raw: unknown): AppData | null {
     seq: typeof rec.seq === 'number' && Number.isFinite(rec.seq) ? rec.seq : reservations.length,
     bookingDeadline:
       typeof rec.bookingDeadline === 'string' && rec.bookingDeadline ? rec.bookingDeadline : null,
+    // R38: キャンセル待ち（旧データには無いため空が既定）
+    waitlist: Array.isArray(rec.waitlist)
+      ? rec.waitlist
+          .map((w) => normalizeWaitlistEntry(w))
+          .filter((w): w is WaitlistEntry => w !== null)
+      : [],
+    waitlistSeq:
+      typeof rec.waitlistSeq === 'number' && Number.isFinite(rec.waitlistSeq)
+        ? rec.waitlistSeq
+        : 0,
   }
 }
 
@@ -616,6 +742,8 @@ export interface NewReservationInput {
   source: ReservationSource
   /** 販売者（当日販売でスタッフが選択した場合のみ意味を持つ） */
   seller?: string
+  /** 座席の希望（R38・車椅子席/親子室）。通常はゾーン予約側で使う */
+  accessNeeds?: AccessNeed[]
 }
 
 /**
@@ -678,6 +806,9 @@ export function createReservation(
     // 販売者は当日販売（手売り含む）でのみ記録する（Web予約には付けない）
     seller:
       input.source === 'door' && input.seller?.trim() ? input.seller.trim() : undefined,
+    ...(input.accessNeeds && input.accessNeeds.length > 0
+      ? { accessNeeds: [...input.accessNeeds] }
+      : {}),
   }
   return {
     data: { ...data, seq, reservations: [...data.reservations, reservation] },
@@ -710,6 +841,8 @@ export interface NewZoneReservationInput {
   name: string
   phone: string
   note: string
+  /** 座席の希望（R38・車椅子席/親子室） */
+  accessNeeds?: AccessNeed[]
 }
 
 /**
@@ -761,6 +894,9 @@ export function createZoneReservation(
     perfDate: data.performance.date,
     perfName: data.performance.name,
     zone: input.zone,
+    ...(input.accessNeeds && input.accessNeeds.length > 0
+      ? { accessNeeds: [...input.accessNeeds] }
+      : {}),
   }
   return {
     data: { ...data, seq, reservations: [...data.reservations, reservation] },
@@ -822,8 +958,16 @@ export function cancelReservation(data: AppData, reservationId: string): AppData
  * - NOT_FOUND: その予約番号の予約がない
  * - NOT_CANCELLED: キャンセル済みではない（取り消す対象でない）
  * - SEAT_TAKEN: 席の一部が別の有効な予約に取られているため復旧できない
+ * - ZONE_FULL: 未割当のゾーン予約で、復活させるとゾーンの定員（ホールド数）
+ *   を超えてしまうため復旧できない（R38。第3ラウンド評価 M1 のオーバーセル対策。
+ *   判定は zones.ts の zoneUncancelBlock が行い、クラウドでは RPC が同じ結果を返す）
  */
-export type UncancelResult = 'OK' | 'NOT_FOUND' | 'NOT_CANCELLED' | 'SEAT_TAKEN'
+export type UncancelResult =
+  | 'OK'
+  | 'NOT_FOUND'
+  | 'NOT_CANCELLED'
+  | 'SEAT_TAKEN'
+  | 'ZONE_FULL'
 
 /**
  * キャンセルを取り消し、予約を元の内容のまま復旧する（純粋関数）。
@@ -850,14 +994,30 @@ export function uncancelReservation(
   }
 }
 
-export function setCheckedIn(data: AppData, reservationId: string, value: boolean): AppData {
+export function setCheckedIn(
+  data: AppData,
+  reservationId: string,
+  value: boolean,
+  operator?: string,
+): AppData {
   const target = data.reservations.find((r) => r.id === reservationId)
   if (!target) return data
   // 受付日時は「使用済み」表示の根拠になるため、来場フラグと一緒に保つ（R7）
   const checkedInAt = value
     ? (target.checkedInAt ?? new Date().toISOString())
     : null
-  return updateReservation(data, reservationId, { checkedIn: value, checkedInAt })
+  // R38: 担当者（選択中の運営者名）があれば受付の処理者として記録する。
+  // 来場を取り消したら担当者も消す（誰も受付していない状態に戻すため）
+  const checkedInBy = value
+    ? operator?.trim()
+      ? operator.trim()
+      : target.checkedInBy
+    : undefined
+  return updateReservation(data, reservationId, {
+    checkedIn: value,
+    checkedInAt,
+    checkedInBy,
+  })
 }
 
 /* ---------------- QR受付（トークン検証・R7） ---------------- */
@@ -886,6 +1046,7 @@ export function checkInByToken(
   data: AppData,
   token: string,
   now: Date = new Date(),
+  operator?: string,
 ): { data: AppData; result: CheckInResult; reservation: Reservation | null } {
   const target = data.reservations.find((r) => r.qrToken && r.qrToken === token)
   if (!target) return { data, result: 'NOT_FOUND', reservation: null }
@@ -903,6 +1064,8 @@ export function checkInByToken(
   const next = updateReservation(data, target.id, {
     checkedIn: true,
     checkedInAt: now.toISOString(),
+    // R38: QR受付でも担当者を記録する（選択中の運営者名があれば）
+    ...(operator?.trim() ? { checkedInBy: operator.trim() } : {}),
   })
   return {
     data: next,
@@ -912,8 +1075,85 @@ export function checkInByToken(
 }
 
 /** 支払い済みにすると、その予約の席は「支払済（販売済）」状態になる */
-export function setPaid(data: AppData, reservationId: string, value: boolean): AppData {
-  return updateReservation(data, reservationId, { paid: value })
+export function setPaid(
+  data: AppData,
+  reservationId: string,
+  value: boolean,
+  operator?: string,
+): AppData {
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) return data
+  // R38: 担当者があれば支払い確定の処理者として記録する（未払いに戻したら消す）
+  const paidBy = value
+    ? operator?.trim()
+      ? operator.trim()
+      : target.paidBy
+    : undefined
+  return updateReservation(data, reservationId, { paid: value, paidBy })
+}
+
+/**
+ * 返金済みの記録（R38・公演中止時の返金管理）。
+ * 返金済みにすると refundedAt に現在時刻を記録し、戻すと消す。
+ */
+export function setRefunded(data: AppData, reservationId: string, value: boolean): AppData {
+  const target = data.reservations.find((r) => r.id === reservationId)
+  if (!target) return data
+  return updateReservation(data, reservationId, {
+    refunded: value,
+    refundedAt: value ? (target.refundedAt ?? new Date().toISOString()) : null,
+  })
+}
+
+/**
+ * 返金チェックリストの対象（R38）: お金を預かっている（支払済み）予約すべて。
+ * キャンセル済みでも支払済みなら返金が必要なため含める。
+ * 予約番号順に並べて返す（印刷・CSV・画面で同じ並びにするため）。
+ */
+export function refundChecklist(data: AppData): Reservation[] {
+  return data.reservations
+    .filter((r) => r.paid)
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/* ---------------- キャンセル待ち（R38） ---------------- */
+
+export interface NewWaitlistInput {
+  /** 希望ゾーン（'A'〜'I'）。null は「どこでもよい」 */
+  zone: string | null
+  partySize: number
+  name: string
+  /** 正規化済みの電話番号（検証は呼び出し側で行う） */
+  phone: string
+}
+
+/** キャンセル待ちを登録する（ローカルモード用。純粋関数） */
+export function createWaitlistEntry(
+  data: AppData,
+  input: NewWaitlistInput,
+): { data: AppData; entry: WaitlistEntry } {
+  const name = input.name.trim()
+  if (!name) throw new Error('お名前を入力してください')
+  const partySize = Math.min(MAX_ONLINE_SEATS, Math.max(1, Math.floor(input.partySize)))
+  const seq = data.waitlistSeq + 1
+  const entry: WaitlistEntry = {
+    id: `WL-${String(seq).padStart(4, '0')}`,
+    zone: input.zone,
+    partySize,
+    name,
+    phone: input.phone,
+    createdAt: new Date().toISOString(),
+  }
+  return {
+    data: { ...data, waitlistSeq: seq, waitlist: [...data.waitlist, entry] },
+    entry,
+  }
+}
+
+/** キャンセル待ちを取り下げる（連絡済み・不要になった登録の削除） */
+export function removeWaitlistEntry(data: AppData, entryId: string): AppData {
+  return { ...data, waitlist: data.waitlist.filter((w) => w.id !== entryId) }
 }
 
 /** 販売しない席の切替。予約が入っている席は切り替えない。 */
@@ -961,6 +1201,17 @@ export interface SellerTotals {
   amount: number
 }
 
+export interface OperatorTotals {
+  /** 担当者名（受付・支払い確定の処理者。R38） */
+  operator: string
+  /** 受付（来場チェックイン）を処理した予約件数 */
+  checkedInCount: number
+  /** 支払い確定を処理した予約件数 */
+  receivedCount: number
+  /** 支払い確定を処理した金額の合計（現金の受け取り照合用） */
+  receivedAmount: number
+}
+
 export interface Totals {
   /** 有効な予約の件数 */
   reservationCount: number
@@ -1001,6 +1252,14 @@ export interface Totals {
   byType: TicketTypeTotals[]
   /** 販売者ごとの内訳（販売者が記録された有効な予約のみ・登場順） */
   bySeller: SellerTotals[]
+  /** 担当者ごとの内訳（R38）: 受付・支払い確定の処理者が記録された有効な予約のみ */
+  byOperator: OperatorTotals[]
+  /** 返金がまだ済んでいない支払済み予約の件数（R38。有効な予約のみ） */
+  refundDueCount: number
+  /** 返金がまだ済んでいない支払済み予約の金額合計（R38） */
+  refundDueAmount: number
+  /** 返金済みとして記録された有効な予約の件数（R38） */
+  refundedCount: number
 }
 
 export function totals(data: AppData, allSeatIds: string[]): Totals {
@@ -1021,6 +1280,18 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
   // 現在の設定にある券種は、実績がなくても行を用意する
   for (const type of data.performance.ticketTypes) typeRow(type.name)
   const bySellerMap = new Map<string, SellerTotals>()
+  const byOperatorMap = new Map<string, OperatorTotals>()
+  const operatorRow = (name: string): OperatorTotals => {
+    let row = byOperatorMap.get(name)
+    if (!row) {
+      row = { operator: name, checkedInCount: 0, receivedCount: 0, receivedAmount: 0 }
+      byOperatorMap.set(name, row)
+    }
+    return row
+  }
+  let refundDueCount = 0
+  let refundDueAmount = 0
+  let refundedCount = 0
   let totalPeople = 0
   let paidReservationCount = 0
   let unpaidReservationCount = 0
@@ -1061,6 +1332,24 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
       }
       row.seatCount += party
       row.amount += res.amount
+    }
+    // R38: 担当者別内訳（受付・受取）。現在の状態（来場済み/支払済み）と
+    // 記録された処理者が一致するものだけを数える（取り消された操作は残さない）
+    if (res.checkedIn && res.checkedInBy) {
+      operatorRow(res.checkedInBy).checkedInCount++
+    }
+    if (res.paid && res.paidBy) {
+      const row = operatorRow(res.paidBy)
+      row.receivedCount++
+      row.receivedAmount += res.amount
+    }
+    // R38: 返金の進捗（支払済みで未返金＝まだお金を預かっている分）
+    if (res.paid) {
+      if (res.refunded) refundedCount++
+      else {
+        refundDueCount++
+        refundDueAmount += res.amount
+      }
     }
     // 集計は「記録された金額・券種スナップショット」で行う（後の設定変更に影響されない）
     if (res.paid) {
@@ -1120,6 +1409,10 @@ export function totals(data: AppData, allSeatIds: string[]): Totals {
     blockedSeatCount,
     byType: [...byTypeMap.values()],
     bySeller: [...bySellerMap.values()],
+    byOperator: [...byOperatorMap.values()],
+    refundDueCount,
+    refundDueAmount,
+    refundedCount,
   }
 }
 

@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ALL_SEATS } from '../data/seats'
 import {
   MAX_ONLINE_SEATS,
+  accessNeedsSummary,
   defaultTicketType,
   findTicketType,
   formatPerformanceWhen,
   formatYen,
   isBookingClosed,
   isValidPhone,
+  normalizeAccessNeeds,
   normalizePhone,
   phoneErrorKind,
   reservationTypeSummary,
+  type AccessNeed,
   type Performance,
   type Reservation,
 } from '../lib/logic'
@@ -52,6 +55,8 @@ interface BookingDraft {
   name: string
   phone: string
   note: string
+  /** 座席の希望（R38・車椅子席/親子室） */
+  accessNeeds: AccessNeed[]
   /** 人数分の券種ID（1人目から順に） */
   typeIds: string[]
   /** 申込フロー上のステップも一緒に保持する（リロードでステップだけ戻らないように） */
@@ -77,6 +82,7 @@ function loadDraft(): BookingDraft | null {
       name: typeof parsed.name === 'string' ? parsed.name : '',
       phone: typeof parsed.phone === 'string' ? parsed.phone : '',
       note: typeof parsed.note === 'string' ? parsed.note : '',
+      accessNeeds: normalizeAccessNeeds(parsed.accessNeeds),
       typeIds: Array.isArray(parsed.typeIds)
         ? parsed.typeIds.filter((s): s is string => typeof s === 'string')
         : [],
@@ -148,6 +154,162 @@ function PartyTypePicker({
   )
 }
 
+/**
+ * キャンセル待ち登録フォーム（R38）。全ゾーン完売のときは最初から開き、
+ * 一部完売のときはリンクから開ける。登録するとスタッフの受付一覧に載り、
+ * キャンセルが出た順に電話連絡を受ける（通知の自動送信はしない）。
+ */
+function WaitlistForm({
+  availability,
+  defaultOpen,
+}: {
+  availability: ReturnType<typeof allZoneAvailability>
+  defaultOpen: boolean
+}) {
+  const { joinWaitlist } = useStore()
+  const [open, setOpen] = useState(defaultOpen)
+  const [zone, setZone] = useState<string>('any')
+  const [partySize, setPartySize] = useState(2)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [error, setError] = useState('')
+  const [doneCode, setDoneCode] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const soldOutZones = ZONE_IDS.filter(
+    (z) => (availability[z].available) <= 0,
+  )
+
+  const handleJoin = async () => {
+    setError('')
+    if (!name.trim()) {
+      setError('お名前を入力してください')
+      return
+    }
+    if (!isValidPhone(normalizePhone(phone))) {
+      setError('電話番号の形式が正しくありません')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const entry = await joinWaitlist({
+        zone: zone === 'any' ? null : (zone as ZoneId),
+        partySize,
+        name,
+        phone,
+      })
+      setDoneCode(entry.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '登録に失敗しました')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (doneCode) {
+    return (
+      <section className="card waitlist-card" data-waitlist-done>
+        <h2 className="sec-h">キャンセル待ちを受け付けました</h2>
+        <p>
+          受付番号は <strong>{doneCode}</strong> です。キャンセルが出ましたら、
+          スタッフからお電話でご連絡します（ご連絡できない場合もあります）。
+        </p>
+      </section>
+    )
+  }
+
+  if (!open) {
+    return (
+      <p className="waitlist-open-row">
+        <button
+          type="button"
+          className="btn btn-ghost btn-small"
+          data-waitlist-open
+          onClick={() => setOpen(true)}
+        >
+          ご希望のゾーンが満席の場合は、キャンセル待ちに登録できます
+        </button>
+      </p>
+    )
+  }
+
+  return (
+    <section className="card waitlist-card" data-waitlist-form>
+      <h2 className="sec-h">キャンセル待ち登録</h2>
+      <p className="muted small">
+        満席のゾーンでも、キャンセルが出たらスタッフからお電話します。
+        ご希望のゾーンと人数、連絡先をご登録ください。
+      </p>
+      <label className="field">
+        <span>ご希望のゾーン</span>
+        <select
+          value={zone}
+          onChange={(e) => setZone(e.target.value)}
+          data-waitlist-zone
+        >
+          <option value="any">どこでもよい</option>
+          {ZONE_IDS.map((z) => (
+            <option key={z} value={z} disabled={!soldOutZones.includes(z) && zone !== z}>
+              ゾーン{z}
+              {soldOutZones.includes(z) ? '（満席）' : '（空きあり・通常予約がおすすめ）'}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>人数</span>
+        <select
+          value={partySize}
+          onChange={(e) => setPartySize(Number(e.target.value))}
+          data-waitlist-party
+        >
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+            <option key={n} value={n}>
+              {n}名
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>
+          お名前 <em className="required">必須</em>
+        </span>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="例：山田花子"
+          autoComplete="name"
+          data-waitlist-name
+        />
+      </label>
+      <label className="field">
+        <span>
+          電話番号 <em className="required">必須</em>
+        </span>
+        <input
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="例：090-1111-2222"
+          autoComplete="tel"
+          data-waitlist-phone
+        />
+      </label>
+      {error && <p className="error-text">{error}</p>}
+      <button
+        type="button"
+        className="btn btn-primary btn-block"
+        data-waitlist-submit
+        disabled={submitting}
+        onClick={() => void handleJoin()}
+      >
+        {submitting ? '登録中…' : 'キャンセル待ちに登録する'}
+      </button>
+    </section>
+  )
+}
+
 export default function AudienceBook({
   perf,
   onBookingDoneChange,
@@ -187,6 +349,15 @@ export default function AudienceBook({
   const [name, setName] = useState(() => initialDraft?.name ?? '')
   const [phone, setPhone] = useState(() => initialDraft?.phone ?? '')
   const [note, setNote] = useState(() => initialDraft?.note ?? '')
+  /** 座席の希望（R38）: 車椅子席・親子室。申込時に選ぶと受付で専用席が割り当たる */
+  const [accessNeeds, setAccessNeeds] = useState<AccessNeed[]>(
+    () => initialDraft?.accessNeeds ?? [],
+  )
+  const toggleAccessNeed = (need: AccessNeed) => {
+    setAccessNeeds((prev) =>
+      prev.includes(need) ? prev.filter((n) => n !== need) : [...prev, need],
+    )
+  }
   const [error, setError] = useState('')
   const [completed, setCompleted] = useState<Reservation | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -304,13 +475,14 @@ export default function AudienceBook({
     if (step === 'done') return
     const draftZoneId = step === 'zone' ? (selectedZone ?? zoneId) : zoneId
     try {
-      if (!name && !phone && !note && draftZoneId === null) {
+      if (!name && !phone && !note && accessNeeds.length === 0 && draftZoneId === null) {
         localStorage.removeItem(DRAFT_KEY)
       } else {
         const draft: BookingDraft = {
           name,
           phone,
           note,
+          accessNeeds,
           typeIds,
           step: step === 'form' || step === 'confirm' ? step : 'zone',
           partySize,
@@ -321,7 +493,7 @@ export default function AudienceBook({
     } catch {
       // 保存できなくても画面操作は継続する
     }
-  }, [name, phone, note, typeIds, step, partySize, zoneId, selectedZone])
+  }, [name, phone, note, accessNeeds, typeIds, step, partySize, zoneId, selectedZone])
 
   // 「人数分を用意できない」案内は画面下に一時的に出す（数秒で自動で消える）
   useEffect(() => {
@@ -440,6 +612,8 @@ export default function AudienceBook({
         // 電話番号は正規化した数字のみで保存する（照会側も同じ形で比較する）
         phone: normalizePhone(phone),
         note,
+        // R38: 座席の希望（車椅子席・親子室）
+        accessNeeds,
       })
       clearDraft()
       // 完了画面がリロードで消えても再表示できるよう、端末に控えを残す
@@ -485,6 +659,7 @@ export default function AudienceBook({
     setName('')
     setPhone('')
     setNote('')
+    setAccessNeeds([])
     setError('')
     setCompleted(null)
     setZoneId(null)
@@ -542,6 +717,14 @@ export default function AudienceBook({
               {completed.items.length}名（{reservationTypeSummary(completed)}）
             </dd>
           </div>
+          {(completed.accessNeeds ?? []).length > 0 && (
+            <div>
+              <dt>座席の希望</dt>
+              <dd data-done-access-needs>
+                {accessNeedsSummary(completed.accessNeeds)}
+              </dd>
+            </div>
+          )}
           <div>
             <dt>合計</dt>
             <dd className="detail-total">{formatYen(completed.amount)}</dd>
@@ -698,12 +881,23 @@ export default function AudienceBook({
             )}
             {error && <p className="error-text">{error}</p>}
             <p className="muted small zone-note">
-              車椅子席・親子室をご希望の方は、申込フォームの備考欄にご記入ください（スタッフが席をご用意します）
+              車椅子席・親子室は、次の申込フォームで「座席の希望」としてお選びいただけます（選ぶと受付で専用席をご用意します）
             </p>
             <p className="muted small">
               全{ALL_SEATS.length}席（ゾーン対象461席＋車椅子席・親子室）
             </p>
           </section>
+          {/* R38: キャンセル待ち。全ゾーン完売なら開いた状態で出し、
+              一部完売ならリンクから開ける */}
+          {!closed &&
+            ZONE_IDS.some((z) => (availability[z].available) <= 0) && (
+              <WaitlistForm
+                availability={availability}
+                defaultOpen={ZONE_IDS.every(
+                  (z) => (availability[z].available) <= 0,
+                )}
+              />
+            )}
           <section className="card poster-card">
             <h2 className="sec-h">公演ポスター</h2>
             <a
@@ -870,13 +1064,42 @@ export default function AudienceBook({
                 autoComplete="tel"
               />
             </label>
+            {/* R38（H1）: 車椅子席・親子室の希望申込。選ぶと受付時の割当で
+                専用席が割り当たる（従来の備考欄への自由記述だけでは
+                割当の仕組みと結びつかなかった） */}
+            <fieldset className="field access-needs-field" data-access-needs>
+              <legend>座席の希望（任意）</legend>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  data-access-need="wheelchair"
+                  checked={accessNeeds.includes('wheelchair')}
+                  onChange={() => toggleAccessNeed('wheelchair')}
+                />
+                <span>車椅子席を希望します</span>
+              </label>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  data-access-need="parentRoom"
+                  checked={accessNeeds.includes('parentRoom')}
+                  onChange={() => toggleAccessNeed('parentRoom')}
+                />
+                <span>親子室を希望します</span>
+              </label>
+              <p className="muted small">
+                希望を選ぶと、当日の受付で専用席をご用意します。車椅子席は
+                ご本人様分として1席をご用意し、付き添いの方にはお選びのゾーンの
+                席をご用意します。
+              </p>
+            </fieldset>
             <label className="field">
               <span>備考（任意）</span>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                placeholder="例：車椅子席を利用します、親子室を利用します、車椅子席の付き添いです、など"
+                placeholder="例：車椅子席の付き添いです、ベビーカーを預けたい、など"
               />
             </label>
             {/* 個人情報の取り扱い（R28）: 名前・電話の入力欄のすぐ近くに置く。
@@ -937,6 +1160,12 @@ export default function AudienceBook({
               <dt>電話番号</dt>
               <dd>{phone}</dd>
             </div>
+            {accessNeeds.length > 0 && (
+              <div>
+                <dt>座席の希望</dt>
+                <dd data-confirm-access-needs>{accessNeedsSummary(accessNeeds)}</dd>
+              </div>
+            )}
             {note && (
               <div>
                 <dt>備考</dt>

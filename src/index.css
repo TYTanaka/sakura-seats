@@ -1657,6 +1657,109 @@ button.seat-available:hover {
   border-color: #c9b8f5;
 }
 
+/* R38（H1）: 車椅子席・親子室の希望バッジ。開場前の準備で落とさないよう
+   注意色（オレンジ系）で目立たせる */
+.source-badge.source-access-need {
+  background: #fdeeda;
+  color: #8a5a12;
+  border-color: #e8a100;
+}
+
+/* R38（M3）: 返金済みチップ */
+.state-chip.is-refunded {
+  background: #e8f0fe;
+  color: #2b4c8c;
+  border-color: #a9c2f0;
+}
+
+/* R38: 受付担当者の選択（スタッフ画面上部） */
+.staff-operator {
+  margin: 8px 0 4px;
+}
+
+.staff-operator .field {
+  max-width: 320px;
+}
+
+/* R38: キャンセル待ち一覧（受付タブ） */
+.waitlist-panel {
+  border: 1.5px solid var(--gold-deep, #e8a100);
+  background: #fffaf0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.waitlist-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-15, 15px);
+}
+
+.waitlist-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.waitlist-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: var(--fs-14);
+}
+
+.waitlist-code {
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+/* R38: キャンセル待ち登録（お客様画面） */
+.waitlist-open-row {
+  margin: 10px 0;
+  text-align: center;
+}
+
+.waitlist-card .field {
+  margin-bottom: 10px;
+}
+
+/* R38（H1）: 申込フォームの「座席の希望」チェックボックス */
+.access-needs-field {
+  border: 1.5px solid var(--pink-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+}
+
+.access-needs-field legend {
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--fs-15, 15px);
+  font-weight: 600;
+}
+
+.check-row input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--pink);
+}
+
+/* R38（M3）: 返金チェックリスト節 */
+.refund-section {
+  margin-top: 18px;
+}
+
 .reservation-actions {
   display: flex;
   flex-wrap: wrap;

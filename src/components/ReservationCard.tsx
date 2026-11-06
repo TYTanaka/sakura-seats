@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { seatById } from '../data/seats'
 import {
+  ACCESS_NEED_LABELS,
+  accessNeedsSummary,
   formatSeatList,
   formatYen,
   reservationDisplayName,
@@ -10,7 +11,11 @@ import {
   type Reservation,
 } from '../lib/logic'
 import { useStore } from '../lib/store'
-import { reservationSeatDisplay, zoneLabel, zoneOfSeat } from '../lib/zones'
+import {
+  canPickSeatForReservation,
+  reservationSeatDisplay,
+  zoneLabel,
+} from '../lib/zones'
 import StaffSeatMap, { type StaffSeatState } from './StaffSeatMap'
 
 /** ISO日時を「12月19日 13:05」の形にする（受付済み時刻の表示用） */
@@ -149,18 +154,15 @@ export default function ReservationCard({
   }
   const assignSeatEnabled = (seatId: string): boolean => {
     if (picked.includes(seatId)) return true
-    return (
-      zoneOfSeat(seatById(seatId)) === res.zone &&
-      seatStatus(data, seatId) === 'available'
-    )
+    // R38: ゾーン内の空席に加え、希望した種別の専用席（車椅子席・親子室）も選べる
+    return canPickSeatForReservation(data, res, seatId)
   }
   const togglePick = (seatId: string) => {
     // 関数型更新にする: 同一タスク内の連続タップでも、直前の選択を
     // 取りこぼさずにトグルできるように（state の古い値で上書きしない）
     setPicked((prev) => {
       if (prev.includes(seatId)) return prev.filter((id) => id !== seatId)
-      if (zoneOfSeat(seatById(seatId)) !== res.zone) return prev
-      if (seatStatus(data, seatId) !== 'available') return prev
+      if (!canPickSeatForReservation(data, res, seatId)) return prev
       if (prev.length >= party) return prev
       return [...prev, seatId]
     })
@@ -199,6 +201,22 @@ export default function ReservationCard({
             {seatDisplay.isZone && (
               <span className="source-badge source-zone" data-zone-badge>
                 ゾーン{res.zone}
+              </span>
+            )}
+            {/* R38（H1）: 車椅子席・親子室の希望は受付で一目で分かるよう
+                警告色のバッジで出す。開場前の準備（専用席の確保）の起点になる */}
+            {(res.accessNeeds ?? []).map((need) => (
+              <span
+                key={need}
+                className="source-badge source-access-need"
+                data-access-need={need}
+              >
+                {ACCESS_NEED_LABELS[need]}希望
+              </span>
+            ))}
+            {res.refunded && (
+              <span className="state-chip is-refunded" data-refunded-badge>
+                返金済み
               </span>
             )}
             {res.cancelled ? (
@@ -241,6 +259,16 @@ export default function ReservationCard({
         {res.checkedIn && res.checkedInAt && (
           <p className="muted small reservation-meta">
             受付済み：{formatCheckedInAt(res.checkedInAt)}
+            {/* R38: 受付・支払いの処理者（担当者別集計と突き合わせ用） */}
+            {res.checkedInBy && (
+              <span data-checked-in-by> ／ 受付担当：{res.checkedInBy}</span>
+            )}
+            {res.paidBy && <span data-paid-by> ／ 受取担当：{res.paidBy}</span>}
+          </p>
+        )}
+        {!res.checkedIn && res.paid && res.paidBy && (
+          <p className="muted small reservation-meta">
+            <span data-paid-by>受取担当：{res.paidBy}</span>
           </p>
         )}
       </div>
@@ -381,6 +409,12 @@ export default function ReservationCard({
             {picked.length}/{party}席）。薄くなっている席は対象外です。
             支払い・来場の状態は変わりません。
           </p>
+          {(res.accessNeeds ?? []).length > 0 && (
+            <p className="assign-panel-note" data-assign-access-note>
+              この予約は{accessNeedsSummary(res.accessNeeds)}
+              の希望があります。座席表の専用席（車椅子席・親子室）も選べます。
+            </p>
+          )}
           <StaffSeatMap
             data={data}
             stateOf={assignStateOf}
