@@ -108,6 +108,21 @@ function clearDraft() {
   }
 }
 
+/**
+ * 入力途中の下書きが「再開すべき状態」で残っているか（R39）。
+ * 公演紹介ページ（LP）を入口にしたことで、再訪時に LP を挟むと申込の
+ * 途中で離脱した人が LP から入ってしまう。ステップ初期化と同じ条件で
+ * 判定し、当てはまる場合は入口側が予約フローへ直接戻すために使う。
+ */
+export function hasResumableDraft(): boolean {
+  const draft = loadDraft()
+  return (
+    draft !== null &&
+    (draft.step === 'form' || draft.step === 'confirm') &&
+    draft.zoneId !== null
+  )
+}
+
 /** 人数分の券種を人数の並びで調整する（足りない分はデフォルト券種で埋める） */
 function fitTypeIds(typeIds: string[], partySize: number, fallbackId: string): string[] {
   const next = typeIds.slice(0, partySize)

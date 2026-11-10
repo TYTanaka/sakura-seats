@@ -150,6 +150,7 @@ textarea {
    .u-nowrap の塊にしてフレーズ境界でだけ折れるようにする */
 .hero-info,
 .book-flow,
+.lp-flow,
 .done-card,
 .lookup-card,
 .last-res-item,
@@ -637,6 +638,9 @@ textarea {
 .book-flow .card h2,
 .book-flow .card h3,
 .book-flow .card h4,
+.lp-flow .card h2,
+.lp-flow .card h3,
+.lp-hero-title,
 .lookup-card h2,
 .lookup-card h3,
 .done-card .reservation-code,
@@ -651,6 +655,8 @@ textarea {
    ヘアラインを敷く。背景レイヤーで描くため見出しの高さは変わらない */
 .book-flow .card h2::before,
 .book-flow .card h3::before,
+.lp-flow .card h2::before,
+.lp-flow .card h3::before,
 .lookup-card h2::before,
 .lookup-card h3::before,
 .last-reservation-card h2::before {
@@ -660,6 +666,8 @@ textarea {
 }
 .book-flow .card h2,
 .book-flow .card h3,
+.lp-flow .card h2,
+.lp-flow .card h3,
 .lookup-card h2,
 .lookup-card h3,
 .last-reservation-card h2 {
@@ -4813,5 +4821,390 @@ button.sseat-cell:active {
   .skeleton-hero,
   .skeleton-card {
     animation: none;
+  }
+}
+
+/* ===== R39: 公演紹介ページ（ランディングページ） =====
+   初めて訪れた人が「公演を知って、安心して予約へ進める」入口。
+   新しい意匠は足さず、既存のカード・ボタン・見出し装飾（◆＋金の
+   ヘアライン）・色トークンの組み合わせだけで構成する */
+
+/* ヒーロー: ポスターと紹介文の2カラム（狭幅では縦積み）。
+   .poster-card の額縁グラデーションをそのまま使う */
+.lp-hero {
+  text-align: left;
+}
+
+.lp-hero-row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.lp-hero-art {
+  flex: 0 0 min(300px, 42%);
+}
+
+.lp-hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lp-hero-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+
+.lp-genre {
+  margin: 2px 0 4px;
+  font-size: var(--fs-13);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--pink);
+}
+
+.lp-hero-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-32);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--burgundy);
+  text-wrap: balance;
+}
+
+.lp-catch {
+  margin: 0 0 10px;
+  font-size: var(--fs-16);
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--burgundy-soft);
+}
+
+.lp-period {
+  margin: 0 0 8px;
+  font-size: var(--fs-16);
+  font-weight: 800;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.lp-hero-when {
+  color: var(--burgundy);
+}
+
+.lp-hero-meta {
+  margin: 0 0 4px;
+  font-size: var(--fs-14);
+  font-weight: 700;
+  line-height: 1.65;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* LP の締切ピルは紙の上に出るため、ヒーロー帯用の .site-deadline
+   （暗い地＋金ピル）の配色をそのまま使うと浮く。地を淡くし、
+   文字は濃い金茶でコントラストを確保する */
+.lp-hero .site-deadline {
+  background: #fdf3d0;
+  border: 1.5px solid var(--gold-deep);
+  color: #6d5205;
+  box-shadow: none;
+}
+
+.lp-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.lp-cta-main {
+  min-height: 52px;
+  padding: 12px 26px;
+  font-size: var(--fs-16);
+}
+
+/* ページ内メニュー: セクションへの素直なアンカー */
+.lp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1.5px dashed var(--line);
+}
+
+.lp-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--fs-14);
+  font-weight: 700;
+  color: var(--burgundy);
+  text-decoration: none;
+}
+
+.lp-nav a::before {
+  content: '✦';
+  margin-right: 0.3em;
+  font-size: 0.74em;
+  color: var(--gold-deep);
+}
+
+.lp-nav a:hover {
+  text-decoration: underline;
+}
+
+/* 初めての方へ: 3ステップ */
+.lp-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.lp-step {
+  position: relative;
+  background: var(--pink-pale);
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 14px 10px;
+}
+
+.lp-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: linear-gradient(160deg, #571122, var(--pink) 60%, #8e1f2f);
+  border: 1.5px solid rgba(245, 196, 81, 0.55);
+  color: #fff;
+  font-size: var(--fs-16);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.lp-step p {
+  margin: 0 0 6px;
+  font-size: var(--fs-14);
+  line-height: 1.65;
+}
+
+/* あらすじ: 本文と表紙イラストの2カラム */
+.lp-story-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.lp-story-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lp-story-text p {
+  line-height: 1.75;
+}
+
+.lp-highlights {
+  margin: 0;
+  padding-left: 1.2em;
+  line-height: 1.75;
+}
+
+.lp-story-art {
+  flex: 0 0 min(230px, 38%);
+  margin: 0;
+  text-align: center;
+}
+
+.lp-story-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  box-shadow:
+    0 6px 18px rgba(23, 11, 61, 0.35),
+    0 0 0 1.5px rgba(245, 196, 81, 0.4);
+}
+
+/* 公演情報の値側は文章のため通常改行（detail-list の既定に合わせる） */
+.lp-info-list dd {
+  word-break: normal;
+}
+
+/* 当日の流れ */
+.lp-flow-list {
+  margin: 0;
+  padding-left: 1.4em;
+  line-height: 1.75;
+}
+
+.lp-flow-list li {
+  margin-bottom: 10px;
+}
+
+.lp-flow-when {
+  display: inline-block;
+  margin-right: 8px;
+  font-weight: 800;
+  color: var(--burgundy);
+  white-space: nowrap;
+}
+
+/* 劇団の歩み */
+.lp-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  line-height: 1.7;
+}
+
+.lp-history-list li {
+  padding: 7px 0;
+  border-bottom: 1.5px dashed var(--line);
+}
+
+.lp-history-year {
+  display: inline-block;
+  min-width: 5.5em;
+  font-weight: 800;
+  color: var(--burgundy);
+  font-variant-numeric: tabular-nums;
+}
+
+/* キャスト紹介（顔写真は使わず、名前・役名・一言のみ） */
+.lp-cast-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-cast-item {
+  padding: 10px 0;
+  border-bottom: 1.5px dashed var(--line);
+}
+
+.lp-cast-item:last-child {
+  border-bottom: none;
+}
+
+.lp-cast-head {
+  margin: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.lp-cast-role {
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+.lp-cast-name {
+  font-weight: 700;
+}
+
+.lp-cast-comment {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+/* 観客の声 */
+.lp-quote {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  background: var(--pink-pale);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 14px 14px 0;
+}
+
+.lp-quote p {
+  margin: 0 0 4px;
+  line-height: 1.7;
+}
+
+/* よくある質問: native details で開閉（JSなし・キーボード操作可） */
+.lp-faq-item {
+  border-bottom: 1.5px dashed var(--line);
+}
+
+.lp-faq-item:last-child {
+  border-bottom: none;
+}
+
+.lp-faq-item summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 8px 2px;
+  font-weight: 800;
+  color: var(--burgundy);
+}
+
+.lp-faq-item summary::before {
+  content: 'Q.';
+  margin-right: 0.45em;
+  color: var(--gold-deep);
+}
+
+.lp-faq-item p {
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+
+/* 最後の予約CTA */
+.lp-final-cta {
+  text-align: center;
+}
+
+.lp-final-btns {
+  justify-content: center;
+}
+
+/* LP 内のキーボードフォーカスを入力欄と同じ金のリングで示す */
+.lp-flow a:focus-visible,
+.lp-flow button:focus-visible,
+.lp-flow summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(179, 39, 61, 0.35);
+  border-radius: 8px;
+}
+
+/* 狭幅: ヒーローとあらすじは縦積み、ステップも1列にする */
+@media (max-width: 640px) {
+  .lp-hero-row {
+    flex-direction: column;
+  }
+  .lp-hero-art {
+    flex: none;
+    width: min(300px, 82%);
+    margin: 0 auto;
+  }
+  .lp-hero-body {
+    width: 100%;
+  }
+  .lp-story-row {
+    flex-direction: column;
+  }
+  .lp-story-art {
+    flex: none;
+    width: min(230px, 70%);
+    margin: 4px auto 0;
+  }
+  .lp-steps {
+    grid-template-columns: 1fr;
+  }
+  .lp-hero-title {
+    font-size: var(--fs-24);
   }
 }

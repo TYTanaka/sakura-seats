@@ -26,13 +26,14 @@ import {
   buildSnapshotLineUrl,
 } from './lib/share'
 import posterHeroUrl from './assets/poster-hero.webp'
-import AudienceBook from './components/AudienceBook'
+import AudienceBook, { hasResumableDraft } from './components/AudienceBook'
+import LandingPage from './components/LandingPage'
 import Lookup from './components/Lookup'
 import ReservationQr, { useReservationQrUrl } from './components/ReservationQr'
 import { encodeQrPayload } from './lib/qrToken'
 import Staff, { hasStaffSession } from './components/Staff'
 
-type View = 'book' | 'lookup' | 'staff'
+type View = 'top' | 'book' | 'lookup' | 'staff'
 
 /* 文字サイズ設定（R27・R36でスタッフ側にも適用）: アプリは px 指定のため
    OS の文字サイズ設定が効かない。高齢のお客様・スタッフ向けに端末へ保存する
@@ -535,12 +536,28 @@ function Shell() {
    * スタッフ画面に入れば無操作で自動解除される設計（タブ内限定）で、
    * 初期ビューの分岐追加は実質的な露出を変えない。
    */
-  const [view, setView] = useState<View>(() => (hasStaffSession() ? 'staff' : 'book'))
+  const [view, setView] = useState<View>(() => {
+    if (hasStaffSession()) return 'staff'
+    // R39: 入口は公演紹介ページ（LP）。ただし申込途中の下書きが残っている
+    // 再訪者は、LP を挟まず予約フローへ直接戻す（従来の再開挙動を保つ）
+    if (hasResumableDraft()) return 'book'
+    return 'top'
+  })
   /** ユーザーが明示的に画面遷移したか（自動復帰で上書きしないための印） */
   const navigatedRef = useRef(false)
   const go = (v: View) => {
     navigatedRef.current = true
     setView(v)
+  }
+  // 画面遷移したら先頭から見せる（LP→予約フロー等で中ほどから始まらないように）
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [view])
+  /** 予約確認を開いた元の画面（戻るボタンで同じ場所へ帰す・R39） */
+  const [lookupFrom, setLookupFrom] = useState<'top' | 'book'>('book')
+  const openLookup = () => {
+    setLookupFrom(view === 'top' ? 'top' : 'book')
+    go('lookup')
   }
   // クラウド（Google ログイン）のセッションが後から判明した場合も、
   // まだ手動遷移していない初回だけスタッフ画面へ戻す
@@ -611,8 +628,8 @@ function Shell() {
       )}
       <TopHeader
         perf={perf}
-        compact={view === 'staff'}
-        onLookup={() => go('lookup')}
+        compact={view === 'staff' || view === 'top'}
+        onLookup={openLookup}
         onStaff={() => go('staff')}
       />
       {/* 文字サイズ切り替え（R27）: ヒーロー帯の直下に常置し、予約画面と
@@ -627,20 +644,37 @@ function Shell() {
             ⚠ {storageWarning}
           </p>
         )}
+        {view === 'top' && (
+          <LandingPage
+            perf={perf}
+            onBook={() => go('book')}
+            onLookup={openLookup}
+          />
+        )}
+        {view === 'book' && (
+          <button
+            type="button"
+            className="btn btn-ghost back-btn"
+            data-to-landing
+            onClick={() => go('top')}
+          >
+            ← 公演紹介トップへ
+          </button>
+        )}
         {view === 'book' && perf.date === localDateString() && <TodayCard perf={perf} />}
         {/* 完了画面の表示中は控え一覧を完了カードの下へ回す（R6・C-2）:
             「予約が完了しました」と予約番号がファーストビューに入り、
             QR・共有ボタンも完了カード側に一本化されて見える */}
         {view === 'book' && !bookingDone && (
-          <SavedReservations onLookup={() => go('lookup')} />
+          <SavedReservations onLookup={openLookup} />
         )}
         {view === 'book' && (
           <AudienceBook perf={perf} onBookingDoneChange={setBookingDone} />
         )}
         {view === 'book' && bookingDone && (
-          <SavedReservations onLookup={() => go('lookup')} />
+          <SavedReservations onLookup={openLookup} />
         )}
-        {view === 'lookup' && <Lookup onBack={() => go('book')} />}
+        {view === 'lookup' && <Lookup onBack={() => go(lookupFrom)} />}
         {view === 'staff' && <Staff onExit={() => go('book')} />}
       </main>
       <footer className="site-footer">
